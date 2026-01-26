@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "x64\\Debug\\glm.cppm.obj",
+            "outputs": [
+                "E:\\Engine Source\\Ditto\\Ditto\\x64\\Debug\\vc143.pdb",
+                "x64\\Debug\\",
+                "E:\\Engine Source\\Ditto\\Ditto\\x64\\Debug\\glm.cppm.ifc"
+            ],
+            "provides": [
+                {
+                    "logical-name": "glm",
+                    "source-path": "e:\\engine source\\ditto\\ditto\\3rdparty\\glm\\glm.cppm",
+                    "is-interface": true
+                }
+            ],
+            "requires": []
+        }
+    ]
+}

@@ -1,0 +1,21 @@
+﻿  正在扫描源以查找模块依赖项...
+  Engine.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Core\GameObject.h(40,37): warning C4150: 删除指向不完整“Component”类型的指针；没有调用析构函数
+  (编译源文件“Engine/Core/Engine.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Core\GameObject.h(5,8):
+      参见“Component”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.h(19,49): warning C4305: “初始化”: 从“double”到“float”截断
+  (编译源文件“Engine/Core/Engine.cpp”)
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.h(19,68): warning C4305: “初始化”: 从“double”到“float”截断
+  (编译源文件“Engine/Core/Engine.cpp”)
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.h(21,47): warning C4244: “初始化”: 从“double”转换到“size_t”，可能丢失数据
+  (编译源文件“Engine/Core/Engine.cpp”)
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(106,71): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(143,106): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(143,61): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+LINK : warning LNK4098: 默认库“MSVCRT”与其他库的使用冲突；请使用 /NODEFAULTLIB:library
+  Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Debug\Ditto.exe

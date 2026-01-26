@@ -1,0 +1,1498 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="头文件">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="头文件\Editor">
+      <UniqueIdentifier>{7e1b6ebc-ddc1-405a-8209-69830e9b5647}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Editor">
+      <UniqueIdentifier>{ed785e20-c4bb-4e1a-bc24-788cab24f6ce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Engine">
+      <UniqueIdentifier>{07f1122f-6352-464d-9f1f-4fa38966114f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\Engine">
+      <UniqueIdentifier>{d6ab2cdb-9f4f-4dcc-aa90-21bbdda4cbec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\Engine\Core">
+      <UniqueIdentifier>{001573ec-b87d-41fc-b8ae-b093a426b794}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Engine\Core">
+      <UniqueIdentifier>{1910d527-99fb-47a0-8fb0-354d98b9b6eb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="三方库">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="三方库\GLFW">
+      <UniqueIdentifier>{89dac985-9177-440c-b595-322cf4867a87}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="三方库\ImGui">
+      <UniqueIdentifier>{5ab07b14-24be-47b1-adad-a40384bccbc1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="三方库\GLAD">
+      <UniqueIdentifier>{afd323e1-c22a-4f90-aa32-5ac52ee5cd26}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="三方库\GLM">
+      <UniqueIdentifier>{2b9f0dfb-ad03-4446-8903-02a3a1992d62}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{505e9999-51e1-4b86-a924-fdf316a3f3ec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\Engine\Graphics">
+      <UniqueIdentifier>{458a6a5b-d280-443e-a8c9-bf9e95ae05c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Engine\Graphics">
+      <UniqueIdentifier>{6e9c534f-9345-4d0f-8d59-878d65ee20e4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\Engine\Resources">
+      <UniqueIdentifier>{ccea1064-6b97-4abd-b603-d13d92d2bce6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Engine\Resources">
+      <UniqueIdentifier>{9d34a336-d26d-4e5c-bd47-c03ed7698ec0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="3rdParty\GLFW\glfw3.h">
+      <Filter>三方库\GLFW</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLFW\glfw3native.h">
+      <Filter>三方库\GLFW</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Editor.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imconfig.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imgui.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imgui_internal.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imstb_rectpack.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imstb_textedit.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imstb_truetype.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imgui_impl_glfw.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imgui_impl_opengl3.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imgui_impl_win32.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imgui_impl_opengl3_loader.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLAD\glad.h">
+      <Filter>三方库\GLAD</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLAD\khrplatform.h">
+      <Filter>三方库\GLAD</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\common.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\compute_common.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\compute_vector_decl.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\compute_vector_relational.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\qualifier.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\setup.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_float.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_half.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat2x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat2x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat2x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat3x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat3x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat3x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat4x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat4x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_mat4x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_quat.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_vec1.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_vec2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_vec3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\type_vec4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\_features.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\_fixes.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\_noise.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\_swizzle.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\_swizzle_func.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\detail\_vectorize.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\exponential.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_clip_space.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_common.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double2x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double2x2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double2x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double2x3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double2x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double2x4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double3x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double3x2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double3x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double3x3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double3x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double3x4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double4x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double4x2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double4x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double4x3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double4x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_double4x4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float2x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float2x2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float2x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float2x3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float2x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float2x4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float3x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float3x2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float3x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float3x3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float3x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float3x4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float4x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float4x2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float4x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float4x3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float4x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_float4x4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int2x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int2x2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int2x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int2x3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int2x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int2x4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int3x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int3x2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int3x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int3x3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int3x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int3x4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int4x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int4x2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int4x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int4x3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int4x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_int4x4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_integer.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_projection.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_relational.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_transform.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint2x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint2x2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint2x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint2x3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint2x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint2x4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint3x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint3x2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint3x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint3x3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint3x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint3x4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint4x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint4x2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint4x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint4x3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint4x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\matrix_uint4x4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_common.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_double.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_double_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_exponential.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_float.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_float_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_geometric.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_relational.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_transform.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\quaternion_trigonometric.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_common.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_constants.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_integer.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_int_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_packing.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_reciprocal.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_relational.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_uint_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\scalar_ulp.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool1.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool1_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_bool4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_common.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double1.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double1_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_double4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float1.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float1_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float2_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float3_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_float4_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int1.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int1_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_int4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_integer.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_packing.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_reciprocal.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_relational.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint1.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint1_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint2_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint3_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_uint4_sized.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\vector_ulp.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext\_matrix_vectorize.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\ext.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\fwd.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\geometric.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\glm.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\bitfield.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\color_space.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\constants.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\epsilon.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\integer.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\matrix_access.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\matrix_integer.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\matrix_inverse.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\matrix_transform.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\noise.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\packing.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\quaternion.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\random.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\reciprocal.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\round.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\type_aligned.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\type_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\type_ptr.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\ulp.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtc\vec1.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\associated_min_max.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\bit.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\closest_point.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\color_encoding.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\color_space.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\color_space_YCoCg.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\common.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\compatibility.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\component_wise.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\dual_quaternion.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\easing.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\euler_angles.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\extend.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\extended_min_max.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\exterior_product.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\fast_exponential.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\fast_square_root.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\fast_trigonometry.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\functions.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\gradient_paint.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\handed_coordinate_space.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\hash.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\integer.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\intersect.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\io.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\iteration.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\log_base.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_cross_product.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_decompose.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_factorisation.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_interpolation.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_major_storage.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_operation.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_query.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\matrix_transform_2d.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\mixed_product.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\norm.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\normal.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\normalize_dot.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\number_precision.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\optimum_pow.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\orthonormalize.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\pca.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\perpendicular.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\polar_coordinates.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\projection.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\quaternion.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\range.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\raw_data.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\rotate_normalized_axis.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\rotate_vector.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\scalar_multiplication.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\scalar_relational.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\spline.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\std_based_type.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\string_cast.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\structured_bindings.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\texture.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\transform.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\transform2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\type_aligned.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\type_trait.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\vector_angle.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\vector_query.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\vec_swizzle.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\gtx\wrap.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\integer.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat2x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat2x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat2x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat3x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat3x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat3x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat4x2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat4x3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\mat4x4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\matrix.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\packing.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\common.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\exponential.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\geometric.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\integer.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\matrix.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\neon.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\packing.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\platform.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\trigonometric.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\simd\vector_relational.h">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\trigonometric.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\vec2.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\vec3.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\vec4.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\GLM\vector_relational.hpp">
+      <Filter>三方库\GLM</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Core\Engine.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Core\Scene.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Graphics\Camera.h">
+      <Filter>头文件\Engine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Graphics\Shader.h">
+      <Filter>头文件\Engine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Core\GameObject.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Resources\Resource.h">
+      <Filter>头文件\Engine\Resources</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="3rdParty\GLFW\glfw3dll.lib">
+      <Filter>三方库\GLFW</Filter>
+    </Library>
+    <Library Include="3rdParty\GLFW\glfw3.lib">
+      <Filter>三方库\GLFW</Filter>
+    </Library>
+    <Library Include="3rdParty\GLFW\glfw3_mt.lib">
+      <Filter>三方库\GLFW</Filter>
+    </Library>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="3rdParty\GLFW\glfw3.dll">
+      <Filter>三方库\GLFW</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_common.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_common_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_exponential.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_exponential_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_geometric.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_geometric_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_integer.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_integer_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_matrix.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_matrix_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_packing.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_packing_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_trigonometric.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_trigonometric_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_vector_relational.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\func_vector_relational_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_half.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat2x2.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat2x3.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat2x4.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat3x2.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat3x3.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat3x4.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat4x2.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat4x3.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat4x4.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_mat4x4_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_quat.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_quat_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_vec1.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_vec2.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_vec3.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_vec4.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\detail\type_vec_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\matrix_clip_space.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\matrix_common.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\matrix_integer.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\matrix_projection.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\matrix_relational.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\matrix_transform.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\quaternion_common.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\quaternion_common_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\quaternion_exponential.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\quaternion_geometric.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\quaternion_relational.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\quaternion_transform.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\quaternion_trigonometric.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\scalar_common.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\scalar_constants.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\scalar_integer.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\scalar_packing.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\scalar_reciprocal.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\scalar_relational.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\scalar_ulp.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\vector_common.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\vector_integer.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\vector_packing.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\vector_reciprocal.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\vector_relational.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\ext\vector_ulp.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\bitfield.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\color_space.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\constants.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\epsilon.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\integer.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\matrix_access.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\matrix_inverse.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\matrix_transform.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\noise.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\packing.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\quaternion.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\quaternion_simd.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\random.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\round.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\type_precision.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\type_ptr.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtc\ulp.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\associated_min_max.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\bit.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\closest_point.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\color_encoding.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\color_space.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\color_space_YCoCg.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\common.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\compatibility.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\component_wise.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\dual_quaternion.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\easing.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\euler_angles.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\extend.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\extended_min_max.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\exterior_product.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\fast_exponential.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\fast_square_root.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\fast_trigonometry.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\float_normalize.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\functions.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\gradient_paint.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\handed_coordinate_space.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\hash.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\integer.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\intersect.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\io.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\iteration.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\log_base.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_cross_product.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_decompose.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_factorisation.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_interpolation.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_major_storage.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_operation.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_query.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\matrix_transform_2d.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\mixed_product.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\norm.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\normal.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\normalize_dot.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\optimum_pow.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\orthonormalize.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\pca.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\perpendicular.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\polar_coordinates.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\projection.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\quaternion.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\raw_data.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\rotate_normalized_axis.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\rotate_vector.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\scalar_relational.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\spline.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\std_based_type.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\string_cast.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\structured_bindings.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\texture.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\transform.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\transform2.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\type_aligned.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\type_trait.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\vector_angle.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\vector_query.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="3rdParty\GLM\gtx\wrap.inl">
+      <Filter>三方库\GLM</Filter>
+    </None>
+    <None Include="Assets\Shaders\Fragment.glsl">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="Assets\Shaders\Vertex.glsl">
+      <Filter>资源文件</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Editor\Editor.cpp">
+      <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_demo.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_draw.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_tables.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_impl_glfw.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_impl_opengl3.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_impl_win32.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\GLAD\glad.c">
+      <Filter>三方库\GLAD</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\GLM\detail\glm.cpp">
+      <Filter>三方库\GLM</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\GLM\glm.cppm">
+      <Filter>三方库\GLM</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\Engine.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Main.cpp">
+      <Filter>源文件\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\Scene.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\Camera.cpp">
+      <Filter>源文件\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\Shader.cpp">
+      <Filter>源文件\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\GameObject.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Resources\Resource.cpp">
+      <Filter>源文件\Engine\Resources</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
