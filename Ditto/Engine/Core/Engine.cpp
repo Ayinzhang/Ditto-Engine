@@ -7,28 +7,29 @@
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 using namespace std;
+using namespace glm;
 
 Engine::Engine()
 {
     isRunning = true; enableMouse = false; window_width = 1200; window_height = 900;
     
-    if (!glfwInit()) throw std::runtime_error("GLFW init failed");
+    if (!glfwInit()) throw runtime_error("GLFW init failed");
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     window = glfwCreateWindow(window_width, window_height, "Ditto", nullptr, nullptr);
-    if (!window) glfwTerminate(), throw std::runtime_error("Window create failed");
+    if (!window) glfwTerminate(), throw runtime_error("Window create failed");
     glfwMakeContextCurrent(window); 
     glfwSetWindowUserPointer(window, this);
     glfwSetCursorPosCallback(window, Engine::MouseCallBack);
 
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw std::runtime_error("Failed to initialize GLAD");
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw runtime_error("Failed to initialize GLAD");
 
     resource = new Resource();
 	scene = new Scene();
-	camera = new Camera(glm::vec3(0, 0, 10), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+	camera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
 	editor = new Editor(window); editor->engine = this;
 
@@ -40,14 +41,14 @@ Engine::Engine()
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, MAX_VERTICES * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
+    //glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    //glEnableVertexAttribArray(2);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
@@ -55,7 +56,8 @@ Engine::Engine()
 
 Engine::~Engine()
 {
-    delete editor;
+    delete editor; delete shader; delete camera;
+	delete scene; delete resource;
     if (window) glfwDestroyWindow(window);
     glfwTerminate();
 
@@ -88,8 +90,7 @@ void Engine::Run()
 
 void Engine::RenderScene()
 {
-    // 使用白色背景
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // 启用深度测试
@@ -107,14 +108,20 @@ void Engine::RenderScene()
     glBindVertexArray(0);
 
     // 设置模型矩阵
-    glm::mat4 model = glm::mat4(1.0f);
-    glUniformMatrix4fv(glGetUniformLocation(shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+    mat4 model = mat4(1.0f);
+	shader->SetUniformMat4("model", model);
 
-	glm::mat4 view = camera->GetViewMatrix();
-    glUniformMatrix4fv(glGetUniformLocation(shader->id, "view"), 1, GL_FALSE, glm::value_ptr(view));
+	mat4 view = camera->GetViewMatrix();
+	shader->SetUniformMat4("view", view);
 
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)window_width / (float)window_height, 0.1f, 100.0f);
-    glUniformMatrix4fv(glGetUniformLocation(shader->id, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+    mat4 projection = perspective(radians(45.0f), (float)window_width / (float)window_height, 0.1f, 100.0f);
+	shader->SetUniformMat4("projection", projection);
+
+    shader->SetUniformVec4("objCol", vec4(1));
+	shader->SetUniformVec3("lightCol", vec3(1));
+	shader->SetUniformVec3("lightDir", normalize(vec3(-1, -2, -1)));
+    shader->SetUniform1f("lightIntensity", 1.0f);
+	shader->SetUniformVec3("viewPos", camera->position);
 
     // 绘制立方体
     glBindVertexArray(VAO);
@@ -127,19 +134,20 @@ void Engine::RenderScene()
 void Engine::ProcessInput()
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) isRunning = false;
-    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS) enableMouse = !enableMouse;
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera->position += camera->forward * keySpeed;
 	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera->position -= camera->forward * keySpeed;
 	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera->position -= camera->right * keySpeed;
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera->position += camera->right * keySpeed;
 	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera->position += camera->up * keySpeed;
 	if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) camera->position -= camera->up * keySpeed;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS) enableMouse = !enableMouse; 
 }
 
 void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)
 {
-    Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
-    if (!engine->enableMouse) { engine->lastX = xpos, engine->lastY = ypos; return; }
-    engine->camera->ProcessMouseMovement(engine->mouseSpeed * (xpos - engine->lastX), engine->mouseSpeed * (ypos - engine->lastY));
+    Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window)); 
+    if (!engine->enableMouse) { engine->lastX = xpos; engine->lastY = ypos; return; }
+    engine->camera->ProcessMouseMovement(engine->mouseSpeed * (xpos - engine->lastX) / engine->window_width, 
+        engine->mouseSpeed * (ypos - engine->lastY) / engine->window_height);
     engine->lastX = xpos; engine->lastY = ypos;
 }

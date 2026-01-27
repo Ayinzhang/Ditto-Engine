@@ -14,10 +14,9 @@ struct Resource
 struct ModelData
 {
 	std::string modelName;
-	unsigned int vertexCount, VAO, VBO;
+	int vertexCount;
 	std::vector<float> vertexData;
 	ModelData(const std::string& path);
-	~ModelData();
 	struct FaceIndices { int posIdx, texIdx, normIdx; };
 	FaceIndices ParseFaceIndices(const std::string& token);
 };

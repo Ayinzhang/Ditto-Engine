@@ -46,20 +46,16 @@ void GameObject::OnInspectorGUI()
 
     if (ImGui::BeginPopup("AddComponentPopup"))
     {
-        if (ImGui::MenuItem("Renderer"))
-        {
-            AddComponent<RendererComponent>();
-        }
-        if (ImGui::MenuItem("Rigidbody"))
-        {
-            AddComponent<RigidbodyComponent>();
-        }
+        if (!(compMask >> 1 & 1) && ImGui::MenuItem("DirLight")) AddComponent<LightComponent>();
+        if (!(compMask >> 2 & 1) && ImGui::MenuItem("Renderer")) AddComponent<RendererComponent>();
+        if (!(compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody")) AddComponent<RigidbodyComponent>();
         ImGui::EndPopup();
     }
 }
 
 TransformComponent::TransformComponent()
 {
+    index = 1 << 0;
     position[0] = position[1] = position[2] = 0;
     rotation[0] = rotation[1] = rotation[2] = 0;
     scale[0] = scale[1] = scale[2] = 1;
@@ -82,9 +78,29 @@ void TransformComponent::OnInspectorGUI()
     if (!enabled) ImGui::PopStyleVar();
 }
 
+LightComponent::LightComponent()
+{
+    index = 1 << 1; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; intensity = 1.0f;
+}
+
+void LightComponent::OnInspectorGUI()
+{
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine();
+    ImGui::TextUnformatted(GetName());
+    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    ImGui::Indent(20.0f);
+    ImGui::ColorEdit3("Color", color);
+    ImGui::DragFloat("Intensity", &intensity, 0.1f, 0.0f, 100.0f);
+    ImGui::Unindent(20.0f);
+    if (!enabled) ImGui::PopStyleVar();
+}
+
 RendererComponent::RendererComponent() 
 {
-	color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; color[3] = 1.0f;
+    index = 1 << 2; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; color[3] = 1.0f;
 }
 
 void RendererComponent::OnInspectorGUI()
@@ -94,14 +110,7 @@ void RendererComponent::OnInspectorGUI()
     ImGui::TextUnformatted(GetName());
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X"))
-    {
-        if (gameObject)
-        {
-            gameObject->RemoveComponent(this); return;
-        }
-    }
-
+    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
 
     ImGui::Indent(20.0f);
@@ -119,7 +128,7 @@ void RendererComponent::OnInspectorGUI()
 
 RigidbodyComponent::RigidbodyComponent()
 {
-	type = Dynamic; mass = 1.0f; useGravity = true;
+    index = 1 << 3; type = Dynamic; mass = 1.0f; useGravity = true;
 }
 
 void RigidbodyComponent::OnInspectorGUI()
@@ -129,14 +138,7 @@ void RigidbodyComponent::OnInspectorGUI()
     ImGui::TextUnformatted(GetName());
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X"))
-    {
-        if (gameObject)
-        {
-            gameObject->RemoveComponent(this); return;
-        }
-    }
-
+    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
 
     ImGui::Indent(20.0f);

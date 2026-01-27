@@ -173,11 +173,11 @@ ModelData::ModelData(const std::string& path)
                 }
 
                 // 获取纹理坐标（可选）
-                glm::vec2 tex = glm::vec2(0.0f);
-                if (indices.texIdx >= 0 && indices.texIdx < texCoords.size())
-                {
-                    tex = texCoords[indices.texIdx];
-                }
+                // glm::vec2 tex = glm::vec2(0.0f);
+                // if (indices.texIdx >= 0 && indices.texIdx < texCoords.size())
+                // {
+                //     tex = texCoords[indices.texIdx];
+                // }
 
                 vertexData.push_back(pos.x);
                 vertexData.push_back(pos.y);
@@ -189,42 +189,21 @@ ModelData::ModelData(const std::string& path)
                 vertexData.push_back(norm.z);
 
                 // 纹理坐标 (2 floats)
-                vertexData.push_back(tex.x);
-                vertexData.push_back(tex.y);
+                // vertexData.push_back(tex.x);
+                // vertexData.push_back(tex.y);
             }
         }
     }
 
     file.close();
     vertexCount = static_cast<unsigned int>(vertexData.size() / 8);
+}
 
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER,
-        vertexData.size() * sizeof(float),
-        vertexData.data(),
-        GL_STATIC_DRAW);
-
-    // 位置属性 (location = 0)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
-        8 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // 法线属性 (location = 1)
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE,
-        8 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    // 纹理坐标属性 (location = 2)
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,
-        8 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+Resource::~Resource()
+{
+    delete cubeModel;
+    delete sphereModel;
+    delete planeModel;
 }
 
 ModelData::FaceIndices ModelData::ParseFaceIndices(const std::string& token)

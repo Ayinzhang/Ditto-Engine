@@ -1,8 +1,10 @@
 #include "Shader.h"
-#include "../../3rdParty/GLAD/glad.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include "../../3rdParty/GLAD/glad.h"
+#include "../../3rdParty/GLM/ext/matrix_transform.hpp"
+#include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 
 static std::string ReadFile(const char* path)
 {
@@ -40,4 +42,29 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath)
 Shader::~Shader()
 {
     glDeleteProgram(id); glUseProgram(0);
+}
+
+void Shader::SetUniformMat4(const char* name, glm::mat4 mat)
+{
+    glUniformMatrix4fv(glGetUniformLocation(id, name), 1, GL_FALSE, value_ptr(mat));
+}
+void Shader::SetUniformVec2(const char* name, glm::vec2 vector)
+{
+    glUniform2f(glGetUniformLocation(id, name), vector.x, vector.y);
+}
+void Shader::SetUniformVec3(const char* name, glm::vec3 vector)
+{
+    glUniform3f(glGetUniformLocation(id, name), vector.x, vector.y, vector.z);
+}
+void Shader::SetUniformVec4(const char* name, glm::vec4 vector)
+{
+    glUniform4f(glGetUniformLocation(id, name), vector.x, vector.y, vector.z, vector.w);
+}
+void Shader::SetUniform1f(const char* name, float f)
+{
+    glUniform1f(glGetUniformLocation(id, name), f);
+}
+void Shader::SetUniform1i(const char* name, int slot)
+{
+    glUniform1i(glGetUniformLocation(id, name), slot);
 }

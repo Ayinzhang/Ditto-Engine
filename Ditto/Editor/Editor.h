@@ -2,9 +2,11 @@
 #include "../3rdParty/ImGui/imgui.h"
 
 struct Engine;
+struct GameObject;
 struct Editor
 {
-    Engine* engine;
+    Engine* engine = nullptr;
+    GameObject* selectedObject = nullptr;
     char sceneNameBuffer[16] = "Default";
     bool showHierarchy, showScene, showInspector;
     Editor(void* window);

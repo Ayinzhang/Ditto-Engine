@@ -9,6 +9,11 @@ Scene::Scene()
 	gameObjects.push_back(gameObject);
 }
 
+Scene::~Scene()
+{
+	for (GameObject* obj : gameObjects) delete obj;
+}
+
 void Scene::SaveScene(const std::string& filepath)
 {
 

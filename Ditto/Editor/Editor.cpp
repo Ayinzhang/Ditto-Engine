@@ -4,14 +4,6 @@
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../3rdParty/ImGui/imgui_impl_opengl3.h"
 
-glm::vec3 cameraPos(0.0f, 0.0f, 3.0f); // 初始摄像头位置
-float cameraSpeed = 0.05f; // 控制视角移动速度
-float cameraYaw = -90.0f; // 视角的俯仰角
-float cameraPitch = 0.0f; // 视角的偏航角
-static float dummyPos[3] = { 0, 0, 0 };
-static float dummyRot[3] = { 0, 0, 0 };
-static float dummyScale[3] = { 1, 1, 1 };
-
 Editor::Editor(void* window)
 {
     IMGUI_CHECKVERSION();
@@ -116,8 +108,28 @@ void Editor::DrawHierarchy()
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(hierarchyWidth, windowHeight));
     ImGui::Begin("Hierarchy");
-    ImGui::Text("Player");
-    ImGui::Text("Camera");
+
+    // 在 Editor 类中添加成员变量存储选中的对象
+    // GameObject* selectedObject = nullptr;
+
+    for (auto obj : engine->scene->gameObjects) {
+        // 判断当前对象是否被选中
+        bool isSelected = (selectedObject == obj);
+
+        // 使用 Selectable，返回 true 表示被点击
+        if (ImGui::Selectable(obj->name.c_str(), isSelected)) 
+        {
+            selectedObject = obj;
+        }
+
+        // 可选：右键菜单
+        if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem("Rename")) { /* 重命名逻辑 */ }
+            if (ImGui::MenuItem("Delete")) { /* 删除逻辑 */ }
+            ImGui::EndPopup();
+        }
+    }
+
     ImGui::End();
 }
 
@@ -148,7 +160,6 @@ void Editor::DrawInspector()
     ImGui::SetNextWindowPos(ImVec2(hierarchyWidth + sceneWidth, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(inspectorWidth, windowHeight));
     ImGui::Begin("Inspector");
-    if (!engine || !engine->scene || engine->scene->gameObjects.empty()) return;
-	else engine->scene->gameObjects[0]->OnInspectorGUI();
-    ImGui::End();
+    if (!selectedObject) { ImGui::End(); return; }
+	else selectedObject->OnInspectorGUI(); ImGui::End();
 }

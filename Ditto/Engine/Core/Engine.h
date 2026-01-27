@@ -16,9 +16,9 @@ struct Engine
 	Scene* scene;
 	Editor* editor;
 	Camera* camera;
-	bool enableMouse, firstMouse; float keySpeed = 0.01, mouseSpeed = 0.01; double lastX, lastY;
+	bool enableMouse; float keySpeed = 0.01, mouseSpeed = 1; double lastX, lastY;
 	Shader* shader;
-	unsigned int VAO, VBO; size_t MAX_VERTICES = 1e8;
+	unsigned int VAO, VBO, MAX_VERTICES = 1e8;
 	bool isRunning;
 	Engine();
 	~Engine();
