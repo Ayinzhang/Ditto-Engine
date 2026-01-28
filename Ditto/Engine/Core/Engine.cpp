@@ -12,7 +12,7 @@ using namespace glm;
 Engine::Engine()
 {
     isRunning = true; enableMouse = false; window_width = 1200; window_height = 900;
-    
+
     if (!glfwInit()) throw runtime_error("GLFW init failed");
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);

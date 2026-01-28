@@ -1,31 +1,3 @@
 ﻿  正在扫描源以查找模块依赖项...
-  Editor.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.h(19,37): warning C4305: “初始化”: 从“double”到“float”截断
-  (编译源文件“Editor/Editor.cpp”)
-  
-E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.h(21,40): warning C4244: “初始化”: 从“double”转换到“unsigned int”，可能丢失数据
-  (编译源文件“Editor/Editor.cpp”)
-  
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(50,48): warning C4390: “;”: 找到空的受控语句；这是否是有意的?
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(51,48): warning C4390: “;”: 找到空的受控语句；这是否是有意的?
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(106,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(141,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(142,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(156,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(157,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(158,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-  Engine.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.h(19,37): warning C4305: “初始化”: 从“double”到“float”截断
-  (编译源文件“Engine/Core/Engine.cpp”)
-  
-E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.h(21,40): warning C4244: “初始化”: 从“double”转换到“unsigned int”，可能丢失数据
-  (编译源文件“Engine/Core/Engine.cpp”)
-  
-E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(107,71): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(151,53): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(150,86): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
-  Scene.cpp
-  Resource.cpp
-  正在生成代码...
 LINK : warning LNK4098: 默认库“MSVCRT”与其他库的使用冲突；请使用 /NODEFAULTLIB:library
   Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Debug\Ditto.exe

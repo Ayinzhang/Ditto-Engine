@@ -1,9 +1,10 @@
 #include "GameObject.h"
 #include "../../3rdParty/ImGui/imgui.h"
+#include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 
-GameObject::GameObject()
+GameObject::GameObject(const std::string name)
 {
-	this->name = "New GameObject";
+	this->name = name;
 	this->AddComponent<TransformComponent>();
 }
 
@@ -15,12 +16,15 @@ GameObject::~GameObject()
 void GameObject::OnInspectorGUI()
 {
     // GameObject 的通用属性
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine();
     char nameBuffer[256];
     strcpy_s(nameBuffer, name.c_str());
-    if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) name = nameBuffer;
+    ImGui::Text("Name"); ImGui::SameLine();
+    if (ImGui::InputText("##Name", nameBuffer, sizeof(nameBuffer))) name = nameBuffer;
 
-    ImGui::SameLine();
-    ImGui::Checkbox("Enabled", &enabled);
+    //ImGui::SameLine();
+    //ImGui::Checkbox("Enabled", &enabled);
 
     ImGui::Separator();
 
@@ -59,6 +63,11 @@ TransformComponent::TransformComponent()
     position[0] = position[1] = position[2] = 0;
     rotation[0] = rotation[1] = rotation[2] = 0;
     scale[0] = scale[1] = scale[2] = 1;
+
+	lastPosition[0] = lastPosition[1] = lastPosition[2] = 0;
+	lastRotation[0] = lastRotation[1] = lastRotation[2] = 0;
+	lastScale[0] = lastScale[1] = lastScale[2] = 1;
+	UpdateTransform();
 }
 
 void TransformComponent::OnInspectorGUI() 
@@ -70,12 +79,40 @@ void TransformComponent::OnInspectorGUI()
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
 
     ImGui::Indent(20.0f);
-    ImGui::DragFloat3("Position", position, 0.1f);
-    ImGui::DragFloat3("Rotation", rotation, 0.1f);
-    ImGui::DragFloat3("Scale", scale, 0.1f);
+    ImGui::Text("Position"); ImGui::SameLine();
+    ImGui::DragFloat3("##Position", position, 0.1f);
+    ImGui::Text("Rotation"); ImGui::SameLine();
+    ImGui::DragFloat3("##Rotation", rotation, 0.1f);
+    ImGui::Text("Scale   "); ImGui::SameLine();
+    ImGui::DragFloat3("##Scale", scale, 0.1f);
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
+
+	bool changed = false;
+    for (int i = 0; i < 3; i++)
+    {
+        changed |= (lastPosition[i] != position[i]) || (lastRotation[i] != rotation[i]) || (lastScale[i] != scale[i]);
+		lastPosition[i] = position[i]; lastRotation[i] = rotation[i]; lastScale[i] = scale[i];
+    }
+    if (changed) UpdateTransform();
+}
+
+void TransformComponent::UpdateTransform()
+{
+    glm::mat4 translation = glm::translate(glm::mat4(1.0f), glm::vec3(position[0], position[1], position[2]));
+
+    glm::mat4 rotationMat = glm::mat4(1.0f);
+    rotationMat = glm::rotate(rotationMat, glm::radians(rotation[1]), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
+    rotationMat = glm::rotate(rotationMat, glm::radians(rotation[0]), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
+    rotationMat = glm::rotate(rotationMat, glm::radians(rotation[2]), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
+
+    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(scale[0], scale[1], scale[2]));
+
+    model = translation * rotationMat * scaleMat;
+
+    glm::mat3 rotationMatrix3 = glm::mat3(rotationMat);
+    forward = rotationMatrix3 * glm::vec3(0.0f, 0.0f, -1.0f);
 }
 
 LightComponent::LightComponent()
@@ -87,27 +124,29 @@ void LightComponent::OnInspectorGUI()
 {
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
-    ImGui::TextUnformatted(GetName());
+    ImGui::TextUnformatted("Light");
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
     if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
-    ImGui::ColorEdit3("Color", color);
-    ImGui::DragFloat("Intensity", &intensity, 0.1f, 0.0f, 100.0f);
+    ImGui::Text("Color    "); ImGui::SameLine();
+    ImGui::ColorEdit3("##Color", color);
+    ImGui::Text("Intensity"); ImGui::SameLine();
+    ImGui::DragFloat("##Intensity", &intensity, 0.1f, 0.0f, 100.0f);
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
 }
 
 RendererComponent::RendererComponent() 
 {
-    index = 1 << 2; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; color[3] = 1.0f;
+    index = 1 << 2; type = Cube; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; color[3] = 1.0f;
 }
 
 void RendererComponent::OnInspectorGUI()
 {
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
-    ImGui::TextUnformatted(GetName());
+    ImGui::TextUnformatted("Renderer");
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
     if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
@@ -116,11 +155,13 @@ void RendererComponent::OnInspectorGUI()
     ImGui::Indent(20.0f);
     const char* typeNames[] = { "Cube", "Sphere", "Plane"};
     int currentType = static_cast<int>(type);
-    if (ImGui::Combo("Type", &currentType, typeNames, 3))
+    ImGui::Text("Type "); ImGui::SameLine();
+    if (ImGui::Combo("##Type", &currentType, typeNames, 3))
     {
         type = static_cast<Type>(currentType);
     }
-    ImGui::ColorEdit4("Color", color, ImGuiColorEditFlags_AlphaBar);
+    ImGui::Text("Color"); ImGui::SameLine();
+    ImGui::ColorEdit4("##Color", color, ImGuiColorEditFlags_AlphaBar);
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
@@ -135,7 +176,7 @@ void RigidbodyComponent::OnInspectorGUI()
 {
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
-    ImGui::TextUnformatted(GetName());
+    ImGui::TextUnformatted("Rigidbody");
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
     if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
@@ -145,15 +186,18 @@ void RigidbodyComponent::OnInspectorGUI()
 
     const char* typeNames[] = { "Static", "Dynamic" };
     int currentType = static_cast<int>(type);
-    if (ImGui::Combo("Type", &currentType, typeNames, 2))
+    ImGui::Text("Type"); ImGui::SameLine();
+    if (ImGui::Combo("##Type", &currentType, typeNames, 2))
     {
         type = static_cast<Type>(currentType);
     }
 
     if (type == Dynamic)
     {
-        ImGui::Checkbox("Use Gravity", &useGravity);
-        ImGui::DragFloat("Mass", &mass, 0.1f, 0.001f, 1000.0f);
+        ImGui::Text("Use Gravity"); ImGui::SameLine();
+        ImGui::Checkbox("##Use Gravity", &useGravity);
+        ImGui::Text("Mass"); ImGui::SameLine();
+        ImGui::DragFloat("##Mass", &mass, 0.1f, 0.001f, 1000.0f);
     }
 
     ImGui::Unindent(20.0f);

@@ -3,7 +3,11 @@
 Scene::Scene()
 {
 	name = "Default";
-	GameObject* gameObject = new GameObject();
+	GameObject* lightObj = new GameObject("DirLight");
+	lightObj->AddComponent<LightComponent>();
+	gameObjects.push_back(lightObj);
+	
+	GameObject* gameObject = new GameObject("Cube");
 	gameObject->AddComponent<RendererComponent>();
 	gameObject->AddComponent<RigidbodyComponent>();
 	gameObjects.push_back(gameObject);
@@ -23,3 +27,4 @@ void Scene::LoadScene(const std::string& filepath)
 {
 
 }
+

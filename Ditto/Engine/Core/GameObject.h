@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include "../../3rdParty/GLM/glm.hpp"
 
 struct GameObject;
 
@@ -8,25 +9,28 @@ struct Component
 {
 	bool enabled = true; int index;
 	GameObject* gameObject;
-	virtual const char* GetName() = 0;
+
 	virtual void OnInspectorGUI() = 0;
 };
 
 struct TransformComponent : Component 
 {
     float position[3], rotation[3], scale[3];
+	glm::vec3 forward; glm::mat4 model;
 
     TransformComponent();
+    TransformComponent(glm::vec3 pos, glm::vec3 forward);
 
-    const char* GetName() override { return "Transform"; }
     void OnInspectorGUI() override;
+private:
+	float lastPosition[3], lastRotation[3], lastScale[3];
+    void UpdateTransform();
 };
 
 struct LightComponent : Component 
 {
     float color[3]; float intensity;
     LightComponent();
-    const char* GetName() override { return "Dir Light"; }
     void OnInspectorGUI() override;
 };
 
@@ -35,7 +39,6 @@ struct RendererComponent : Component
     enum Type { Cube, Sphere, Plane }; Type type; float color[4];
     RendererComponent();
 
-    const char* GetName() override { return "Renderer"; }
     void OnInspectorGUI() override;
 };
 
@@ -45,7 +48,6 @@ struct RigidbodyComponent : Component
 
     RigidbodyComponent();
 
-    const char* GetName() override { return "Rigidbody"; }
     void OnInspectorGUI() override;
 };
 
@@ -59,7 +61,8 @@ struct GameObject
     std::string name;
     std::vector<Component*> components;
 
-    GameObject();
+    //GameObject();
+	GameObject(const std::string name = "New GameObject");
     ~GameObject();
     void OnInspectorGUI();
     template<DerivedFromComponent T, typename... Args>
