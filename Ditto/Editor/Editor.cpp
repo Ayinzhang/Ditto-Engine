@@ -82,16 +82,12 @@ void Editor::DrawToolbar()
         }
         ImGui::PopStyleColor(2);
 
-        // 计算右侧区域起始位置
         float windowWidth = ImGui::GetWindowWidth(), infoWidth = 300.0f;
         ImGui::SameLine(windowWidth - infoWidth); ImGui::Text("Scene:"); ImGui::SameLine();
 
-        // 可编辑的场景名称输入框
         ImGui::PushItemWidth(150.0f);
         if (ImGui::InputText("##SceneName", sceneNameBuffer, sizeof(sceneNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
-        {
             if (engine && engine->scene) engine->scene->name = sceneNameBuffer;
-        }
         ImGui::PopItemWidth();
 
         ImGui::EndMainMenuBar();
@@ -109,21 +105,14 @@ void Editor::DrawHierarchy()
     ImGui::SetNextWindowSize(ImVec2(hierarchyWidth, windowHeight));
     ImGui::Begin("Hierarchy");
 
-    // 在 Editor 类中添加成员变量存储选中的对象
-    // GameObject* selectedObject = nullptr;
-
-    for (auto obj : engine->scene->gameObjects) {
-        // 判断当前对象是否被选中
+    for (auto obj : engine->scene->gameObjects) 
+    {
         bool isSelected = (selectedObject == obj);
 
-        // 使用 Selectable，返回 true 表示被点击
-        if (ImGui::Selectable(obj->name.c_str(), isSelected)) 
-        {
-            selectedObject = obj;
-        }
+        if (ImGui::Selectable(obj->name.c_str(), isSelected)) selectedObject = obj;
 
-        // 可选：右键菜单
-        if (ImGui::BeginPopupContextItem()) {
+        if (ImGui::BeginPopupContextItem()) 
+        {
             if (ImGui::MenuItem("Rename")) { /* 重命名逻辑 */ }
             if (ImGui::MenuItem("Delete")) { /* 删除逻辑 */ }
             ImGui::EndPopup();

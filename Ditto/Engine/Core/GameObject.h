@@ -22,9 +22,9 @@ struct TransformComponent : Component
     TransformComponent(glm::vec3 pos, glm::vec3 forward);
 
     void OnInspectorGUI() override;
+    void UpdateTransform();
 private:
 	float lastPosition[3], lastRotation[3], lastScale[3];
-    void UpdateTransform();
 };
 
 struct LightComponent : Component 

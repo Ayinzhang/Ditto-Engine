@@ -1,10 +1,10 @@
-#version 450 core
+#version 460 core
 
 in vec3 pos;
 in vec3 normal;
+in vec4 vertexColor;
 out vec4 col;
 
-uniform vec4 objCol;
 uniform vec3 lightCol;
 uniform vec3 lightDir;
 uniform vec3 viewPos;
@@ -26,5 +26,5 @@ void main()
     vec3 specular = specularStrength * spec * lightCol;
     
     vec3 lighting = (ambient + diffuse + specular) * lightIntensity;
-    col = vec4(lighting * objCol.xyz, objCol.w);
+    col = vec4(lighting * vertexColor.xyz, vertexColor.w);
 }
