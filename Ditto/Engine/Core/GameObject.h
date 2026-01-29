@@ -19,7 +19,7 @@ struct TransformComponent : Component
 	glm::vec3 forward; glm::mat4 model;
 
     TransformComponent();
-    TransformComponent(glm::vec3 pos, glm::vec3 forward);
+    TransformComponent(TransformComponent* other);
 
     void OnInspectorGUI() override;
     void UpdateTransform();
@@ -31,23 +31,23 @@ struct LightComponent : Component
 {
     float color[3]; float intensity;
     LightComponent();
+	LightComponent(LightComponent* other);
     void OnInspectorGUI() override;
 };
 
 struct RendererComponent : Component 
 {
     enum Type { Cube, Sphere, Plane }; Type type; float color[4];
-    RendererComponent();
-
+    RendererComponent(Type _type = Cube);
+	RendererComponent(RendererComponent* other);
     void OnInspectorGUI() override;
 };
 
 struct RigidbodyComponent : Component 
 {
     enum Type { Static, Dynamic}; Type type; float mass; bool useGravity;
-
     RigidbodyComponent();
-
+	RigidbodyComponent(RigidbodyComponent* other);
     void OnInspectorGUI() override;
 };
 
@@ -61,8 +61,8 @@ struct GameObject
     std::string name;
     std::vector<Component*> components;
 
-    //GameObject();
 	GameObject(const std::string name = "New GameObject");
+	GameObject(GameObject* other);
     ~GameObject();
     void OnInspectorGUI();
     template<DerivedFromComponent T, typename... Args>

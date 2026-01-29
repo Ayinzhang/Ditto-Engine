@@ -105,16 +105,47 @@ void Editor::DrawHierarchy()
     ImGui::SetNextWindowSize(ImVec2(hierarchyWidth, windowHeight));
     ImGui::Begin("Hierarchy");
 
+    if (ImGui::BeginPopupContextWindow())
+    {
+        if (ImGui::MenuItem("Create Cube")) 
+        { 
+			GameObject* cube = new GameObject("Cube");
+			cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
+			engine->scene->gameObjects.push_back(cube);
+        }
+        if (ImGui::MenuItem("Create Sphere"))
+        {
+			GameObject* sphere = new GameObject("Sphere");
+			sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
+			engine->scene->gameObjects.push_back(sphere);
+        }
+        if (ImGui::MenuItem("Create Plane"))
+        {
+			GameObject* plane = new GameObject("Plane");
+			plane->AddComponent<RendererComponent>(RendererComponent::Type::Plane);
+			engine->scene->gameObjects.push_back(plane);
+        }
+        ImGui::EndPopup();
+    }
+
     for (auto obj : engine->scene->gameObjects) 
     {
         bool isSelected = (selectedObject == obj);
 
+        ImGui::PushID(obj);
         if (ImGui::Selectable(obj->name.c_str(), isSelected)) selectedObject = obj;
+        ImGui::PopID();
 
-        if (ImGui::BeginPopupContextItem()) 
+        if (ImGui::BeginPopupContextItem())
         {
-            if (ImGui::MenuItem("Rename")) { /* 重命名逻辑 */ }
-            if (ImGui::MenuItem("Delete")) { /* 删除逻辑 */ }
+            if (ImGui::MenuItem("Copy")) engine->scene->gameObjects.push_back(new GameObject(obj));
+            if (ImGui::MenuItem("Delete"))
+            {
+                if (selectedObject == obj) selectedObject = nullptr;
+                auto& gameObjects = engine->scene->gameObjects;
+                gameObjects.erase(std::remove(gameObjects.begin(), gameObjects.end(), obj), gameObjects.end());
+				delete obj;
+            }
             ImGui::EndPopup();
         }
     }

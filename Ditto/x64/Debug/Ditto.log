@@ -1,35 +1,3 @@
 ﻿  正在扫描源以查找模块依赖项...
-  Editor.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
-  (编译源文件“Editor/Editor.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
-      参见“Shader”的声明
-  
-E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8): warning C4099: “Resource”: 类型名称以前使用“class”现在使用的是“struct”
-  (编译源文件“Editor/Editor.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8):
-      参见“Resource”的声明
-  
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(50,48): warning C4390: “;”: 找到空的受控语句；这是否是有意的?
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(51,48): warning C4390: “;”: 找到空的受控语句；这是否是有意的?
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(102,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(129,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(130,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(144,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(145,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(146,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-  Scene.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8): warning C4099: “Resource”: 类型名称以前使用“class”现在使用的是“struct”
-  (编译源文件“Engine/Core/Scene.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8):
-      参见“Resource”的声明
-  
-E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
-  (编译源文件“Engine/Core/Scene.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
-      参见“Shader”的声明
-  
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(141,123): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(142,80): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
-  正在生成代码...
+  GameObject.cpp
   Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Debug\Ditto.exe
