@@ -11,6 +11,8 @@ struct Component
 	GameObject* gameObject;
 
 	virtual void OnInspectorGUI() = 0;
+    virtual void Serialize(std::ofstream& file) const = 0;
+    virtual void Deserialize(std::ifstream& file) = 0;
 };
 
 struct TransformComponent : Component 
@@ -23,6 +25,8 @@ struct TransformComponent : Component
 
     void OnInspectorGUI() override;
     void UpdateTransform();
+    void Serialize(std::ofstream& file) const override;
+    void Deserialize(std::ifstream& file) override;
 private:
 	float lastPosition[3], lastRotation[3], lastScale[3];
 };
@@ -33,6 +37,8 @@ struct LightComponent : Component
     LightComponent();
 	LightComponent(LightComponent* other);
     void OnInspectorGUI() override;
+    void Serialize(std::ofstream& file) const override;
+    void Deserialize(std::ifstream& file) override;
 };
 
 struct RendererComponent : Component 
@@ -41,6 +47,8 @@ struct RendererComponent : Component
     RendererComponent(Type _type = Cube);
 	RendererComponent(RendererComponent* other);
     void OnInspectorGUI() override;
+    void Serialize(std::ofstream& file) const override;
+    void Deserialize(std::ifstream& file) override;
 };
 
 struct RigidbodyComponent : Component 
@@ -49,6 +57,8 @@ struct RigidbodyComponent : Component
     RigidbodyComponent();
 	RigidbodyComponent(RigidbodyComponent* other);
     void OnInspectorGUI() override;
+    void Serialize(std::ofstream& file) const override;
+    void Deserialize(std::ifstream& file) override;
 };
 
 template<typename T>
@@ -65,6 +75,9 @@ struct GameObject
 	GameObject(GameObject* other);
     ~GameObject();
     void OnInspectorGUI();
+    void Serialize(std::ofstream& file) const;
+    void Deserialize(std::ifstream& file);
+
     template<DerivedFromComponent T, typename... Args>
     T* AddComponent(Args&&... args)
     {

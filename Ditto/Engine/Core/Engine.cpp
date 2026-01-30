@@ -88,13 +88,27 @@ void Engine::RenderScene()
 void Engine::ProcessInput()
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) isRunning = false;
-    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS) enableMouse = !enableMouse;
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera->position += camera->forward * keySpeed;
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera->position -= camera->forward * keySpeed;
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera->position -= camera->right * keySpeed;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera->position += camera->right * keySpeed;
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera->position += camera->up * keySpeed;
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) camera->position -= camera->up * keySpeed;
+
+    static bool altPressedLastFrame = false;
+    bool altPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
+    if (altPressedNow && !altPressedLastFrame) enableMouse = !enableMouse;
+    altPressedLastFrame = altPressedNow;
+
+    static bool deletePressedLastFrame = false;
+    bool deletePressedNow = glfwGetKey(window, GLFW_KEY_DELETE) == GLFW_PRESS;
+    if (deletePressedNow && !deletePressedLastFrame) editor->DeleteSelectedObject();
+    deletePressedLastFrame = deletePressedNow;
+
+    static bool ctrlCPressedLastFrame = false;
+    bool ctrlCPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
+    if (ctrlCPressedNow && !ctrlCPressedLastFrame) editor->CopySelectedObject();
+    ctrlCPressedLastFrame = ctrlCPressedNow;
 }
 
 void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)

@@ -42,8 +42,9 @@ struct Scene
     Scene();
     ~Scene();
 
-    void SaveScene(const std::string& filepath);
-    void LoadScene(const std::string& filepath);
+    void ClearScene();
+    bool SaveScene(const std::string& filepath);
+    bool LoadScene(const std::string& filepath);
 
     void CollectRenderData();
     void UpdateSSBOs();

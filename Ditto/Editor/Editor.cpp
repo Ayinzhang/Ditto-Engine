@@ -13,7 +13,7 @@ Editor::Editor(void* window)
     ImGui_ImplGlfw_InitForOpenGL((GLFWwindow*)window, true);
     ImGui_ImplOpenGL3_Init("#version 450");
 
-    showHierarchy = true; showScene = true; showInspector = true;
+    showHierarchy = true; showScene = true; showInspector = true; showSavePopup = false; showLoadPopup = false;
 }
 
 Editor::~Editor()
@@ -36,6 +36,7 @@ void Editor::Draw()
     if (showScene) DrawScene();
     if (showInspector) DrawInspector();
 
+    DrawPopups();
     // End Frame
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -47,8 +48,14 @@ void Editor::DrawToolbar()
     {
         if (ImGui::BeginMenu("File"))
         {
-            if (ImGui::MenuItem("Save Scene")) ;
-            if (ImGui::MenuItem("Load Scene")) ;
+            if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+            {
+                showSavePopup = true;
+            }
+            if (ImGui::MenuItem("Load Scene", "Ctrl+L"))
+            {
+                showLoadPopup = true;
+            }
             ImGui::EndMenu();
         }
 
@@ -111,19 +118,19 @@ void Editor::DrawHierarchy()
         { 
 			GameObject* cube = new GameObject("Cube");
 			cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
-			engine->scene->gameObjects.push_back(cube);
+            engine->scene->gameObjects.push_back(cube); selectedObject = cube;
         }
         if (ImGui::MenuItem("Create Sphere"))
         {
 			GameObject* sphere = new GameObject("Sphere");
 			sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
-			engine->scene->gameObjects.push_back(sphere);
+			engine->scene->gameObjects.push_back(sphere); selectedObject = sphere;
         }
         if (ImGui::MenuItem("Create Plane"))
         {
 			GameObject* plane = new GameObject("Plane");
 			plane->AddComponent<RendererComponent>(RendererComponent::Type::Plane);
-			engine->scene->gameObjects.push_back(plane);
+			engine->scene->gameObjects.push_back(plane); selectedObject = plane;
         }
         ImGui::EndPopup();
     }
@@ -138,15 +145,8 @@ void Editor::DrawHierarchy()
 
         if (ImGui::BeginPopupContextItem())
         {
-            if (ImGui::MenuItem("Copy")) engine->scene->gameObjects.push_back(new GameObject(obj));
-            if (ImGui::MenuItem("Delete"))
-            {
-                if (selectedObject == obj) selectedObject = nullptr;
-                auto& gameObjects = engine->scene->gameObjects;
-                gameObjects.erase(std::remove(gameObjects.begin(), gameObjects.end(), obj), gameObjects.end());
-				delete obj;
-            }
-            ImGui::EndPopup();
+            if (ImGui::MenuItem("Copy", "Ctrl+C")) CopySelectedObject();
+			if (ImGui::MenuItem("Delete", "Delete")) DeleteSelectedObject();
         }
     }
 
@@ -182,4 +182,85 @@ void Editor::DrawInspector()
     ImGui::Begin("Inspector");
     if (!selectedObject) { ImGui::End(); return; }
 	else selectedObject->OnInspectorGUI(); ImGui::End();
+}
+
+void Editor::DrawPopups()
+{
+    if (showSavePopup)
+    {
+        ImGui::OpenPopup("Save Scene");
+        showSavePopup = false;
+    }
+
+    if (ImGui::BeginPopupModal("Save Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        static char savePathBuffer[256] = "Assets/Scenes/scene.bin";
+        ImGui::InputText("Path", savePathBuffer, sizeof(savePathBuffer));
+
+        if (ImGui::Button("Save", ImVec2(120, 0)))
+        {
+            if (engine && engine->scene)
+            {
+                if (engine->scene->SaveScene(savePathBuffer))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (showLoadPopup)
+    {
+        ImGui::OpenPopup("Load Scene");
+        showLoadPopup = false;
+    }
+
+    if (ImGui::BeginPopupModal("Load Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        static char loadPathBuffer[256] = "Assets/Scenes/scene.bin";
+        ImGui::InputText("Path", loadPathBuffer, sizeof(loadPathBuffer));
+
+        if (ImGui::Button("Load", ImVec2(120, 0)))
+        {
+            if (engine && engine->scene)
+            {
+                if (engine->scene->LoadScene(loadPathBuffer))
+                {
+                    strcpy_s(sceneNameBuffer, engine->scene->name.c_str());
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void Editor::CopySelectedObject()
+{
+    if (selectedObject && engine && engine->scene)
+    {
+        GameObject* newObj = new GameObject(selectedObject);
+        engine->scene->gameObjects.push_back(newObj); selectedObject = newObj;
+    }
+}
+
+void Editor::DeleteSelectedObject()
+{
+    if (selectedObject && engine && engine->scene)
+    {
+        auto& gameObjects = engine->scene->gameObjects;
+        gameObjects.erase(std::remove(gameObjects.begin(), gameObjects.end(), selectedObject), gameObjects.end());
+        delete selectedObject; selectedObject = engine->scene->gameObjects.empty() ? nullptr : engine->scene->gameObjects.back();
+    }
 }

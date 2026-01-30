@@ -1,6 +1,25 @@
 #include "GameObject.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
+#include <algorithm>
+#include <fstream>
+
+static void WriteString(std::ofstream& file, const std::string& str)
+{
+    uint32_t length = static_cast<uint32_t>(str.length());
+    file.write(reinterpret_cast<const char*>(&length), sizeof(length));
+    file.write(str.c_str(), length);
+}
+
+static std::string ReadString(std::ifstream& file)
+{
+    uint32_t length = 0;
+    file.read(reinterpret_cast<char*>(&length), sizeof(length));
+
+    std::string str(length, '\0');
+    file.read(&str[0], length);
+    return str;
+}
 
 GameObject::GameObject(const std::string name)
 {
@@ -49,11 +68,7 @@ void GameObject::OnInspectorGUI()
         ImGui::Separator();
     }
 
-    // 添加组件按钮
-    if (ImGui::Button("Add Component"))
-    {
-        ImGui::OpenPopup("AddComponentPopup");
-    }
+    if (ImGui::Button("Add Component")) ImGui::OpenPopup("AddComponentPopup");
 
     if (ImGui::BeginPopup("AddComponentPopup"))
     {
@@ -61,6 +76,70 @@ void GameObject::OnInspectorGUI()
         if (!(compMask >> 2 & 1) && ImGui::MenuItem("Renderer")) AddComponent<RendererComponent>();
         if (!(compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody")) AddComponent<RigidbodyComponent>();
         ImGui::EndPopup();
+    }
+}
+
+void GameObject::Serialize(std::ofstream& file) const
+{
+    file.write(reinterpret_cast<const char*>(&enabled), sizeof(enabled));
+
+    WriteString(file, name);
+
+    file.write(reinterpret_cast<const char*>(&compMask), sizeof(compMask));
+
+    uint32_t componentCount = static_cast<uint32_t>(components.size());
+    file.write(reinterpret_cast<const char*>(&componentCount), sizeof(componentCount));
+
+    for (Component* comp : components)
+    {
+        file.write(reinterpret_cast<const char*>(&comp->index), sizeof(comp->index));
+
+        file.write(reinterpret_cast<const char*>(&comp->enabled), sizeof(comp->enabled));
+
+        comp->Serialize(file);
+    }
+}
+
+void GameObject::Deserialize(std::ifstream& file)
+{
+    file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
+
+    name = ReadString(file);
+
+    file.read(reinterpret_cast<char*>(&compMask), sizeof(compMask));
+
+    uint32_t componentCount = 0;
+    file.read(reinterpret_cast<char*>(&componentCount), sizeof(componentCount));
+
+    for (Component* comp : components) delete comp;
+    components.clear();
+
+    for (uint32_t i = 0; i < componentCount; i++)
+    {
+        int index = 0;
+        file.read(reinterpret_cast<char*>(&index), sizeof(index));
+
+        bool compEnabled = true;
+        file.read(reinterpret_cast<char*>(&compEnabled), sizeof(compEnabled));
+
+        Component* newComp = nullptr;
+
+        switch (index)
+        {
+        case 1 << 0: newComp = new TransformComponent(); break;
+        case 1 << 1: newComp = new LightComponent(); break;
+        case 1 << 2: newComp = new RendererComponent(); break;
+        case 1 << 3: newComp = new RigidbodyComponent(); break;
+        default: continue;
+        }
+
+        if (newComp)
+        {
+            newComp->index = index; newComp->enabled = compEnabled;
+            newComp->gameObject = this; newComp->Deserialize(file);
+
+            components.push_back(newComp);
+        }
     }
 }
 
@@ -137,6 +216,24 @@ void TransformComponent::UpdateTransform()
     forward = rotationMatrix3 * glm::vec3(0.0f, 0.0f, -1.0f);
 }
 
+void TransformComponent::Serialize(std::ofstream& file) const
+{
+    file.write(reinterpret_cast<const char*>(position), sizeof(float) * 3);
+    file.write(reinterpret_cast<const char*>(rotation), sizeof(float) * 3);
+    file.write(reinterpret_cast<const char*>(scale), sizeof(float) * 3);
+}
+
+void TransformComponent::Deserialize(std::ifstream& file)
+{
+    file.read(reinterpret_cast<char*>(position), sizeof(float) * 3);
+    file.read(reinterpret_cast<char*>(rotation), sizeof(float) * 3);
+    file.read(reinterpret_cast<char*>(scale), sizeof(float) * 3);
+
+    for (int i = 0; i < 3; i++) { lastPosition[i] = position[i]; lastRotation[i] = rotation[i]; lastScale[i] = scale[i]; }
+
+    UpdateTransform();
+}
+
 LightComponent::LightComponent()
 {
     index = 1 << 1; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; intensity = 1.0f;
@@ -162,6 +259,18 @@ void LightComponent::OnInspectorGUI()
     ImGui::DragFloat("##Intensity", &intensity, 0.1f, 0.0f, 100.0f);
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
+}
+
+void LightComponent::Serialize(std::ofstream& file) const
+{
+    file.write(reinterpret_cast<const char*>(color), sizeof(float) * 3);
+    file.write(reinterpret_cast<const char*>(&intensity), sizeof(intensity));
+}
+
+void LightComponent::Deserialize(std::ifstream& file)
+{
+    file.read(reinterpret_cast<char*>(color), sizeof(float) * 3);
+    file.read(reinterpret_cast<char*>(&intensity), sizeof(intensity));
 }
 
 RendererComponent::RendererComponent(Type _type) 
@@ -197,6 +306,21 @@ void RendererComponent::OnInspectorGUI()
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
+}
+
+void RendererComponent::Serialize(std::ofstream& file) const
+{
+    int32_t typeInt = static_cast<int32_t>(type);
+    file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
+    file.write(reinterpret_cast<const char*>(color), sizeof(float) * 4);
+}
+
+void RendererComponent::Deserialize(std::ifstream& file)
+{
+    int32_t typeInt = 0;
+    file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
+    type = static_cast<Type>(typeInt);
+    file.read(reinterpret_cast<char*>(color), sizeof(float) * 4);
 }
 
 RigidbodyComponent::RigidbodyComponent()
@@ -240,4 +364,21 @@ void RigidbodyComponent::OnInspectorGUI()
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
+}
+
+void RigidbodyComponent::Serialize(std::ofstream& file) const
+{
+    int32_t typeInt = static_cast<int32_t>(type);
+    file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
+    file.write(reinterpret_cast<const char*>(&mass), sizeof(mass));
+    file.write(reinterpret_cast<const char*>(&useGravity), sizeof(useGravity));
+}
+
+void RigidbodyComponent::Deserialize(std::ifstream& file)
+{
+    int32_t typeInt = 0;
+    file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
+    type = static_cast<Type>(typeInt);
+    file.read(reinterpret_cast<char*>(&mass), sizeof(mass));
+    file.read(reinterpret_cast<char*>(&useGravity), sizeof(useGravity));
 }

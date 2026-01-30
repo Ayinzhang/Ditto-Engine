@@ -1,3 +1,19 @@
 ﻿  正在扫描源以查找模块依赖项...
-  GameObject.cpp
+  Editor.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Editor/Editor.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8): warning C4099: “Resource”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Editor/Editor.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(109,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(161,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(162,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(176,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(177,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(178,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
   Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Debug\Ditto.exe

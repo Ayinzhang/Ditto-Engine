@@ -2,6 +2,7 @@
 #include "../../Engine/Resources/Resource.h"
 #include "../../Engine/Graphics/Shader.h"
 #include <iostream>
+#include <fstream>
 
 Scene::Scene()
 {
@@ -253,12 +254,129 @@ float Scene::GetLightIntensity() const
     return 1.0f;
 }
 
-void Scene::SaveScene(const std::string& filepath)
+struct SceneHeader
 {
-    std::cout << "Scene saved to: " << filepath << std::endl;
+    char magic[4]; uint32_t version, gameObjectCount; uint64_t fileSize;
+};
+
+const uint32_t SCENE_VERSION = 1;
+const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
+
+void Scene::ClearScene()
+{
+    for (GameObject* obj : gameObjects) delete obj;
+    gameObjects.clear();
+    mainLight = nullptr;
 }
 
-void Scene::LoadScene(const std::string& filepath)
+bool Scene::SaveScene(const std::string& filepath)
 {
-    std::cout << "Scene loaded from: " << filepath << std::endl;
+    std::ofstream file(filepath, std::ios::binary | std::ios::trunc);
+    if (!file.is_open())
+    {
+        std::cerr << "Failed to open file for writing: " << filepath << std::endl;
+        return false;
+    }
+
+    try
+    {
+        SceneHeader header;
+        memset(&header, 0, sizeof(header));
+
+        memcpy(header.magic, SCENE_MAGIC, 4);
+        header.version = SCENE_VERSION;
+        header.gameObjectCount = static_cast<uint32_t>(gameObjects.size());
+
+        header.fileSize = 0;
+        file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+        uint32_t nameLength = static_cast<uint32_t>(name.length());
+        file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
+        file.write(name.c_str(), nameLength);
+
+        for (GameObject* obj : gameObjects) obj->Serialize(file);
+
+        std::streampos endPos = file.tellp();
+        header.fileSize = static_cast<uint64_t>(endPos);
+
+        file.seekp(0);
+        file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+        file.close();
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Error saving scene: " << e.what() << std::endl;
+        file.close();
+        return false;
+    }
+}
+
+bool Scene::LoadScene(const std::string& filepath)
+{
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.is_open())
+    {
+        std::cerr << "Failed to open file for reading: " << filepath << std::endl;
+        return false;
+    }
+
+    try
+    {
+        SceneHeader header;
+        file.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+        if (memcmp(header.magic, SCENE_MAGIC, 4) != 0)
+        {
+            std::cerr << "Invalid scene file: wrong magic number" << std::endl;
+            return false;
+        }
+
+        if (header.version != SCENE_VERSION)
+        {
+            std::cerr << "Unsupported scene version: " << header.version
+                << " (expected: " << SCENE_VERSION << ")" << std::endl;
+            return false;
+        }
+
+        uint32_t nameLength = 0;
+        file.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+
+        std::vector<char> nameBuffer(nameLength + 1, '\0');
+        file.read(nameBuffer.data(), nameLength);
+        name = std::string(nameBuffer.data());
+
+        ClearScene();
+        gameObjects.reserve(header.gameObjectCount);
+
+        for (uint32_t i = 0; i < header.gameObjectCount; i++)
+        {
+            GameObject* newObj = new GameObject();
+            newObj->Deserialize(file);
+            gameObjects.push_back(newObj);
+        }
+
+        mainLight = nullptr;
+        for (GameObject* obj : gameObjects)
+        {
+            if (obj->GetComponent<LightComponent>())
+            {
+                mainLight = obj;
+                break;
+            }
+        }
+
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Error loading scene: " << e.what() << std::endl;
+
+        ClearScene();
+        name = "Load Failed";
+
+        file.close();
+        return false;
+    }
 }
