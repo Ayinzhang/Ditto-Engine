@@ -5,9 +5,9 @@ E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Sh
       E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
       参见“Shader”的声明
   
-E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8): warning C4099: “Resource”: 类型名称以前使用“class”现在使用的是“struct”
+E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(6,8): warning C4099: “Resource”: 类型名称以前使用“class”现在使用的是“struct”
   (编译源文件“Editor/Editor.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8):
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(6,8):
       参见“Resource”的声明
   
 E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(114,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
@@ -16,4 +16,34 @@ E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(167,22): warning C4244: “初始
 E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(181,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
 E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(182,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
 E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(183,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+  Engine.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Core/Engine.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(6,8): warning C4099: “Resource”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Core/Engine.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(6,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(118,53): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(117,86): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+  Scene.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(6,8): warning C4099: “Resource”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Core/Scene.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(6,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Core/Scene.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(142,123): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(143,80): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
+  Resource.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.cpp(88,37): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
+  正在生成代码...
+LINK : warning LNK4098: 默认库“MSVCRT”与其他库的使用冲突；请使用 /NODEFAULTLIB:library
   Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Debug\Ditto.exe

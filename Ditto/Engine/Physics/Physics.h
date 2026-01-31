@@ -24,9 +24,19 @@ struct Physics
 
 struct AABB
 {
+	glm::vec3 min, max;
 };
 
 struct Collider
 {
-
+	TransformComponent* transform;
+	RendererComponent* renderer;
+	RigidbodyComponent* rigidbody;
+	AABB bound, localBound;
+	struct MeshData 
+	{
+		std::vector<glm::vec3> vertices;
+		std::vector<glm::vec3> normals;
+		std::vector<uint32_t> indices;
+	} meshData;
 };

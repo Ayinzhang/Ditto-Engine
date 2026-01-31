@@ -13,6 +13,9 @@ Resource::Resource()
     cubeModel = new ModelData("Assets/Models/Cube.obj");
     sphereModel = new ModelData("Assets/Models/Sphere.obj");
     planeModel = new ModelData("Assets/Models/Plane.obj");
+	cubeMesh = new MeshData("Assets/Models/Cube.obj");
+    sphereMesh = new MeshData("Assets/Models/Sphere.obj");
+	planeMesh = new MeshData("Assets/Models/Plane.obj");
 }
 
 ModelData::ModelData(const std::string& path)
@@ -20,7 +23,7 @@ ModelData::ModelData(const std::string& path)
     std::ifstream file(path);
 
     std::vector<glm::vec3> positions, normals;
-    std::vector<glm::vec2> texCoords;
+    //std::vector<glm::vec2> texCoords;
 
     std::string line;
     int lineNum = 0;
@@ -103,4 +106,82 @@ ModelData::FaceIndices ModelData::ParseFaceIndices(const std::string& token)
     if (parts.size() > 2 && !parts[2].empty()) indices.normIdx = std::stoi(parts[2]) - 1;
 
     return indices;
+}
+
+MeshData::MeshData(const std::string& filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cerr << "Failed to open OBJ file: " << filePath << std::endl;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line))
+    {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+
+        std::istringstream lineStream(line);
+        std::string prefix; lineStream >> prefix;
+
+        if (prefix == "v")
+        {
+            glm::vec3 pos;
+            if (lineStream >> pos.x >> pos.y >> pos.z) vertices.push_back(pos);
+        }
+        else if (prefix == "f")
+        {
+            std::vector<std::string> faceTokens; std::string token;
+            while (lineStream >> token) faceTokens.push_back(token);
+        }
+    }
+    file.close();
+
+    CalculateAABB();
+}
+
+void MeshData::CalculateAABB()
+{
+    aabbMin = glm::vec3(std::numeric_limits<float>::max());
+    aabbMax = glm::vec3(std::numeric_limits<float>::lowest());
+
+    for (const auto& vertex : vertices)
+    {
+        aabbMin.x = std::min(aabbMin.x, vertex.x); aabbMin.y = std::min(aabbMin.y, vertex.y); aabbMin.z = std::min(aabbMin.z, vertex.z);
+        aabbMax.x = std::max(aabbMax.x, vertex.x); aabbMax.y = std::max(aabbMax.y, vertex.y); aabbMax.z = std::max(aabbMax.z, vertex.z);
+    }
+}
+
+bool MeshData::CheckAABBCollision(const MeshData& other) const
+{
+    return (aabbMax.x >= other.aabbMin.x && aabbMin.x <= other.aabbMax.x) &&
+        (aabbMax.y >= other.aabbMin.y && aabbMin.y <= other.aabbMax.y) &&
+        (aabbMax.z >= other.aabbMin.z && aabbMin.z <= other.aabbMax.z);
+}
+
+glm::vec3 MeshData::GetAABBCenter() const
+{
+    return (aabbMin + aabbMax) * 0.5f;
+}
+
+glm::vec3 MeshData::GetAABBSize() const
+{
+    return aabbMax - aabbMin;
+}
+
+glm::vec3 MeshData::GetSupportPoint(const glm::vec3& direction) const
+{
+    float maxDot = -std::numeric_limits<float>::max();
+    glm::vec3 supportPoint = vertices[0];
+    glm::vec3 normalizedDir = glm::normalize(direction);
+
+    for (const auto& vertex : vertices)
+    {
+        float dot = glm::dot(vertex, normalizedDir);
+        if (dot > maxDot) { maxDot = dot; supportPoint = vertex; }
+    }
+
+    return supportPoint;
 }
