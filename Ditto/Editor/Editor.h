@@ -18,6 +18,6 @@ struct Editor
     void DrawInspector();
     void DrawPopups();
 
-	void CopySelectedObject();
-	void DeleteSelectedObject();
+    void CopySelectedObject();
+    void DeleteSelectedObject();
 };

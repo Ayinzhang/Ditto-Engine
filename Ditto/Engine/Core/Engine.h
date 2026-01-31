@@ -4,12 +4,15 @@
 #include "../../Editor/Editor.h"
 #include "../../Engine/Graphics/Shader.h"
 #include "../../Engine/Graphics/Camera.h"
+#include "../../Engine/Physics/Physics.h"
 #include "../../Engine/Resources/Resource.h"
 #include "../../3rdParty/GLFW/glfw3.h"
 #include "../../3rdParty/ImGui/imgui.h"
 
 struct Engine
 {
+    enum State { Edit, Play, Stop, Exit } state = Edit;
+
     GLFWwindow* window;
     int window_width, window_height;
     Resource* resource;
@@ -17,11 +20,10 @@ struct Engine
     Editor* editor;
     Camera* camera;
     bool enableMouse;
-    float keySpeed = 0.01f, mouseSpeed = 1.0f;
+    float keySpeed, mouseSpeed;
     double lastX, lastY;
     Shader* shader;
-
-    bool isRunning;
+	Physics* physics;
 
     Engine();
     ~Engine();

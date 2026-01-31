@@ -12,10 +12,9 @@ using namespace glm;
 
 Engine::Engine()
 {
-    isRunning = true;
     enableMouse = false;
-    window_width = 1200;
-    window_height = 900;
+    window_width = 1200; window_height = 900;
+    keySpeed = 0.01f, mouseSpeed = 1.0f;
 
     if (!glfwInit()) throw runtime_error("GLFW init failed");
 
@@ -54,7 +53,7 @@ Engine::~Engine()
 
 void Engine::Run()
 {
-    while (isRunning && !glfwWindowShouldClose(window))
+    while (state != Exit && !glfwWindowShouldClose(window))
     {
         ProcessInput();
         glfwPollEvents();
@@ -87,7 +86,7 @@ void Engine::RenderScene()
 
 void Engine::ProcessInput()
 {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) isRunning = false;
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) state = Exit;
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera->position += camera->forward * keySpeed;
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera->position -= camera->forward * keySpeed;
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera->position -= camera->right * keySpeed;

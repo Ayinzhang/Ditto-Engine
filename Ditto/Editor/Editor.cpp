@@ -68,26 +68,31 @@ void Editor::DrawToolbar()
         }
 
         ImGui::SameLine(ImGui::GetWindowWidth() * 0.4f);
-
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.8f, 0.3f, 1.0f));
-        if (ImGui::Button("Play")) {
-            // 播放逻辑
+        if (engine->state == Engine::State::Edit) 
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.8f, 0.3f, 1.0f));
+            if (ImGui::Button("Play"))
+            {
+                engine->state = Engine::State::Play;
+            }
         }
+        else if (engine->state == Engine::State::Play) 
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
+            if (ImGui::Button("Stop")) 
+            {
+                engine->state = Engine::State::Edit;
+            }
+		}
         ImGui::PopStyleColor(2);
 
         ImGui::SameLine();
-        if (ImGui::Button("Pause")) {
-            // 暂停逻辑
+        if (ImGui::Button("Pause")) 
+        {
+            engine->state = Engine::State::Stop;
         }
-
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
-        if (ImGui::Button("Stop")) {
-            // 停止逻辑
-        }
-        ImGui::PopStyleColor(2);
 
         float windowWidth = ImGui::GetWindowWidth(), infoWidth = 300.0f;
         ImGui::SameLine(windowWidth - infoWidth); ImGui::Text("Scene:"); ImGui::SameLine();
@@ -114,28 +119,28 @@ void Editor::DrawHierarchy()
 
     if (ImGui::BeginPopupContextWindow())
     {
-        if (ImGui::MenuItem("Create Cube")) 
-        { 
-			GameObject* cube = new GameObject("Cube");
-			cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
+        if (ImGui::MenuItem("Create Cube"))
+        {
+            GameObject* cube = new GameObject("Cube");
+            cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
             engine->scene->gameObjects.push_back(cube); selectedObject = cube;
         }
         if (ImGui::MenuItem("Create Sphere"))
         {
-			GameObject* sphere = new GameObject("Sphere");
-			sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
-			engine->scene->gameObjects.push_back(sphere); selectedObject = sphere;
+            GameObject* sphere = new GameObject("Sphere");
+            sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
+            engine->scene->gameObjects.push_back(sphere); selectedObject = sphere;
         }
         if (ImGui::MenuItem("Create Plane"))
         {
-			GameObject* plane = new GameObject("Plane");
-			plane->AddComponent<RendererComponent>(RendererComponent::Type::Plane);
-			engine->scene->gameObjects.push_back(plane); selectedObject = plane;
+            GameObject* plane = new GameObject("Plane");
+            plane->AddComponent<RendererComponent>(RendererComponent::Type::Plane);
+            engine->scene->gameObjects.push_back(plane); selectedObject = plane;
         }
         ImGui::EndPopup();
     }
 
-    for (auto obj : engine->scene->gameObjects) 
+    for (auto obj : engine->scene->gameObjects)
     {
         bool isSelected = (selectedObject == obj);
 
@@ -146,7 +151,7 @@ void Editor::DrawHierarchy()
         if (ImGui::BeginPopupContextItem())
         {
             if (ImGui::MenuItem("Copy", "Ctrl+C")) CopySelectedObject();
-			if (ImGui::MenuItem("Delete", "Delete")) DeleteSelectedObject();
+            if (ImGui::MenuItem("Delete", "Delete")) DeleteSelectedObject();
         }
     }
 
@@ -180,8 +185,14 @@ void Editor::DrawInspector()
     ImGui::SetNextWindowPos(ImVec2(hierarchyWidth + sceneWidth, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(inspectorWidth, windowHeight));
     ImGui::Begin("Inspector");
+
     if (!selectedObject) { ImGui::End(); return; }
-	else selectedObject->OnInspectorGUI(); ImGui::End();
+    else
+    {
+        if (engine->state == Engine::State::Play) ImGui::BeginDisabled();
+        selectedObject->OnInspectorGUI();
+        if (engine->state == Engine::State::Play) ImGui::EndDisabled(); ImGui::End();
+    }
 }
 
 void Editor::DrawPopups()
@@ -194,8 +205,9 @@ void Editor::DrawPopups()
 
     if (ImGui::BeginPopupModal("Save Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
+		ImGui::Text("Path"); ImGui::SameLine();
         static char savePathBuffer[256] = "Assets/Scenes/scene.bin";
-        ImGui::InputText("Path", savePathBuffer, sizeof(savePathBuffer));
+        ImGui::InputText("##Path", savePathBuffer, sizeof(savePathBuffer));
 
         if (ImGui::Button("Save", ImVec2(120, 0)))
         {
@@ -223,8 +235,9 @@ void Editor::DrawPopups()
 
     if (ImGui::BeginPopupModal("Load Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
+        ImGui::Text("Path"); ImGui::SameLine();
         static char loadPathBuffer[256] = "Assets/Scenes/scene.bin";
-        ImGui::InputText("Path", loadPathBuffer, sizeof(loadPathBuffer));
+        ImGui::InputText("##Path", loadPathBuffer, sizeof(loadPathBuffer));
 
         if (ImGui::Button("Load", ImVec2(120, 0)))
         {

@@ -325,12 +325,14 @@ void RendererComponent::Deserialize(std::ifstream& file)
 
 RigidbodyComponent::RigidbodyComponent()
 {
-    index = 1 << 3; type = Dynamic; mass = 1.0f; useGravity = true;
+    index = 1 << 3; type = Dynamic; mass = 1.0f; useGravity = true; 
+	velocity = angularVelocity = glm::vec3(0); damp = angularDamp = 0.05f;
 }
 
 RigidbodyComponent::RigidbodyComponent(RigidbodyComponent* other)
 {
     index = 1 << 3; type = other->type; mass = other->mass; useGravity = other->useGravity;
+    velocity = angularVelocity = glm::vec3(0); damp = angularDamp = 0.05f;
 }
 
 void RigidbodyComponent::OnInspectorGUI()
@@ -357,8 +359,22 @@ void RigidbodyComponent::OnInspectorGUI()
     {
         ImGui::Text("Use Gravity"); ImGui::SameLine();
         ImGui::Checkbox("##Use Gravity", &useGravity);
-        ImGui::Text("Mass"); ImGui::SameLine();
+        ImGui::Text("Mass "); ImGui::SameLine();
         ImGui::DragFloat("##Mass", &mass, 0.1f, 0.001f, 1000.0f);
+        ImGui::Text("Damp "); ImGui::SameLine();
+        ImGui::DragFloat("##Damp", &damp, 0.1f, 0.0f, 1.0f);
+        ImGui::Text("ADamp"); ImGui::SameLine();
+        ImGui::DragFloat("##AngularDamp", &angularDamp, 0.1f, 0.0f, 1.0f);
+
+        ImGui::Text("Velocity "); ImGui::SameLine();
+        ImGui::Text("X: %.3f", velocity.x); ImGui::SameLine();
+        ImGui::Text("Y: %.3f", velocity.y); ImGui::SameLine();
+        ImGui::Text("Z: %.3f", velocity.z);
+
+        ImGui::Text("AVelocity"); ImGui::SameLine();
+        ImGui::Text("X: %.3f", angularVelocity.x); ImGui::SameLine();
+        ImGui::Text("Y: %.3f", angularVelocity.y); ImGui::SameLine();
+        ImGui::Text("Z: %.3f", angularVelocity.z);
     }
 
     ImGui::Unindent(20.0f);
@@ -372,6 +388,8 @@ void RigidbodyComponent::Serialize(std::ofstream& file) const
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
     file.write(reinterpret_cast<const char*>(&mass), sizeof(mass));
     file.write(reinterpret_cast<const char*>(&useGravity), sizeof(useGravity));
+    file.write(reinterpret_cast<const char*>(&damp), sizeof(damp));
+    file.write(reinterpret_cast<const char*>(&angularDamp), sizeof(angularDamp));
 }
 
 void RigidbodyComponent::Deserialize(std::ifstream& file)
@@ -381,4 +399,6 @@ void RigidbodyComponent::Deserialize(std::ifstream& file)
     type = static_cast<Type>(typeInt);
     file.read(reinterpret_cast<char*>(&mass), sizeof(mass));
     file.read(reinterpret_cast<char*>(&useGravity), sizeof(useGravity));
+    file.read(reinterpret_cast<char*>(&damp), sizeof(damp));
+    file.read(reinterpret_cast<char*>(&angularDamp), sizeof(angularDamp));
 }

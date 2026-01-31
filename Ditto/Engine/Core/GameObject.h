@@ -4,15 +4,56 @@
 #include "../../3rdParty/GLM/glm.hpp"
 
 struct GameObject;
-
 struct Component
 {
-	bool enabled = true; int index;
-	GameObject* gameObject;
+    bool enabled = true; int index;
+    GameObject* gameObject;
 
-	virtual void OnInspectorGUI() = 0;
+    virtual void OnInspectorGUI() = 0;
     virtual void Serialize(std::ofstream& file) const = 0;
     virtual void Deserialize(std::ifstream& file) = 0;
+};
+template<typename T>
+concept DerivedFromComponent = std::derived_from<T, Component>;
+
+struct GameObject
+{
+    bool enabled = true;
+    int compMask = 0;
+    std::string name;
+    std::vector<Component*> components;
+
+    GameObject(const std::string name = "New GameObject");
+    GameObject(GameObject* other);
+    ~GameObject();
+    void OnInspectorGUI();
+    void Serialize(std::ofstream& file) const;
+    void Deserialize(std::ifstream& file);
+
+    template<DerivedFromComponent T, typename... Args>
+    T* AddComponent(Args&&... args)
+    {
+        T* newComponent = new T(std::forward<Args>(args)...);
+        components.push_back(newComponent); compMask += newComponent->index;
+        return newComponent;
+    }
+    template<DerivedFromComponent T>
+    T* GetComponent()
+    {
+        for (Component* comp : components)
+        {
+            T* result = dynamic_cast<T*>(comp);
+            if (result != nullptr) return result;
+        }
+        return nullptr;
+    }
+    void RemoveComponent(Component* component)
+    {
+        for (auto it = components.begin(); it != components.end(); it++)
+        {
+            if (*it == component) { delete* it; components.erase(it); compMask -= component->index; break; }
+        }
+    }
 };
 
 struct TransformComponent : Component 
@@ -54,52 +95,11 @@ struct RendererComponent : Component
 struct RigidbodyComponent : Component 
 {
     enum Type { Static, Dynamic}; Type type; float mass; bool useGravity;
+	glm::vec3 velocity, angularVelocity; float damp, angularDamp;
+
     RigidbodyComponent();
 	RigidbodyComponent(RigidbodyComponent* other);
     void OnInspectorGUI() override;
     void Serialize(std::ofstream& file) const override;
     void Deserialize(std::ifstream& file) override;
-};
-
-template<typename T>
-concept DerivedFromComponent = std::derived_from<T, Component>;
-
-struct GameObject
-{
-    bool enabled = true;
-    int compMask = 0;
-    std::string name;
-    std::vector<Component*> components;
-
-	GameObject(const std::string name = "New GameObject");
-	GameObject(GameObject* other);
-    ~GameObject();
-    void OnInspectorGUI();
-    void Serialize(std::ofstream& file) const;
-    void Deserialize(std::ifstream& file);
-
-    template<DerivedFromComponent T, typename... Args>
-    T* AddComponent(Args&&... args)
-    {
-        T* newComponent = new T(std::forward<Args>(args)...);
-        components.push_back(newComponent); compMask += newComponent->index;
-        return newComponent;
-    }
-    template<DerivedFromComponent T>
-    T* GetComponent()
-    {
-        for (Component* comp : components)
-        {
-            T* result = dynamic_cast<T*>(comp);
-            if (result != nullptr) return result;
-        }
-        return nullptr;
-    }
-    void RemoveComponent(Component* component)
-    {
-        for (auto it = components.begin(); it != components.end(); it++)
-        {
-            if (*it == component) { delete* it; components.erase(it); compMask -= component->index; break; }
-        }
-    }
 };

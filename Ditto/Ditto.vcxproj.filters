@@ -58,6 +58,12 @@
     <Filter Include="源文件\Engine\Resources">
       <UniqueIdentifier>{9d34a336-d26d-4e5c-bd47-c03ed7698ec0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="头文件\Engine\Physics">
+      <UniqueIdentifier>{1a0a01e1-de9b-4f6c-a386-c75da514686d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Engine\Physics">
+      <UniqueIdentifier>{4ca95b89-4782-4646-84ef-d52410582398}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="3rdParty\GLFW\glfw3.h">
@@ -993,6 +999,9 @@
     <ClInclude Include="Engine\Resources\Resource.h">
       <Filter>头文件\Engine\Resources</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Physics\Physics.h">
+      <Filter>头文件\Engine\Physics</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
@@ -1493,6 +1502,9 @@
     </ClCompile>
     <ClCompile Include="Engine\Resources\Resource.cpp">
       <Filter>源文件\Engine\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Physics\Physics.cpp">
+      <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

@@ -10,10 +10,10 @@ E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8): warning C4099: �
       E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(5,8):
       参见“Resource”的声明
   
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(109,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(161,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(162,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(176,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(177,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(178,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(114,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(166,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(167,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(181,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(182,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(183,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
   Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Debug\Ditto.exe

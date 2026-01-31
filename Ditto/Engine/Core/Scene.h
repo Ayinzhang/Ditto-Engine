@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include "GameObject.h"
+#include "../Physics/Physics.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "../../3rdParty/GLAD/glad.h"
