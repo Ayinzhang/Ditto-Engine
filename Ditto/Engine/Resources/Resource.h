@@ -30,10 +30,4 @@ struct MeshData // For Physics
     glm::vec3 aabbMin, aabbMax;
 
     MeshData(const std::string& filePath);
-
-	void CalculateAABB();
-    bool CheckAABBCollision(const MeshData& other) const;
-    glm::vec3 GetAABBCenter() const;
-    glm::vec3 GetAABBSize() const;
-    glm::vec3 GetSupportPoint(const glm::vec3& direction) const;
 };

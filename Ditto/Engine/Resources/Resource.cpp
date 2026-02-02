@@ -139,11 +139,6 @@ MeshData::MeshData(const std::string& filePath)
     }
     file.close();
 
-    CalculateAABB();
-}
-
-void MeshData::CalculateAABB()
-{
     aabbMin = glm::vec3(std::numeric_limits<float>::max());
     aabbMax = glm::vec3(std::numeric_limits<float>::lowest());
 
@@ -152,36 +147,4 @@ void MeshData::CalculateAABB()
         aabbMin.x = std::min(aabbMin.x, vertex.x); aabbMin.y = std::min(aabbMin.y, vertex.y); aabbMin.z = std::min(aabbMin.z, vertex.z);
         aabbMax.x = std::max(aabbMax.x, vertex.x); aabbMax.y = std::max(aabbMax.y, vertex.y); aabbMax.z = std::max(aabbMax.z, vertex.z);
     }
-}
-
-bool MeshData::CheckAABBCollision(const MeshData& other) const
-{
-    return (aabbMax.x >= other.aabbMin.x && aabbMin.x <= other.aabbMax.x) &&
-        (aabbMax.y >= other.aabbMin.y && aabbMin.y <= other.aabbMax.y) &&
-        (aabbMax.z >= other.aabbMin.z && aabbMin.z <= other.aabbMax.z);
-}
-
-glm::vec3 MeshData::GetAABBCenter() const
-{
-    return (aabbMin + aabbMax) * 0.5f;
-}
-
-glm::vec3 MeshData::GetAABBSize() const
-{
-    return aabbMax - aabbMin;
-}
-
-glm::vec3 MeshData::GetSupportPoint(const glm::vec3& direction) const
-{
-    float maxDot = -std::numeric_limits<float>::max();
-    glm::vec3 supportPoint = vertices[0];
-    glm::vec3 normalizedDir = glm::normalize(direction);
-
-    for (const auto& vertex : vertices)
-    {
-        float dot = glm::dot(vertex, normalizedDir);
-        if (dot > maxDot) { maxDot = dot; supportPoint = vertex; }
-    }
-
-    return supportPoint;
 }
