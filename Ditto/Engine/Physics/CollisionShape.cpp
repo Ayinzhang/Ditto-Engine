@@ -3,7 +3,6 @@
 #include <limits>
 #include <iostream>
 #include "CollisionShape.h"
-#include "../Core/GameObject.h"
 #include "../../3rdParty/GLM/gtc/quaternion.hpp"
 #include "../../3rdParty/GLM/gtc/matrix_transform.hpp"
 #include "../../3rdParty/GLM/ext/quaternion_common.hpp"
@@ -13,26 +12,26 @@
 
 AABB::AABB() : min(std::numeric_limits<float>::max()),max(std::numeric_limits<float>::lowest()) {}
 
-AABB::AABB(const glm::vec3& min, const glm::vec3& max) : min(min), max(max) {}
+AABB::AABB(glm::vec3 min, glm::vec3 max) : min(min), max(max) {}
 
-bool AABB::CheckCollision(const AABB& other) const 
+bool AABB::CheckCollision(AABB other) 
 {
 	return (max.x >= other.min.x && min.x <= other.max.x) && (max.y >= other.min.y && min.y <= other.max.y) && (max.z >= other.min.z && min.z <= other.max.z);
 }
 
-void AABB::Expand(const glm::vec3& point) { min = glm::min(min, point); max = glm::max(max, point);}
+void AABB::Expand(glm::vec3 point) { min = glm::min(min, point); max = glm::max(max, point);}
 
-void AABB::Expand(const AABB& other) { min = glm::min(min, other.min); max = glm::max(max, other.max);}
+void AABB::Expand(AABB other) { min = glm::min(min, other.min); max = glm::max(max, other.max);}
 
-glm::vec3 AABB::GetCenter() const { return (min + max) * 0.5f;}
+glm::vec3 AABB::GetCenter() { return (min + max) * 0.5f;}
 
-float AABB::GetSurfaceArea() const 
+float AABB::GetSurfaceArea() 
 {
 	glm::vec3 size = max - min;
 	return 2.0f * (size.x * size.y + size.x * size.z + size.y * size.z);
 }
 
-bool AABB::Contains(const AABB& other) const 
+bool AABB::Contains(AABB other) 
 {
 	return (other.min.x >= min.x && other.max.x <= max.x) && (other.min.y >= min.y && other.max.y <= max.y) && (other.min.z >= min.z && other.max.z <= max.z);
 }
@@ -89,7 +88,7 @@ void BVHNode::Release()
 	}
 }
 
-BVHTree::BVHTree(std::vector<Collider>& colliders) : root(nullptr) 
+BVHTree::BVHTree(std::vector<Collider*> colliders) : root(nullptr) 
 {
     if (colliders.empty()) return;
     root = BuildTopDown(colliders, 0, colliders.size());
@@ -100,24 +99,23 @@ BVHTree::~BVHTree()
     if (root) { root->Release(); delete root; }
 }
 
-BVHNode* BVHTree::BuildTopDown(std::vector<Collider>& colliders, int start, int end) {
+BVHNode* BVHTree::BuildTopDown(std::vector<Collider*> colliders, int start, int end) {
     int count = end - start;
 
     if (count == 1) 
     {
-        BVHNode* node = new BVHNode(&colliders[start]);
-        leafNodes.push_back(node);
-        return node;
+        BVHNode* node = new BVHNode(colliders[start]);
+        leafNodes.push_back(node); return node;
     }
 
-    AABB centroidBounds;
-    for (int i = start; i < end; i++) centroidBounds.Expand(colliders[i].aabb.GetCenter());
+	AABB centroidBounds;
+    for (int i = start; i < end; i++) centroidBounds.Expand(colliders[i]->aabb.GetCenter());
 
     glm::vec3 size = centroidBounds.max - centroidBounds.min;
     int axis = (size.x > size.y && size.x > size.z) ? 0 : (size.y > size.z) ? 1 : 2;
 
-    std::sort(colliders.begin() + start, colliders.begin() + end, [axis](const Collider& a, const Collider& b) {
-            return a.aabb.GetCenter()[axis] < b.aabb.GetCenter()[axis];
+    std::sort(colliders.begin() + start, colliders.begin() + end, [axis](Collider* a, Collider* b) {
+        return a->aabb.GetCenter()[axis] < b->aabb.GetCenter()[axis];
         });
 
     int mid = start + count / 2;
@@ -200,7 +198,7 @@ void BVHTree::InsertLeafNode(BVHNode* leaf)
     RefitUpwards(newInternal);
 }
 
-BVHNode* BVHTree::FindBestInsertionNode(const AABB& bounds) 
+BVHNode* BVHTree::FindBestInsertionNode(AABB bounds) 
 {
     if (!root) return nullptr;
 
@@ -226,7 +224,7 @@ BVHNode* BVHTree::FindBestInsertionNode(const AABB& bounds)
     return bestNode;
 }
 
-float BVHTree::CalculateInsertionCost(BVHNode* node, const AABB& bounds) 
+float BVHTree::CalculateInsertionCost(BVHNode* node, AABB bounds) 
 {
     AABB merged = node->aabb;
     merged.Expand(bounds);
@@ -267,14 +265,14 @@ void BVHTree::RemoveNodeFromTree(BVHNode* node)
     }
 }
 
-std::vector<Collider*> BVHTree::Query(const AABB& bounds) const 
+std::vector<Collider*> BVHTree::Query(AABB bounds) 
 {
     std::vector<Collider*> results;
     if (root) QueryRecursive(root, bounds, results);
     return results;
 }
 
-void BVHTree::QueryRecursive(BVHNode* node, const AABB& bounds, std::vector<Collider*>& results) const 
+void BVHTree::QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>& results) 
 {
     if (!node || !node->aabb.CheckCollision(bounds)) return;
 

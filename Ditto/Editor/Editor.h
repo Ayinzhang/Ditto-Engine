@@ -1,4 +1,6 @@
 #pragma once
+#include <queue>
+//#include <utility>
 #include "../3rdParty/ImGui/imgui.h"
 
 struct Engine;
@@ -9,6 +11,7 @@ struct Editor
     GameObject* selectedObject = nullptr;
     char sceneNameBuffer[16] = "Default";
     bool showHierarchy, showScene, showInspector, showSavePopup, showLoadPopup;
+    int frame; float fps, deltaTime;
     Editor(void* window);
     ~Editor();
     void Draw();

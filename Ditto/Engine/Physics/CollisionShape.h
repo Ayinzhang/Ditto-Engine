@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 #include <list>
+#include "../Core/GameObject.h"
+#include "../Resources/Resource.h"
 #include "../../3rdParty/GLM/glm.hpp"
 
 struct AABB
@@ -8,22 +10,17 @@ struct AABB
 	glm::vec3 min, max;
 
 	AABB();
-	AABB(const glm::vec3& min, const glm::vec3& max);
+	AABB(glm::vec3 min, glm::vec3 max);
 
-	bool CheckCollision(const AABB& other) const;
+	bool CheckCollision(AABB other);
 
-	void Expand(const glm::vec3& point);
-	void Expand(const AABB& other);
+	void Expand(glm::vec3 point);
+	void Expand(AABB other);
 
-	glm::vec3 GetCenter() const;
-	float GetSurfaceArea() const;
-	bool Contains(const AABB& other) const;
+	glm::vec3 GetCenter();
+	float GetSurfaceArea();
+	bool Contains(AABB other);
 };
-
-struct TransformComponent;
-struct RigidbodyComponent;
-struct MeshData;
-struct Collider;
 
 struct Collider
 {
@@ -40,7 +37,7 @@ struct Collider
 struct BVHNode
 {
 	AABB aabb; bool isLeaf;
-	BVHNode* parent;
+	BVHNode* parent = nullptr;
 
 	union 
 	{
@@ -67,7 +64,7 @@ struct BVHTree
     size_t currentSampleIndex = 0;
 
     // 构造函数：传入碰撞体数组构建BVH
-    BVHTree(std::vector<Collider>& colliders);
+    BVHTree(std::vector<Collider*> colliders);
 
     ~BVHTree();
 
@@ -75,11 +72,11 @@ struct BVHTree
     void UpdateBVHTree();
 
     // 查询与AABB相交的碰撞体
-    std::vector<Collider*> Query(const AABB& bounds) const;
+    std::vector<Collider*> Query(AABB bounds);
 
 private:
     // 自顶向下构建（初始构建）
-    BVHNode* BuildTopDown(std::vector<Collider>& colliders, int start, int end);
+    BVHNode* BuildTopDown(std::vector<Collider*> colliders, int start, int end);
 
     // 自底向上更新所有节点的AABB
     void UpdateAllAABBs(BVHNode* node);
@@ -94,10 +91,10 @@ private:
     void InsertLeafNode(BVHNode* leaf);
 
     // 寻找最佳插入位置
-    BVHNode* FindBestInsertionNode(const AABB& bounds);
+    BVHNode* FindBestInsertionNode(AABB bounds);
 
     // 计算插入成本
-    float CalculateInsertionCost(BVHNode* node, const AABB& bounds);
+    float CalculateInsertionCost(BVHNode* node, AABB bounds);
 
     // 向上更新AABB
     void RefitUpwards(BVHNode* node);
@@ -106,5 +103,5 @@ private:
     void RemoveNodeFromTree(BVHNode* node);
 
     // 递归查询
-    void QueryRecursive(BVHNode* node, const AABB& bounds, std::vector<Collider*>& results) const;
+    void QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>& results);
 };

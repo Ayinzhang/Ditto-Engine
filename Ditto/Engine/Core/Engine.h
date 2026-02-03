@@ -18,6 +18,7 @@ struct Engine
     Resource* resource;
     Scene* scene;
     Editor* editor;
+	float deltaTime, lastTime, curTime;
     Camera* camera;
     bool enableMouse;
     float keySpeed, mouseSpeed;
@@ -33,5 +34,6 @@ struct Engine
     void Run();
     void ProcessInput();
     void RenderScene();
+    void SetEngineState(State state);
     static void MouseCallBack(GLFWwindow* window, double xpos, double ypos);
 };

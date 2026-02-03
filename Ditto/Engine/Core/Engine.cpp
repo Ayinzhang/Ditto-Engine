@@ -1,6 +1,7 @@
 #include "Engine.h"
 #include <iostream>
 #include <stdexcept>
+#include "../Physics/Physics.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
@@ -34,8 +35,8 @@ Engine::Engine()
     scene = new Scene();
     camera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
-    editor = new Editor(window);
-    editor->engine = this;
+    editor = new Editor(window); editor->engine = this;
+	physics = new Physics(); physics->engine = this;
 
     scene->InitializeBaseGeometries(resource);
 }
@@ -55,7 +56,10 @@ void Engine::Run()
 {
     while (state != Exit && !glfwWindowShouldClose(window))
     {
+        curTime = glfwGetTime(); deltaTime = curTime - lastTime; lastTime = curTime;
+
         ProcessInput();
+        if(state == Play) physics->UpdatePhysics(deltaTime);
         glfwPollEvents();
 
         glfwGetFramebufferSize(window, &window_width, &window_height);
@@ -108,6 +112,20 @@ void Engine::ProcessInput()
     bool ctrlCPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
     if (ctrlCPressedNow && !ctrlCPressedLastFrame) editor->CopySelectedObject();
     ctrlCPressedLastFrame = ctrlCPressedNow;
+}
+
+void Engine::SetEngineState(State newState)
+{
+    if (state == newState) return;
+    switch (newState)
+    {
+        case Play:
+        {
+            physics->GenerateColliders(scene->gameObjects);
+            break;
+		}
+    }
+    state = newState;
 }
 
 void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)

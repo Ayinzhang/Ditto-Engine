@@ -14,6 +14,7 @@ Editor::Editor(void* window)
     ImGui_ImplOpenGL3_Init("#version 450");
 
     showHierarchy = true; showScene = true; showInspector = true; showSavePopup = false; showLoadPopup = false;
+    frame = deltaTime = 0;
 }
 
 Editor::~Editor()
@@ -74,7 +75,7 @@ void Editor::DrawToolbar()
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.8f, 0.3f, 1.0f));
             if (ImGui::Button("Play"))
             {
-                engine->state = Engine::State::Play;
+                engine->SetEngineState(Engine::State::Play);
             }
         }
         else if (engine->state == Engine::State::Play) 
@@ -83,7 +84,7 @@ void Editor::DrawToolbar()
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
             if (ImGui::Button("Stop")) 
             {
-                engine->state = Engine::State::Edit;
+				engine->SetEngineState(Engine::State::Edit);
             }
 		}
         ImGui::PopStyleColor(2);
@@ -91,7 +92,7 @@ void Editor::DrawToolbar()
         ImGui::SameLine();
         if (ImGui::Button("Pause")) 
         {
-            engine->state = Engine::State::Stop;
+            engine->SetEngineState(Engine::State::Stop);
         }
 
         float windowWidth = ImGui::GetWindowWidth(), infoWidth = 300.0f;
@@ -170,6 +171,16 @@ void Editor::DrawScene()
     ImGui::SetNextWindowSize(ImVec2(sceneWidth, windowHeight));
     ImGui::Begin("Scene");
     ImGui::Text("Scene View");
+
+    frame++; deltaTime += engine->deltaTime;
+    if (deltaTime > 1) { fps = frame / deltaTime; frame = deltaTime = 0; }
+    ImVec2 windowPos = ImGui::GetWindowPos();
+    ImVec2 windowSize = ImGui::GetWindowSize();
+
+    ImGui::GetForegroundDrawList()->AddText(
+        ImVec2(windowPos.x + windowSize.x - 40, windowPos.y + 20),
+        IM_COL32(0, 255, 0, 255), std::to_string((int)fps).c_str()
+    );
     ImGui::End();
 }
 
