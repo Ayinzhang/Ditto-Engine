@@ -21,7 +21,7 @@ struct GameObject
     bool enabled = true;
     int compMask = 0;
     std::string name;
-    std::vector<Component*> components;
+    std::vector<Component*> components, removeComps;
 
     GameObject(const std::string name = "New GameObject");
     GameObject(GameObject* other);
@@ -33,7 +33,7 @@ struct GameObject
     template<DerivedFromComponent T, typename... Args>
     T* AddComponent(Args&&... args)
     {
-        T* newComponent = new T(std::forward<Args>(args)...);
+		T* newComponent = new T(std::forward<Args>(args)...); newComponent->gameObject = this;
         components.push_back(newComponent); compMask += newComponent->index;
         return newComponent;
     }
@@ -49,10 +49,15 @@ struct GameObject
     }
     void RemoveComponent(Component* component)
     {
-        for (auto it = components.begin(); it != components.end(); it++)
-        {
-            if (*it == component) { delete* it; components.erase(it); compMask -= component->index; break; }
-        }
+        if (component->gameObject != this) return;
+        removeComps.push_back(component);
+    }
+    void ProcessRemovals() 
+    {
+        for (Component* comp : removeComps) 
+            for (auto it = components.begin(); it != components.end(); it++)
+                if (*it == comp) { delete* it; components.erase(it); compMask -= comp->index; break; }
+        removeComps.clear();
     }
 };
 

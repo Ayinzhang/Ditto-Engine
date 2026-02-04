@@ -77,6 +77,8 @@ void GameObject::OnInspectorGUI()
         if (!(compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody")) AddComponent<RigidbodyComponent>();
         ImGui::EndPopup();
     }
+
+	ProcessRemovals();
 }
 
 void GameObject::Serialize(std::ofstream& file) const
@@ -342,7 +344,7 @@ void RigidbodyComponent::OnInspectorGUI()
     ImGui::TextUnformatted("Rigidbody");
 
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
+    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return;}
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
 
     ImGui::Indent(20.0f);

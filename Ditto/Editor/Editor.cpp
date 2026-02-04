@@ -73,27 +73,19 @@ void Editor::DrawToolbar()
         {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.8f, 0.3f, 1.0f));
-            if (ImGui::Button("Play"))
-            {
-                engine->SetEngineState(Engine::State::Play);
-            }
+            if (ImGui::Button("Play")) engine->SetEngineState(Engine::State::Play);
         }
-        else if (engine->state == Engine::State::Play) 
+        else
         {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
-            if (ImGui::Button("Stop")) 
-            {
-				engine->SetEngineState(Engine::State::Edit);
-            }
+            if (ImGui::Button("Stop")) engine->SetEngineState(Engine::State::Edit);
 		}
         ImGui::PopStyleColor(2);
 
         ImGui::SameLine();
-        if (ImGui::Button("Pause")) 
-        {
-            engine->SetEngineState(Engine::State::Stop);
-        }
+        if (engine->state != Engine::State::Stop) { if (ImGui::Button("Pause")) engine->SetEngineState(Engine::State::Stop);}
+        else if (ImGui::Button("Conti")) engine->SetEngineState(Engine::State::Play);
 
         float windowWidth = ImGui::GetWindowWidth(), infoWidth = 300.0f;
         ImGui::SameLine(windowWidth - infoWidth); ImGui::Text("Scene:"); ImGui::SameLine();
