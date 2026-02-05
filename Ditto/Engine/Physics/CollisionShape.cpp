@@ -56,7 +56,11 @@ void Collider::UpdateWorldAABB()
 	aabb.min = glm::vec3(std::numeric_limits<float>::max());
 	aabb.max = glm::vec3(std::numeric_limits<float>::lowest());
 
-	for (int i = 0; i < 8; i++) { glm::vec4 worldPos = transformMat * glm::vec4(corners[i], 1.0f); aabb.Expand(glm::vec3(worldPos)); }
+	for (int i = 0; i < 8; i++) 
+    { 
+        glm::vec4 worldPos = transformMat * glm::vec4(corners[i], 1.0f); 
+        aabb.Expand(glm::vec3(worldPos)); 
+    }
 
 	isDirty = false;
 }
@@ -279,7 +283,8 @@ void BVHTree::QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>&
     if (node->isLeaf) 
     {
         Collider* collider = node->data.leaf.collider;
-        if (collider && collider->aabb.CheckCollision(bounds)) results.push_back(collider);
+        if (collider && !(bounds.min == collider->aabb.min && bounds.max == collider->aabb.max) 
+            && collider->aabb.CheckCollision(bounds)) results.push_back(collider);
     }
     else 
     {

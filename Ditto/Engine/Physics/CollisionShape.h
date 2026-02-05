@@ -34,6 +34,12 @@ struct Collider
 	void UpdateWorldAABB();
 };
 
+struct CollisonPairs
+{
+    Collider* colliderA;
+    Collider* colliderB;
+};
+
 struct BVHNode
 {
 	AABB aabb; bool isLeaf;
@@ -55,7 +61,7 @@ struct BVHNode
 
 struct BVHTree
 {
-    BVHNode* root;
+    BVHNode* root = nullptr;
 
     // 存储所有叶子节点（用于轮询抽样）
     std::vector<BVHNode*> leafNodes;

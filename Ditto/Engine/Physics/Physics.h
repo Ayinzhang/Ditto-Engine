@@ -16,7 +16,7 @@ struct Physics
 	void GenerateColliders(const std::vector<GameObject*>& gameobjects);
 	void UpdatePhysics(float dt);
 	void IntegrateForce(float dt);
-	//void HandleBoardCollisions();
-	//void HandleBoardCollisions();
+	void HandleBoardCollisions();
+	//void HandleNarrowCollisions();
 	//void IntegrateVelocity();
 };

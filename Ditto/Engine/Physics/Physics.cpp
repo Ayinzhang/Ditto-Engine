@@ -1,5 +1,6 @@
 #include "Physics.h"
 #include "../Core/Engine.h"
+#include <iostream>
 
 void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 {
@@ -25,7 +26,8 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 					collider->mesh = engine->resource->planeMesh;
 					break;
 			}
-			colliders.push_back(collider);
+			collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
+			collider->UpdateWorldAABB(); colliders.push_back(collider);
 		}
 	}
 	bvhTree = new BVHTree(colliders);
@@ -33,8 +35,9 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 
 void Physics::UpdatePhysics(float dt)
 {
-	bvhTree->UpdateBVHTree();
 	IntegrateForce(dt);
+	bvhTree->UpdateBVHTree();
+	HandleBoardCollisions();
 }
 
 void Physics::IntegrateForce(float dt)
@@ -47,7 +50,19 @@ void Physics::IntegrateForce(float dt)
 			collider->transform->position[0] += collider->rigidbody->velocity.x * dt;
 			collider->transform->position[1] += collider->rigidbody->velocity.y * dt;
 			collider->transform->position[2] += collider->rigidbody->velocity.z * dt;
-			collider->transform->UpdateTransform();
+			collider->isDirty = true; collider->transform->UpdateTransform();
+		}
+	}
+}
+
+void Physics::HandleBoardCollisions()
+{
+	for (Collider* collider : colliders)
+	{
+		if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
+		{
+			auto cols = bvhTree->Query(collider->aabb);
+			if (cols.size()) std::cout << "Collision Detected!" << std::endl;
 		}
 	}
 }
