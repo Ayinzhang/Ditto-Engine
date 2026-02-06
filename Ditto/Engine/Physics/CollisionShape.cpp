@@ -3,7 +3,6 @@
 #include <limits>
 #include <iostream>
 #include "CollisionShape.h"
-#include "../../3rdParty/GLM/gtc/quaternion.hpp"
 #include "../../3rdParty/GLM/gtc/matrix_transform.hpp"
 #include "../../3rdParty/GLM/ext/quaternion_common.hpp"
 #include "../../3rdParty/GLM/ext/quaternion_geometric.hpp"
@@ -36,33 +35,38 @@ bool AABB::Contains(AABB other)
 	return (other.min.x >= min.x && other.max.x <= max.x) && (other.min.y >= min.y && other.max.y <= max.y) && (other.min.z >= min.z && other.max.z <= max.z);
 }
 
-void Collider::UpdateWorldAABB() 
+void Collider::UpdateWorldAABB()
 {
-	float rx = glm::radians(transform->rotation[0]), ry = glm::radians(transform->rotation[1]), rz = glm::radians(transform->rotation[2]);
-	glm::quat rotationQuat = glm::quat(glm::vec3(rx, ry, rz));
-	glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), glm::vec3(transform->position[0], transform->position[1], transform->position[2]));
-	glm::mat4 rotationMat = glm::mat4_cast(rotationQuat);
-	glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(transform->scale[0], transform->scale[1], transform->scale[2]));
-	glm::mat4 transformMat = translationMat * rotationMat * scaleMat;
+    // 使用预测的旋转，而不是transform的旋转
+    glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), predictedPosition);
+    glm::mat4 rotationMat = glm::mat4_cast(predictedRotation);  // 使用预测的旋转
+    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f),
+        glm::vec3(transform->scale[0], transform->scale[1], transform->scale[2]));
 
-	glm::vec3 corners[8] = 
-	{
-		glm::vec3(localAABB.min.x, localAABB.min.y, localAABB.min.z), glm::vec3(localAABB.max.x, localAABB.min.y, localAABB.min.z),
-		glm::vec3(localAABB.min.x, localAABB.max.y, localAABB.min.z), glm::vec3(localAABB.max.x, localAABB.max.y, localAABB.min.z),
-		glm::vec3(localAABB.min.x, localAABB.min.y, localAABB.max.z), glm::vec3(localAABB.max.x, localAABB.min.y, localAABB.max.z),
-		glm::vec3(localAABB.min.x, localAABB.max.y, localAABB.max.z), glm::vec3(localAABB.max.x, localAABB.max.y, localAABB.max.z)
-	};
+    glm::mat4 transformMat = translationMat * rotationMat * scaleMat;
 
-	aabb.min = glm::vec3(std::numeric_limits<float>::max());
-	aabb.max = glm::vec3(std::numeric_limits<float>::lowest());
+    glm::vec3 corners[8] =
+    {
+        glm::vec3(localAABB.min.x, localAABB.min.y, localAABB.min.z),
+        glm::vec3(localAABB.max.x, localAABB.min.y, localAABB.min.z),
+        glm::vec3(localAABB.min.x, localAABB.max.y, localAABB.min.z),
+        glm::vec3(localAABB.max.x, localAABB.max.y, localAABB.min.z),
+        glm::vec3(localAABB.min.x, localAABB.min.y, localAABB.max.z),
+        glm::vec3(localAABB.max.x, localAABB.min.y, localAABB.max.z),
+        glm::vec3(localAABB.min.x, localAABB.max.y, localAABB.max.z),
+        glm::vec3(localAABB.max.x, localAABB.max.y, localAABB.max.z)
+    };
 
-	for (int i = 0; i < 8; i++) 
-    { 
-        glm::vec4 worldPos = transformMat * glm::vec4(corners[i], 1.0f); 
-        aabb.Expand(glm::vec3(worldPos)); 
+    aabb.min = glm::vec3(std::numeric_limits<float>::max());
+    aabb.max = glm::vec3(std::numeric_limits<float>::lowest());
+
+    for (int i = 0; i < 8; i++)
+    {
+        glm::vec4 worldPos = transformMat * glm::vec4(corners[i], 1.0f);
+        aabb.Expand(glm::vec3(worldPos));
     }
 
-	isDirty = false;
+    isDirty = false;
 }
 
 BVHNode::BVHNode() : isLeaf(true) { data.leaf.collider = nullptr; data.leaf.index = 0;}
@@ -283,7 +287,7 @@ void BVHTree::QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>&
     if (node->isLeaf) 
     {
         Collider* collider = node->data.leaf.collider;
-        if (collider && !(bounds.min == collider->aabb.min && bounds.max == collider->aabb.max) 
+        if (collider //&& !(bounds.min == collider->aabb.min && bounds.max == collider->aabb.max) 
             && collider->aabb.CheckCollision(bounds)) results.push_back(collider);
     }
     else 

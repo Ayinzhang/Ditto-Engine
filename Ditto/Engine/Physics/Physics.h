@@ -12,11 +12,13 @@ struct Physics
 {
 	Engine* engine; BVHTree* bvhTree;
 	std::vector<Collider*> colliders;
+	std::vector<std::pair<Collider*, Collider*>> colliderPairs;
+	float t = 0, deltaTime = 1.0f / 60;
 
 	void GenerateColliders(const std::vector<GameObject*>& gameobjects);
 	void UpdatePhysics(float dt);
 	void IntegrateForce(float dt);
-	void HandleBoardCollisions();
-	//void HandleNarrowCollisions();
-	//void IntegrateVelocity();
+	void HandleBroadCollisions();
+	void HandleNarrowCollisions();
+	void IntegrateVelocity(float dt);
 };

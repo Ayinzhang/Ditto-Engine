@@ -12,10 +12,8 @@ Resource::Resource()
 {
     cubeModel = new ModelData("Assets/Models/Cube.obj");
     sphereModel = new ModelData("Assets/Models/Sphere.obj");
-    planeModel = new ModelData("Assets/Models/Plane.obj");
 	cubeMesh = new MeshData("Assets/Models/Cube.obj");
     sphereMesh = new MeshData("Assets/Models/Sphere.obj");
-	planeMesh = new MeshData("Assets/Models/Plane.obj");
 }
 
 ModelData::ModelData(const std::string& path)

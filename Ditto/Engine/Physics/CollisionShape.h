@@ -4,6 +4,7 @@
 #include "../Core/GameObject.h"
 #include "../Resources/Resource.h"
 #include "../../3rdParty/GLM/glm.hpp"
+#include "../../3rdParty/GLM/gtc/quaternion.hpp"
 
 struct AABB
 {
@@ -30,6 +31,8 @@ struct Collider
 	MeshData* mesh;
 
 	bool isDirty;
+    glm::vec3 predictedPosition;
+    glm::quat predictedRotation;
 
 	void UpdateWorldAABB();
 };

@@ -197,31 +197,6 @@ void Scene::InitializeBaseGeometries(Resource* resource)
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
     }
-
-    if (resource->planeModel && !resource->planeModel->vertexData.empty())
-    {
-        BaseGeometry planeGeo;
-
-        glGenVertexArrays(1, &planeGeo.VAO);
-        glGenBuffers(1, &planeGeo.VBO);
-
-        glBindVertexArray(planeGeo.VAO);
-        glBindBuffer(GL_ARRAY_BUFFER, planeGeo.VBO);
-
-        glBufferData(GL_ARRAY_BUFFER, resource->planeModel->vertexData.size() * sizeof(float), resource->planeModel->vertexData.data(), GL_STATIC_DRAW);
-
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-
-        planeGeo.vertexCount = static_cast<uint32_t>(resource->planeModel->vertexData.size() / 6);
-        baseGeometries[RendererComponent::Plane] = planeGeo;
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
-    }
 }
 
 glm::vec3 Scene::GetLightColor() const

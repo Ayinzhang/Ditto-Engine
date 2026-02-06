@@ -124,12 +124,6 @@ void Editor::DrawHierarchy()
             sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
             engine->scene->gameObjects.push_back(sphere); selectedObject = sphere;
         }
-        if (ImGui::MenuItem("Create Plane"))
-        {
-            GameObject* plane = new GameObject("Plane");
-            plane->AddComponent<RendererComponent>(RendererComponent::Type::Plane);
-            engine->scene->gameObjects.push_back(plane); selectedObject = plane;
-        }
         ImGui::EndPopup();
     }
 

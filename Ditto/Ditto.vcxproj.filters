@@ -1005,6 +1005,9 @@
     <ClInclude Include="Engine\Physics\CollisionShape.h">
       <Filter>头文件\Engine\Physics</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Physics\GJK.h">
+      <Filter>头文件\Engine\Physics</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
@@ -1510,6 +1513,9 @@
       <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Physics\CollisionShape.cpp">
+      <Filter>源文件\Engine\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Physics\GJK.cpp">
       <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
   </ItemGroup>
