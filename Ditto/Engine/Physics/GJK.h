@@ -19,6 +19,9 @@ struct Triangle
 {
     float dis;
     glm::vec3 a, b, c, normal;
+    SupportPoint supportA, supportB, supportC;
+
+	Triangle() : dis(0), a(glm::vec3(0)), b(glm::vec3(0)), c(glm::vec3(0)), normal(glm::vec3(0)), supportA(), supportB(), supportC() {}
 };
 
 struct CollisionInfo
@@ -31,8 +34,4 @@ struct CollisionInfo
 
 CollisionInfo GJK_CheckCollision(Collider* colliderA, Collider* colliderB);
 
-glm::vec3 GetSupportPoint(Collider* collider, const glm::vec3& direction);
-SupportPoint GetMinkowskiSupport(Collider* colliderA, Collider* colliderB, const glm::vec3& direction);
-
-bool TriangleContainsOrigin(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c, glm::vec3& normal);
-Triangle FindClosestTriangle(const std::vector<Triangle>& triangles);
+glm::mat3 CalculateWorldInverseInertia(Collider* collider);

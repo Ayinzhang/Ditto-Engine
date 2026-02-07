@@ -37,9 +37,8 @@ bool AABB::Contains(AABB other)
 
 void Collider::UpdateWorldAABB()
 {
-    // 使用预测的旋转，而不是transform的旋转
-    glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), predictedPosition);
-    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(predictedRotation));  // 使用预测的旋转
+    glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), transform->position);
+    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(transform->rotation));  // 使用预测的旋转
     glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), transform->scale);
 
     glm::mat4 transformMat = translationMat * rotationMat * scaleMat;

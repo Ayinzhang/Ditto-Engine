@@ -7,8 +7,8 @@
 
 static glm::vec3 GetSupportPoint(Collider* collider, const glm::vec3& direction) {
     // 1. 处理变换矩阵
-    glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), collider->predictedPosition);
-    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(collider->predictedRotation));
+    glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), collider->transform->position);
+    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(collider->transform->rotation));
     glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(collider->transform->scale[0], collider->transform->scale[1], collider->transform->scale[2]));
     glm::mat4 transformMat = translationMat * rotationMat * scaleMat;
 
@@ -107,6 +107,68 @@ bool UpdateSimplex(std::vector<SupportPoint>& simplex, glm::vec3& direction) {
     return false;
 }
 
+glm::vec3 GetClosestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+    // 计算三角形上距离p最近的点
+    glm::vec3 ab = b - a;
+    glm::vec3 ac = c - a;
+    glm::vec3 ap = p - a;
+
+    float d1 = glm::dot(ab, ap);
+    float d2 = glm::dot(ac, ap);
+    if (d1 <= 0.0f && d2 <= 0.0f) return a;
+
+    glm::vec3 bp = p - b;
+    float d3 = glm::dot(ab, bp);
+    float d4 = glm::dot(ac, bp);
+    if (d3 >= 0.0f && d4 <= d3) return b;
+
+    glm::vec3 cp = p - c;
+    float d5 = glm::dot(ab, cp);
+    float d6 = glm::dot(ac, cp);
+    if (d6 >= 0.0f && d5 <= d6) return c;
+
+    float vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
+        float v = d1 / (d1 - d3);
+        return a + v * ab;
+    }
+
+    float vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
+        float w = d2 / (d2 - d6);
+        return a + w * ac;
+    }
+
+    float va = d3 * d6 - d5 * d4;
+    if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
+        float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return b + w * (c - b);
+    }
+
+    float denom = 1.0f / (va + vb + vc);
+    float v = vb * denom;
+    float w = vc * denom;
+    return a + ab * v + ac * w;
+}
+
+glm::vec3 GetBarycentricCoordinates(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+    glm::vec3 v0 = b - a;
+    glm::vec3 v1 = c - a;
+    glm::vec3 v2 = p - a;
+
+    float d00 = glm::dot(v0, v0);
+    float d01 = glm::dot(v0, v1);
+    float d11 = glm::dot(v1, v1);
+    float d20 = glm::dot(v2, v0);
+    float d21 = glm::dot(v2, v1);
+
+    float denom = d00 * d11 - d01 * d01;
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0f - v - w;
+
+    return glm::vec3(u, v, w);
+}
 // --- EPA 实现 ---
 
 CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
@@ -114,11 +176,22 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
     // 初始四面体的4个面 (确保法线朝外)
     auto addFace = [&](int i, int j, int k) {
         Triangle t;
-        t.a = simplex[i].point; t.b = simplex[j].point; t.c = simplex[k].point;
+        t.a = simplex[i].point;
+        t.b = simplex[j].point;
+        t.c = simplex[k].point;
+        
+        // 保存支撑点信息
+        t.supportA = simplex[i];
+        t.supportB = simplex[j];
+        t.supportC = simplex[k];
+
         t.normal = glm::normalize(glm::cross(t.b - t.a, t.c - t.a));
         t.dis = glm::dot(t.normal, t.a);
-        if (t.dis < 0) { // 翻转法线确保朝外
+
+        if (t.dis < 0) {
+            // 翻转法线时也要交换支撑点
             std::swap(t.b, t.c);
+            std::swap(t.supportB, t.supportC);
             t.normal = -t.normal;
             t.dis = -t.dis;
         }
@@ -141,13 +214,26 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
         SupportPoint p = GetMinkowskiSupport(a, b, f.normal);
         float d = glm::dot(f.normal, p.point);
 
-        if (d - minDist < 0.001f) { // 收敛
+        if (d - minDist < 0.001f) {
             CollisionInfo res;
             res.flag = true;
             res.normal = f.normal;
             res.depth = d;
-            // 简化接触点：使用面中心投影回物体空间
-            res.contactPointA = (f.a + f.b + f.c) / 3.0f;
+
+            // 计算接触点：找到三角形上距离原点最近的点
+            // 使用重心坐标插值
+            glm::vec3 closestPoint = GetClosestPointOnTriangle(glm::vec3(0), f.a, f.b, f.c);
+            glm::vec3 barycentric = GetBarycentricCoordinates(closestPoint, f.a, f.b, f.c);
+
+            // 插值得到实际接触点
+            res.contactPointA = barycentric.x * f.supportA.pointA +
+                barycentric.y * f.supportB.pointA +
+                barycentric.z * f.supportC.pointA;
+
+            res.contactPointB = barycentric.x * f.supportA.pointB +
+                barycentric.z * f.supportB.pointB +
+                barycentric.z * f.supportC.pointB;
+
             return res;
         }
 
@@ -178,6 +264,19 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
         }
     }
     return {};
+}
+
+glm::mat3 CalculateWorldInverseInertia(Collider* collider) {
+    if (collider->rigidbody->type != RigidbodyComponent::Dynamic) {
+        return glm::mat3(0.0f);
+    }
+
+    // 获取旋转矩阵
+    glm::mat3 rotationMatrix = glm::mat3_cast(glm::quat(collider->transform->rotation));
+
+    // 将局部逆惯量张量转换到世界坐标系
+    // I_world^-1 = R * I_local^-1 * R^T
+    return rotationMatrix * collider->rigidbody->inverseInertia * glm::transpose(rotationMatrix);
 }
 
 // --- 主入口 ---

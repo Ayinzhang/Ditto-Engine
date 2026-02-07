@@ -31,7 +31,6 @@ struct Collider
 	MeshData* mesh;
 
 	bool isDirty;
-    glm::vec3 predictedPosition, predictedRotation;
 
 	void UpdateWorldAABB();
 };
