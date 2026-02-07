@@ -92,26 +92,19 @@ void Physics::IntegrateForce(float dt)
     {
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
         {
-			TransformComponent* transform = collider->transform;
+            TransformComponent* transform = collider->transform;
             RigidbodyComponent* rb = collider->rigidbody;
 
             // 应用重力
-            if (rb->useGravity) rb->velocity.y += -9.8 * dt;
+            if (rb->useGravity) rb->velocity.y += -9.8f * dt;
 
             // 应用阻尼（指数衰减）
-            rb->velocity *= glm::max(0.0f, 1.0f - rb->damp * dt);
-            rb->angularVelocity *= glm::max(0.0f, 1.0f - rb->angularDamp * dt);
+            rb->velocity *= glm::max(0.0f, glm::pow(1.0f - rb->damp, dt));
+            rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - rb->angularDamp, dt));
 
             // 计算预测位置（用于碰撞检测）
-            transform->position = transform->position + rb->velocity * dt;
-
-            // 计算预测旋转（使用四元数）
-            // 角速度四元数
-            glm::quat angularVelQuat(0.0f, rb->angularVelocity);
-
-            // 四元数导数：dq/dt = 0.5 * ω * q
-            glm::quat deltaRot = angularVelQuat * glm::quat(transform->rotation) * 0.5f * dt;
-            transform->rotation = glm::eulerAngles(glm::quat(transform->rotation) + deltaRot);
+            transform->position += rb->velocity * dt;
+			transform->rotation += rb->angularVelocity * dt;
 
             // 标记为需要更新AABB
             collider->isDirty = true;
