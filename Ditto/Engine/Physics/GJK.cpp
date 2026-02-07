@@ -8,7 +8,7 @@
 static glm::vec3 GetSupportPoint(Collider* collider, const glm::vec3& direction) {
     // 1. ´¦Àí±ä»»¾ØÕó
     glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), collider->predictedPosition);
-    glm::mat4 rotationMat = glm::mat4_cast(collider->predictedRotation);
+    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(collider->predictedRotation));
     glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(collider->transform->scale[0], collider->transform->scale[1], collider->transform->scale[2]));
     glm::mat4 transformMat = translationMat * rotationMat * scaleMat;
 

@@ -28,8 +28,8 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 					break;
 			}
 			collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
-			collider->predictedPosition = glm::vec3(transform->position[0], transform->position[1], transform->position[2]);
-			collider->predictedRotation = glm::quat(glm::vec3(glm::radians(transform->rotation[0]),glm::radians(transform->rotation[1]),glm::radians(transform->rotation[2])));
+			collider->predictedPosition = transform->position;
+			collider->predictedRotation = transform->rotation;
 			collider->UpdateWorldAABB(); colliders.push_back(collider);
 		}
 	}
@@ -59,40 +59,7 @@ void Physics::IntegrateForce(float dt)
 			collider->rigidbody->angularVelocity *= pow(collider->rigidbody->angularDamp, dt);
 
 			// 预测位置
-			collider->predictedPosition = glm::vec3(
-				collider->transform->position[0] + collider->rigidbody->velocity.x * dt,
-				collider->transform->position[1] + collider->rigidbody->velocity.y * dt,
-				collider->transform->position[2] + collider->rigidbody->velocity.z * dt
-			);
-
-			// 修正旋转计算：使用角速度创建旋转增量
-			float angle = glm::length(collider->rigidbody->angularVelocity) * dt;
-			if (angle > 0.0f)
-			{
-				glm::vec3 axis = glm::normalize(collider->rigidbody->angularVelocity);
-				glm::quat rotationIncrement = glm::angleAxis(glm::radians(angle), axis);
-
-				// 获取当前旋转
-				glm::vec3 euler = glm::vec3(
-					glm::radians(collider->transform->rotation[0]),
-					glm::radians(collider->transform->rotation[1]),
-					glm::radians(collider->transform->rotation[2])
-				);
-				glm::quat currentRotation = glm::quat(euler);
-
-				// 应用旋转增量
-				collider->predictedRotation = glm::normalize(rotationIncrement * currentRotation);
-			}
-			else
-			{
-				// 没有角速度时保持当前旋转
-				glm::vec3 euler = glm::vec3(
-					glm::radians(collider->transform->rotation[0]),
-					glm::radians(collider->transform->rotation[1]),
-					glm::radians(collider->transform->rotation[2])
-				);
-				collider->predictedRotation = glm::quat(euler);
-			}
+			collider->predictedPosition = collider->transform->position + dt * collider->rigidbody->velocity;
 
 			collider->isDirty = true;
 		}
@@ -178,20 +145,10 @@ void Physics::IntegrateVelocity(float dt)
 		if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
 		{
 			// 不再重新计算速度，直接使用碰撞响应中已修正的速度
-			collider->rigidbody->velocity = glm::vec3(
-				(collider->predictedPosition.x - collider->transform->position[0]) / dt,
-				(collider->predictedPosition.y - collider->transform->position[1]) / dt,
-				(collider->predictedPosition.z - collider->transform->position[2]) / dt
-			);
-			collider->transform->position[0] = collider->predictedPosition.x;
-			collider->transform->position[1] = collider->predictedPosition.y;
-			collider->transform->position[2] = collider->predictedPosition.z;
+			collider->rigidbody->velocity = (collider->predictedPosition - collider->transform->position) / dt;
+			collider->transform->position = collider->predictedPosition;
 
-			// 更新旋转
-			glm::vec3 euler = glm::eulerAngles(collider->predictedRotation);
-			collider->transform->rotation[0] = glm::degrees(euler.x);
-			collider->transform->rotation[1] = glm::degrees(euler.y);
-			collider->transform->rotation[2] = glm::degrees(euler.z);
+			collider->transform->rotation = collider->predictedRotation;
 
 			collider->isDirty = false;
 			collider->transform->UpdateTransform();

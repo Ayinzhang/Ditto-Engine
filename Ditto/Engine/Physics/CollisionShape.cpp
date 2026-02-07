@@ -39,9 +39,8 @@ void Collider::UpdateWorldAABB()
 {
     // 使用预测的旋转，而不是transform的旋转
     glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), predictedPosition);
-    glm::mat4 rotationMat = glm::mat4_cast(predictedRotation);  // 使用预测的旋转
-    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f),
-        glm::vec3(transform->scale[0], transform->scale[1], transform->scale[2]));
+    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(predictedRotation));  // 使用预测的旋转
+    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), transform->scale);
 
     glm::mat4 transformMat = translationMat * rotationMat * scaleMat;
 
@@ -123,8 +122,7 @@ BVHNode* BVHTree::BuildTopDown(std::vector<Collider*> colliders, int start, int 
     int axis = (size.x > size.y && size.x > size.z) ? 0 : (size.y > size.z) ? 1 : 2;
 
     std::sort(colliders.begin() + start, colliders.begin() + end, [axis](Collider* a, Collider* b) {
-        return a->aabb.GetCenter()[axis] < b->aabb.GetCenter()[axis];
-        });
+        return a->aabb.GetCenter()[axis] < b->aabb.GetCenter()[axis];});
 
     int mid = start + count / 2;
     return new BVHNode(BuildTopDown(colliders, start, mid), BuildTopDown(colliders, mid, end));

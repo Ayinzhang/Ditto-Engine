@@ -148,28 +148,16 @@ void GameObject::Deserialize(std::ifstream& file)
 TransformComponent::TransformComponent()
 {
     index = 1 << 0;
-    position[0] = position[1] = position[2] = 0;
-    rotation[0] = rotation[1] = rotation[2] = 0;
-    scale[0] = scale[1] = scale[2] = 1;
-
-	lastPosition[0] = lastPosition[1] = lastPosition[2] = 0;
-	lastRotation[0] = lastRotation[1] = lastRotation[2] = 0;
-	lastScale[0] = lastScale[1] = lastScale[2] = 1;
+	position = rotation = glm::vec3(0.0f); scale = glm::vec3(1.0f);
+	lastPosition = position; lastRotation = rotation; lastScale = scale;
 	UpdateTransform();
 }
 
 TransformComponent::TransformComponent(TransformComponent* other)
 {
     index = 1 << 0;
-    for (int i = 0; i < 3; i++)
-    {
-        position[i] = other->position[i];
-        rotation[i] = other->rotation[i];
-        scale[i] = other->scale[i];
-        lastPosition[i] = other->lastPosition[i];
-        lastRotation[i] = other->lastRotation[i];
-        lastScale[i] = other->lastScale[i];
-    }
+	position = other->position; rotation = other->rotation; scale = other->scale;
+	lastPosition = other->lastPosition; lastRotation = other->lastRotation; lastScale = other->lastScale;
 	UpdateTransform();
 }
 
@@ -183,21 +171,18 @@ void TransformComponent::OnInspectorGUI()
 
     ImGui::Indent(20.0f);
     ImGui::Text("Position"); ImGui::SameLine();
-    ImGui::DragFloat3("##Position", position, 0.1f);
+    ImGui::DragFloat3("##Position", &position.x, 0.1f);
     ImGui::Text("Rotation"); ImGui::SameLine();
-    ImGui::DragFloat3("##Rotation", rotation, 0.1f);
+    ImGui::DragFloat3("##Rotation", &rotation.x, 0.1f);
     ImGui::Text("Scale   "); ImGui::SameLine();
-    ImGui::DragFloat3("##Scale", scale, 0.1f);
+    ImGui::DragFloat3("##Scale", &scale.x, 0.1f);
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
 
 	bool changed = false;
-    for (int i = 0; i < 3; i++)
-    {
-        changed |= (lastPosition[i] != position[i]) || (lastRotation[i] != rotation[i]) || (lastScale[i] != scale[i]);
-		lastPosition[i] = position[i]; lastRotation[i] = rotation[i]; lastScale[i] = scale[i];
-    }
+	changed = position != lastPosition || rotation != lastRotation || scale != lastScale;
+	lastPosition = position; lastRotation = rotation; lastScale = scale;
     if (changed) UpdateTransform();
 }
 
@@ -220,16 +205,16 @@ void TransformComponent::UpdateTransform()
 
 void TransformComponent::Serialize(std::ofstream& file) const
 {
-    file.write(reinterpret_cast<const char*>(position), sizeof(float) * 3);
-    file.write(reinterpret_cast<const char*>(rotation), sizeof(float) * 3);
-    file.write(reinterpret_cast<const char*>(scale), sizeof(float) * 3);
+    file.write(reinterpret_cast<const char*>(&position), sizeof(glm::vec3));
+    file.write(reinterpret_cast<const char*>(&rotation), sizeof(glm::vec3));
+    file.write(reinterpret_cast<const char*>(&scale), sizeof(glm::vec3));
 }
 
 void TransformComponent::Deserialize(std::ifstream& file)
 {
-    file.read(reinterpret_cast<char*>(position), sizeof(float) * 3);
-    file.read(reinterpret_cast<char*>(rotation), sizeof(float) * 3);
-    file.read(reinterpret_cast<char*>(scale), sizeof(float) * 3);
+    file.read(reinterpret_cast<char*>(&position), sizeof(glm::vec3));
+    file.read(reinterpret_cast<char*>(&rotation), sizeof(glm::vec3));
+    file.read(reinterpret_cast<char*>(&scale), sizeof(glm::vec3));
 
     for (int i = 0; i < 3; i++) { lastPosition[i] = position[i]; lastRotation[i] = rotation[i]; lastScale[i] = scale[i]; }
 
@@ -238,12 +223,12 @@ void TransformComponent::Deserialize(std::ifstream& file)
 
 LightComponent::LightComponent()
 {
-    index = 1 << 1; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; intensity = 1.0f;
+    index = 1 << 1; color = glm::vec3(1); intensity = 1.0f;
 }
 
 LightComponent::LightComponent(LightComponent* other)
 {
-    index = 1 << 1; for (int i = 0; i < 3; i++) color[i] = other->color[i]; intensity = other->intensity;
+    index = 1 << 1; color = other->color; intensity = other->intensity;
 }
 
 void LightComponent::OnInspectorGUI()
@@ -256,7 +241,7 @@ void LightComponent::OnInspectorGUI()
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
     ImGui::Text("Color    "); ImGui::SameLine();
-    ImGui::ColorEdit3("##Color", color);
+    ImGui::ColorEdit3("##Color", &color.x);
     ImGui::Text("Intensity"); ImGui::SameLine();
     ImGui::DragFloat("##Intensity", &intensity, 0.1f, 0.0f, 100.0f);
     ImGui::Unindent(20.0f);
@@ -265,24 +250,24 @@ void LightComponent::OnInspectorGUI()
 
 void LightComponent::Serialize(std::ofstream& file) const
 {
-    file.write(reinterpret_cast<const char*>(color), sizeof(float) * 3);
+    file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec3));
     file.write(reinterpret_cast<const char*>(&intensity), sizeof(intensity));
 }
 
 void LightComponent::Deserialize(std::ifstream& file)
 {
-    file.read(reinterpret_cast<char*>(color), sizeof(float) * 3);
+    file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec3));
     file.read(reinterpret_cast<char*>(&intensity), sizeof(intensity));
 }
 
 RendererComponent::RendererComponent(Type _type) 
 {
-    index = 1 << 2; type = _type; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; color[3] = 1.0f;
+	index = 1 << 2; type = _type; color = glm::vec4(1.0f);
 }
 
 RendererComponent::RendererComponent(RendererComponent* other)
 {
-    index = 1 << 2; type = other->type; for (int i = 0; i < 4; i++) color[i] = other->color[i];
+	index = 1 << 2; type = other->type; color = other->color;
 }
 
 void RendererComponent::OnInspectorGUI()
@@ -304,7 +289,7 @@ void RendererComponent::OnInspectorGUI()
         type = static_cast<Type>(currentType);
     }
     ImGui::Text("Color"); ImGui::SameLine();
-    ImGui::ColorEdit4("##Color", color, ImGuiColorEditFlags_AlphaBar);
+    ImGui::ColorEdit4("##Color", &color.x, ImGuiColorEditFlags_AlphaBar);
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
@@ -314,7 +299,7 @@ void RendererComponent::Serialize(std::ofstream& file) const
 {
     int32_t typeInt = static_cast<int32_t>(type);
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
-    file.write(reinterpret_cast<const char*>(color), sizeof(float) * 4);
+    file.write(reinterpret_cast<const char*>(&color.x), sizeof(glm::vec4));
 }
 
 void RendererComponent::Deserialize(std::ifstream& file)
@@ -322,7 +307,7 @@ void RendererComponent::Deserialize(std::ifstream& file)
     int32_t typeInt = 0;
     file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
     type = static_cast<Type>(typeInt);
-    file.read(reinterpret_cast<char*>(color), sizeof(float) * 4);
+    file.read(reinterpret_cast<char*>(&color.x), sizeof(glm::vec4));
 }
 
 RigidbodyComponent::RigidbodyComponent()
@@ -369,14 +354,19 @@ void RigidbodyComponent::OnInspectorGUI()
         ImGui::DragFloat("##AngularDamp", &angularDamp, 0.1f, 0.0f, 1.0f);
 
         ImGui::Text("Velocity "); ImGui::SameLine();
-        ImGui::Text("X: %.3f", velocity.x); ImGui::SameLine();
-        ImGui::Text("Y: %.3f", velocity.y); ImGui::SameLine();
-        ImGui::Text("Z: %.3f", velocity.z);
+        ImGui::DragFloat3("##Velocity", &velocity.x, 0.1f);
 
         ImGui::Text("AVelocity"); ImGui::SameLine();
-        ImGui::Text("X: %.3f", angularVelocity.x); ImGui::SameLine();
-        ImGui::Text("Y: %.3f", angularVelocity.y); ImGui::SameLine();
-        ImGui::Text("Z: %.3f", angularVelocity.z);
+        ImGui::DragFloat3("##AVelocity", &angularVelocity.x, 0.1f);
+        //ImGui::Text("Velocity "); ImGui::SameLine();
+        //ImGui::Text("X: %.3f", velocity.x); ImGui::SameLine();
+        //ImGui::Text("Y: %.3f", velocity.y); ImGui::SameLine();
+        //ImGui::Text("Z: %.3f", velocity.z);
+
+        //ImGui::Text("AVelocity"); ImGui::SameLine();
+        //ImGui::Text("X: %.3f", angularVelocity.x); ImGui::SameLine();
+        //ImGui::Text("Y: %.3f", angularVelocity.y); ImGui::SameLine();
+        //ImGui::Text("Z: %.3f", angularVelocity.z);
     }
 
     ImGui::Unindent(20.0f);

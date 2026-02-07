@@ -63,8 +63,7 @@ struct GameObject
 
 struct TransformComponent : Component 
 {
-    float position[3], rotation[3], scale[3];
-	glm::vec3 forward; glm::mat4 model;
+    glm::vec3 position, rotation, scale, forward; glm::mat4 model;
 
     TransformComponent();
     TransformComponent(TransformComponent* other);
@@ -74,12 +73,12 @@ struct TransformComponent : Component
     void Serialize(std::ofstream& file) const override;
     void Deserialize(std::ifstream& file) override;
 private:
-	float lastPosition[3], lastRotation[3], lastScale[3];
+    glm::vec3 lastPosition, lastRotation, lastScale;
 };
 
 struct LightComponent : Component 
 {
-    float color[3]; float intensity;
+    glm::vec3 color; float intensity;
     LightComponent();
 	LightComponent(LightComponent* other);
     void OnInspectorGUI() override;
@@ -89,7 +88,7 @@ struct LightComponent : Component
 
 struct RendererComponent : Component 
 {
-    enum Type { Cube, Sphere, Plane }; Type type; float color[4];
+    enum Type { Cube, Sphere, Plane }; Type type; glm::vec4 color;
     RendererComponent(Type _type = Cube);
 	RendererComponent(RendererComponent* other);
     void OnInspectorGUI() override;
