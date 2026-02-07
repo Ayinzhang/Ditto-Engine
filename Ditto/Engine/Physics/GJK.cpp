@@ -145,7 +145,7 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
             CollisionInfo res;
             res.flag = true;
             res.normal = f.normal;
-            res.depth = 1 - d;
+            res.depth = d;
             // 简化接触点：使用面中心投影回物体空间
             res.contactPointA = (f.a + f.b + f.c) / 3.0f;
             return res;

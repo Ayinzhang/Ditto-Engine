@@ -28,6 +28,8 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 					break;
 			}
 			collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
+			collider->predictedPosition = glm::vec3(transform->position[0], transform->position[1], transform->position[2]);
+			collider->predictedRotation = glm::quat(glm::vec3(glm::radians(transform->rotation[0]),glm::radians(transform->rotation[1]),glm::radians(transform->rotation[2])));
 			collider->UpdateWorldAABB(); colliders.push_back(collider);
 		}
 	}
@@ -155,8 +157,8 @@ void Physics::HandleNarrowCollisions()
 				glm::vec3 oldPosA = colliderA->predictedPosition;
 				glm::vec3 oldPosB = colliderB->predictedPosition;
 
-				colliderA->predictedPosition += correction * invMassA;
-				colliderB->predictedPosition -= correction * invMassB;
+				colliderA->predictedPosition -= correction * invMassA;
+				colliderB->predictedPosition += correction * invMassB;
 
 				std::cout << "位置修正 - A移动: " << (correction * invMassA).x << " " << (correction * invMassA).y << " " << (correction * invMassA).z
 					<< ", B移动: " << glm::length(correction * invMassB) << std::endl;
