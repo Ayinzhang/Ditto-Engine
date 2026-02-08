@@ -63,12 +63,11 @@ void Physics::UpdatePhysics(float dt)
 
     for (int step = 0; step < steps; ++step)
     {
-        // 多次迭代提高稳定性
-        for (int iter = 0; iter < iterations; ++iter)
-        {
-            // 1. 积分力（更新速度和角速度）
-            IntegrateForce(deltaTime);
+        // 1. 积分力（更新速度和角速度）
+        IntegrateForce(deltaTime);
 
+        for (int iter = 0; iter < iterations; iter++)
+        {
             // 2. 更新BVH树
             if (bvhTree) bvhTree->UpdateBVHTree();
 
@@ -179,32 +178,35 @@ void Physics::HandleNarrowCollisions()
         {
             // 轻微的位置修正，防止持续穿透
             // 注意：这是辅助修正，不是主要的碰撞响应机制
-            if (collisionInfo.depth > 0.01f)
-            {
-                float invMassA = (colliderA->rigidbody->type == RigidbodyComponent::Dynamic) ?
-                    1.0f / colliderA->rigidbody->mass : 0.0f;
-                float invMassB = (colliderB->rigidbody->type == RigidbodyComponent::Dynamic) ?
-                    1.0f / colliderB->rigidbody->mass : 0.0f;
-                float totalInvMass = invMassA + invMassB;
-            
-                if (totalInvMass > 0.0f)
-                {
-                    // 使用较小的修正因子，避免与冲量法冲突
-                    glm::vec3 correction = (collisionInfo.depth - 0.01f) / totalInvMass * collisionInfo.normal;
-            
-                    colliderA->transform->position -= correction * invMassA;
-                    colliderB->transform->position += correction * invMassB;
-            
-                    // 标记为需要更新AABB
-                    colliderA->isDirty = true;
-                    colliderB->isDirty = true;
-                }
-            }
+			PositionCorrection(colliderA, colliderB, collisionInfo);
 
             // 应用冲量（更新速度和角速度）
             ApplyImpulse(colliderA, colliderB, collisionInfo);
-			std::cout << "depth: " << collisionInfo.depth << " vel " << colliderA->rigidbody->velocity.y << 
-                " nor "<< collisionInfo.normal.y << " b "<< (colliderA->transform->position.y> colliderB->transform->position.y)<< std::endl;
+        }
+    }
+}
+
+void Physics::PositionCorrection(Collider* a, Collider* b, CollisionInfo& info)
+{
+    if (info.depth > 0.001f)
+    {
+        float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ?
+            1.0f / a->rigidbody->mass : 0.0f;
+        float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ?
+            1.0f / b->rigidbody->mass : 0.0f;
+        float totalInvMass = invMassA + invMassB;
+
+        if (totalInvMass > 0.0f)
+        {
+            // 使用较小的修正因子，避免与冲量法冲突
+            glm::vec3 correction = (info.depth - 0.001f) / totalInvMass * info.normal;
+
+            a->transform->position -= correction * invMassA;
+            b->transform->position += correction * invMassB;
+
+            // 标记为需要更新AABB
+            a->isDirty = true;
+            b->isDirty = true;
         }
     }
 }

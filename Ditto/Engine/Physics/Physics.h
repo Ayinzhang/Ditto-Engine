@@ -13,7 +13,7 @@ struct Physics
 	Engine* engine; BVHTree* bvhTree;
 	std::vector<Collider*> colliders;
 	std::vector<std::pair<Collider*, Collider*>> colliderPairs;
-	float t = 0, deltaTime = 1.0f / 60; int iterations = 4;
+	float t = 0, deltaTime = 1.0f / 60; int iterations = 8;
 
 	void GenerateColliders(const std::vector<GameObject*>& gameobjects);
 	void UpdatePhysics(float dt);
@@ -21,5 +21,6 @@ struct Physics
 	void HandleBroadCollisions();
 	void HandleNarrowCollisions();
 
+	void PositionCorrection(Collider* a, Collider* b, CollisionInfo& info);
 	void ApplyImpulse(Collider* a, Collider* b, CollisionInfo& info);
 };

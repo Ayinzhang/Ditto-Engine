@@ -18,7 +18,8 @@ struct Engine
     Resource* resource;
     Scene* scene;
     Editor* editor;
-	float deltaTime, lastTime, curTime;
+    int physicsCnt;
+	float deltaTime, lastTime, curTime, physicsTime;
     Camera* camera;
     bool enableMouse;
     float keySpeed, mouseSpeed;

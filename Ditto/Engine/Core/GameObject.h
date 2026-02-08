@@ -88,7 +88,7 @@ struct LightComponent : Component
 
 struct RendererComponent : Component 
 {
-    enum Type { Cube, Sphere, Plane }; Type type; glm::vec4 color;
+    enum Type { Cube, Sphere }; Type type; glm::vec4 color;
     RendererComponent(Type _type = Cube);
 	RendererComponent(RendererComponent* other);
     void OnInspectorGUI() override;
@@ -99,11 +99,12 @@ struct RendererComponent : Component
 struct RigidbodyComponent : Component 
 {
     enum Type { Static, Dynamic}; Type type; float mass; bool useGravity;
-	glm::vec3 velocity, angularVelocity; float damp, angularDamp;
+    float damp, angularDamp; glm::vec3 velocity, angularVelocity; glm::mat3 inertia, inverseInertia;
 
     RigidbodyComponent();
 	RigidbodyComponent(RigidbodyComponent* other);
     void OnInspectorGUI() override;
+    void CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale);
     void Serialize(std::ofstream& file) const override;
     void Deserialize(std::ifstream& file) override;
 };

@@ -21,7 +21,6 @@ Scene::Scene()
 
     geometryBatches[RendererComponent::Cube] = new GeometryInstances(RendererComponent::Cube);
     geometryBatches[RendererComponent::Sphere] = new GeometryInstances(RendererComponent::Sphere);
-    geometryBatches[RendererComponent::Plane] = new GeometryInstances(RendererComponent::Plane);
 }
 
 Scene::~Scene()

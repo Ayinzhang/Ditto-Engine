@@ -158,15 +158,21 @@ void Editor::DrawScene()
     ImGui::Begin("Scene");
     ImGui::Text("Scene View");
 
-    frame++; deltaTime += engine->deltaTime;
-    if (deltaTime > 1) { fps = frame / deltaTime; frame = deltaTime = 0; }
+    frame++; deltaTime += engine->deltaTime; 
+    if (deltaTime > 1) { fps = frame / deltaTime; ppf = 1e3 * engine->physicsTime / engine->physicsCnt; 
+    frame = deltaTime = engine->physicsCnt = engine->physicsTime = 0;  }
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
 
     ImGui::GetForegroundDrawList()->AddText(
-        ImVec2(windowPos.x + windowSize.x - 40, windowPos.y + 20),
-        IM_COL32(0, 255, 0, 255), std::to_string((int)fps).c_str()
+        ImVec2(windowPos.x + windowSize.x - 80, windowPos.y + 20),
+        IM_COL32(0, 255, 0, 255), ("FPS: " + std::to_string((int)fps)).c_str()
     );
+    if (engine->state == Engine::Play) 
+        ImGui::GetForegroundDrawList()->AddText(
+            ImVec2(windowPos.x + windowSize.x - 80, windowPos.y + 40),
+            IM_COL32(0, 255, 0, 255), ("PPF: " + std::to_string((int)ppf)).c_str()
+        );
     ImGui::End();
 }
 
@@ -232,6 +238,7 @@ void Editor::DrawPopups()
 
     if (ImGui::BeginPopupModal("Load Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
+		selectedObject = nullptr;
         ImGui::Text("Path"); ImGui::SameLine();
         static char loadPathBuffer[256] = "Assets/Scenes/scene.bin";
         ImGui::InputText("##Path", loadPathBuffer, sizeof(loadPathBuffer));

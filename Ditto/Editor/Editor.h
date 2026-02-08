@@ -11,7 +11,7 @@ struct Editor
     GameObject* selectedObject = nullptr;
     char sceneNameBuffer[16] = "Default";
     bool showHierarchy, showScene, showInspector, showSavePopup, showLoadPopup;
-    int frame; float fps, deltaTime;
+    int frame; float fps, ppf, deltaTime;
     Editor(void* window);
     ~Editor();
     void Draw();

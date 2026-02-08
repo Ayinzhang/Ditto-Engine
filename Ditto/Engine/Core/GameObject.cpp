@@ -313,13 +313,13 @@ void RendererComponent::Deserialize(std::ifstream& file)
 RigidbodyComponent::RigidbodyComponent()
 {
     index = 1 << 3; type = Dynamic; mass = 1.0f; useGravity = true; 
-	velocity = angularVelocity = glm::vec3(0); damp = angularDamp = 0.05f;
+    damp = angularDamp = 0.05f; velocity = angularVelocity = glm::vec3(0); 
 }
 
 RigidbodyComponent::RigidbodyComponent(RigidbodyComponent* other)
 {
     index = 1 << 3; type = other->type; mass = other->mass; useGravity = other->useGravity;
-    velocity = angularVelocity = glm::vec3(0); damp = angularDamp = 0.05f;
+	damp = angularDamp = 0.05f; velocity = angularVelocity = glm::vec3(0); 
 }
 
 void RigidbodyComponent::OnInspectorGUI()
@@ -372,6 +372,52 @@ void RigidbodyComponent::OnInspectorGUI()
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
+}
+
+
+void RigidbodyComponent::CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale)
+{
+    // 重置为单位矩阵
+    inertia = glm::mat3(0.0f);
+
+    switch (shapeType)
+    {
+    case RendererComponent::Cube:
+    {
+        // 立方体绕质心的转动惯量张量 (局部坐标轴对齐)
+        // Ixx = (1/12) * m * (h^2 + d^2)
+        // Iyy = (1/12) * m * (w^2 + d^2)
+        // Izz = (1/12) * m * (w^2 + h^2)
+        float w = scale.x;
+        float h = scale.y;
+        float d = scale.z;
+
+        float Ixx = (1.0f / 12.0f) * mass * (h * h + d * d);
+        float Iyy = (1.0f / 12.0f) * mass * (w * w + d * d);
+        float Izz = (1.0f / 12.0f) * mass * (w * w + h * h);
+
+        inertia[0][0] = Ixx;
+        inertia[1][1] = Iyy;
+        inertia[2][2] = Izz;
+        break;
+    }
+
+    case RendererComponent::Sphere:
+    {
+        // 球体绕质心的转动惯量张量 (所有轴相同)
+        // I = (2/5) * m * r^2
+        float r = glm::max(scale.x, glm::max(scale.y, scale.z)) * 0.5f;
+        float I = (2.0f / 5.0f) * mass * r * r;
+
+        inertia[0][0] = I;
+        inertia[1][1] = I;
+        inertia[2][2] = I;
+        break;
+    }
+    }
+
+    // 计算逆矩阵
+    inverseInertia = glm::inverse(inertia);
 }
 
 void RigidbodyComponent::Serialize(std::ofstream& file) const

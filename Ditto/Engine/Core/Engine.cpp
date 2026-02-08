@@ -58,9 +58,8 @@ void Engine::Run()
     {
         curTime = glfwGetTime(); deltaTime = curTime - lastTime; lastTime = curTime;
 
-        ProcessInput();
-        if(state == Play) physics->UpdatePhysics(deltaTime);
-        glfwPollEvents();
+        if (state == Play) { curTime = glfwGetTime(); physics->UpdatePhysics(deltaTime); physicsCnt++; physicsTime += glfwGetTime() - curTime; }
+        ProcessInput(); glfwPollEvents();
 
         glfwGetFramebufferSize(window, &window_width, &window_height);
         glViewport(0, 0, window_width, window_height);
