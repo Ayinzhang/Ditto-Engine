@@ -331,6 +331,7 @@
     <ClInclude Include="Engine\Graphics\Shader.h" />
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
     <ClInclude Include="Engine\Physics\GJK.h" />
+    <ClInclude Include="Engine\Physics\ParallelPhysics.h" />
     <ClInclude Include="Engine\Physics\Physics.h" />
     <ClInclude Include="Engine\Resources\Resource.h" />
   </ItemGroup>
@@ -505,6 +506,7 @@
     <ClCompile Include="Engine\Main.cpp" />
     <ClCompile Include="Engine\Physics\CollisionShape.cpp" />
     <ClCompile Include="Engine\Physics\GJK.cpp" />
+    <ClCompile Include="Engine\Physics\ParallelPhysics.cpp" />
     <ClCompile Include="Engine\Physics\Physics.cpp" />
     <ClCompile Include="Engine\Resources\Resource.cpp" />
   </ItemGroup>
@@ -594,6 +596,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -612,6 +615,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

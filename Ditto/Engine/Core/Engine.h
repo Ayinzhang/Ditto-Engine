@@ -4,7 +4,7 @@
 #include "../../Editor/Editor.h"
 #include "../../Engine/Graphics/Shader.h"
 #include "../../Engine/Graphics/Camera.h"
-#include "../../Engine/Physics/Physics.h"
+#include "../../Engine/Physics/ParallelPhysics.h"
 #include "../../Engine/Resources/Resource.h"
 #include "../../3rdParty/GLFW/glfw3.h"
 #include "../../3rdParty/ImGui/imgui.h"
@@ -25,7 +25,7 @@ struct Engine
     float keySpeed, mouseSpeed;
     double lastX, lastY;
     Shader* shader;
-	Physics* physics;
+    Physics* physics;
 
     Engine();
     ~Engine();

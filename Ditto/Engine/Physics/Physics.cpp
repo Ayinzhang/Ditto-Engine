@@ -63,19 +63,20 @@ void Physics::UpdatePhysics(float dt)
 
     for (int step = 0; step < steps; ++step)
     {
-        // 1. 积分力（更新速度和角速度）
-        IntegrateForce(deltaTime);
-
-        for (int iter = 0; iter < iterations; iter++)
+        for (int i = 0; i < 4; i++) 
         {
-            // 2. 更新BVH树
-            if (bvhTree) bvhTree->UpdateBVHTree();
+            // 1. 积分力（更新速度和角速度）
+            IntegrateForce(deltaTime / 4);
 
-            // 3. 处理宽相位碰撞检测
-            HandleBroadCollisions();
-
-            // 4. 处理窄相位碰撞检测和响应
-            HandleNarrowCollisions();
+            for (int iter = 0; iter < iterations; iter++)
+            {
+                // 2. 更新BVH树
+                if (bvhTree) bvhTree->UpdateBVHTree();
+                // 3. 处理宽相位碰撞检测
+                HandleBroadCollisions();
+                // 4. 处理窄相位碰撞检测和响应
+                HandleNarrowCollisions();
+            }
         }
     }
 
@@ -188,7 +189,7 @@ void Physics::HandleNarrowCollisions()
 
 void Physics::PositionCorrection(Collider* a, Collider* b, CollisionInfo& info)
 {
-    if (info.depth > 0.001f)
+    if (info.depth > 0)
     {
         float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ?
             1.0f / a->rigidbody->mass : 0.0f;
@@ -199,7 +200,7 @@ void Physics::PositionCorrection(Collider* a, Collider* b, CollisionInfo& info)
         if (totalInvMass > 0.0f)
         {
             // 使用较小的修正因子，避免与冲量法冲突
-            glm::vec3 correction = (info.depth - 0.001f) / totalInvMass * info.normal;
+            glm::vec3 correction = info.depth / totalInvMass * info.normal;
 
             a->transform->position -= correction * invMassA;
             b->transform->position += correction * invMassB;
@@ -229,8 +230,6 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, CollisionInfo& info)
     // 接触点相对于质心的向量
     glm::vec3 rA = info.contactPointA - a->transform->position;
     glm::vec3 rB = info.contactPointB - b->transform->position;
-
-    //if (glm::dot(info.normal, a->transform->position - b->transform->position) < 0.0f) 
 
     // 计算接触点处的相对速度（考虑线速度和角速度）
     glm::vec3 velA = a->rigidbody->velocity + glm::cross(a->rigidbody->angularVelocity, rA);

@@ -1,26 +1,4 @@
 ﻿  正在扫描源以查找模块依赖项...
-  Editor.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(12,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
-  (编译源文件“Editor/Editor.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
-      参见“Resource”的声明
-  
-E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
-  (编译源文件“Editor/Editor.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
-      参见“Shader”的声明
-  
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(17,23): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(107,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(153,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(154,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(162,83): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(163,66): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(163,44): warning C4244: “=”: 从“int”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(163,23): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(184,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(185,22): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(186,26): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
   Engine.cpp
 E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(12,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
   (编译源文件“Engine/Core/Engine.cpp”)
@@ -37,30 +15,6 @@ E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(61,51): warning C4244: “=�
 E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(61,133): warning C4244: “+=”: 从“double”转换到“float”，可能丢失数据
 E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(135,53): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
 E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(134,86): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
-  Scene.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(12,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
-  (编译源文件“Engine/Core/Scene.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
-      参见“Resource”的声明
-  
-E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
-  (编译源文件“Engine/Core/Scene.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
-      参见“Shader”的声明
-  
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(141,123): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(142,80): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
-  Main.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(12,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
-  (编译源文件“Engine/Main.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
-      参见“Resource”的声明
-  
-E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
-  (编译源文件“Engine/Main.cpp”)
-      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
-      参见“Shader”的声明
-  
   Physics.cpp
 E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(12,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
   (编译源文件“Engine/Physics/Physics.cpp”)
@@ -77,6 +31,6 @@ E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:  
 E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:         [
 E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:             genType=float
 E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:         ]
-E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(247,13): warning C4305: “初始化”: 从“double”到“float”截断
+E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(246,13): warning C4305: “初始化”: 从“double”到“float”截断
   正在生成代码...
   Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Debug\Ditto.exe
