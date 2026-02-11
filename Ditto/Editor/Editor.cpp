@@ -159,7 +159,7 @@ void Editor::DrawScene()
     ImGui::Text("Scene View");
 
     frame++; deltaTime += engine->deltaTime; 
-    if (deltaTime > 1) { fps = frame / deltaTime; ppf = 1e3 * engine->physicsTime / engine->physicsCnt; 
+    if (deltaTime > 1) { fps = frame / deltaTime; ppf = 1e6 * engine->physicsTime / engine->physicsCnt; 
     frame = deltaTime = engine->physicsCnt = engine->physicsTime = 0;  }
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();

@@ -1,209 +1,329 @@
 #include "ParallelPhysics.h"
-#include <omp.h>
+#include "../Core/Engine.h"
 #include <algorithm>
-#include <iostream>
+#include <set>
 
+// ============================================================================
+// 主物理更新循环（完全重写）
+// ============================================================================
 void ParallelPhysics::UpdatePhysics(float dt)
 {
-    // 累加时间
     t += dt;
     if (t < deltaTime) return;
 
-    // 防止死亡螺旋，限制最大步数
-    if (t > deltaTime * 10.0f) t = deltaTime;
+    int steps = glm::min(3.0f, t / deltaTime);
+    t = fmod(t, deltaTime);
 
-    // --- [核心优化：子步进 Sub-stepping] ---
-    // 对于 30 层堆叠，单纯增加 iterations 效率很低。
-    // 我们将 dt 切分成 4 份，每份执行更少的迭代。
-    // 这样不仅增加了力传播的速度，还让碰撞检测更频繁，大大减少穿透。
-
-    int numSubSteps = 4;            // 将一帧切分为 4 次物理计算
-    float subDt = deltaTime / numSubSteps;
-
-    // 总迭代次数 = numSubSteps * solverIterations
-    // 例如：4子步 * 4迭代 = 16次求解，比单次 16 迭代效果好得多，因为位置更新了 4 次
-    int solverIterations = 4;
-
-    // 消耗累积的时间
-    while (t >= deltaTime)
+    for (int step = 0; step < steps; ++step)
     {
-        for (int step = 0; step < numSubSteps; ++step)
-        {
-            // 1. 积分力 & 更新位置 (并行)
-            IntegrateForceParallel(subDt);
+        // ---------- 1. 清空上一帧数据 ----------
+        collisionData.clear();
+        colliderPairs.clear();
 
-            // 5. 窄阶段求解 (并行迭代)
-            for (int iter = 0; iter < solverIterations; iter++)
-            {
-                // 2. 更新 BVH (串行/并行)
-                // 每次子步位置都会变，必须更新 BVH 才能检测到新的接触
-                if (bvhTree) bvhTree->UpdateBVHTree();
+        // ---------- 2. 并行积分力 ----------
+        IntegrateForceParallel(deltaTime);
 
-                // 3. 宽阶段检测 (并行)
-                HandleBroadCollisionsParallel();
+        // ---------- 3. 并行BVH更新 ----------
+        if (bvhTree) ParallelUpdateBVHTree(bvhTree);
 
-                // 4. 构建约束分组 (串行 - 图着色)
-                // 注意：这一步移到了 Solver 循环外部！
-                // 接触图的拓扑结构在 Solver 迭代过程中是不变的。
-                BuildConstraintBatches();
+        // ---------- 4. 并行宽相位碰撞检测 ----------
+        HandleBroadCollisionsParallel();
 
-                SolveBatchesParallel();
-            }
-        }
+        // ---------- 5. 并行窄相位碰撞检测 ----------
+        HandleNarrowCollisionsParallel();
 
-        t -= deltaTime;
+        // ---------- 6. 无碰撞则跳过后续 ----------
+        if (collisionData.empty()) continue;
+
+        // ---------- 7. 按穿透深度排序（单次） + 图着色 ----------
+        std::sort(collisionData.begin(), collisionData.end(),
+            [](const CollisionData& a, const CollisionData& b) {
+                return a.info.depth > b.info.depth;
+            });
+        BuildColorGroups();
+
+        // ---------- 8. 多轮顺序冲量求解（并行） ----------
+        for (int iter = 0; iter < iterations; ++iter)
+            SolveCollisionsParallel(iter);
+
+        // ---------- 9. 并行位置修正 ----------
+        ApplyPositionCorrectionsParallel();
     }
 
-    // 最后同步 Transform (如果需要)
-    // IntegrateForceParallel 已经修改了 TransformComponent，这里通常不需要额外操作
-	for (auto iter : colliders) iter->transform->UpdateTransform();
+    // ---------- 10. 并行更新所有物体的变换矩阵 ----------
+#pragma omp parallel for num_threads(4) schedule(static)
+    for (int i = 0; i < (int)colliders.size(); ++i)
+        colliders[i]->transform->UpdateTransform();
 }
 
-// 积分力保持上一版修正后的逻辑 (记得更新 AABB)
+// ============================================================================
+// 并行积分力
+// ============================================================================
 void ParallelPhysics::IntegrateForceParallel(float dt)
 {
-    int count = (int)colliders.size();
-
-#pragma omp parallel for schedule(static)
-    for (int i = 0; i < count; ++i)
+#pragma omp parallel for num_threads(4) schedule(static)
+    for (int i = 0; i < (int)colliders.size(); ++i)
     {
         Collider* collider = colliders[i];
-        if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
-        {
-            TransformComponent* transform = collider->transform;
-            RigidbodyComponent* rb = collider->rigidbody;
+        if (collider->rigidbody->type != RigidbodyComponent::Dynamic)
+            continue;
 
-            // 简单的半隐式欧拉积分
-            if (rb->useGravity) rb->velocity.y += -9.8f * dt;
+        TransformComponent* transform = collider->transform;
+        RigidbodyComponent* rb = collider->rigidbody;
 
-            rb->velocity *= glm::max(0.0f, glm::pow(1.0f - rb->damp, dt));
-            rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - rb->angularDamp, dt));
+        if (rb->useGravity)
+            rb->velocity.y += -gravity * dt;
 
-            transform->position += rb->velocity * dt;
-            // 旋转积分建议使用四元数插值，这里简化处理
-            transform->rotation += rb->angularVelocity * dt;
+        rb->velocity *= glm::max(0.0f, glm::pow(1.0f - linearDamping, dt));
+        rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - angularDamping, dt));
 
-            collider->isDirty = true;
-            collider->UpdateWorldAABB(); // 必须更新！
-        }
+        transform->position += rb->velocity * dt;
+        transform->rotation += rb->angularVelocity * dt;
+
+        collider->isDirty = true;
     }
 }
 
-// 宽阶段保持上一版逻辑
-void ParallelPhysics::HandleBroadCollisionsParallel()
+// ============================================================================
+// 并行BVH更新（叶子并行 + 内部节点任务依赖）
+// ============================================================================
+void ParallelPhysics::ParallelUpdateBVHTree(BVHTree* tree)
 {
-    colliderPairs.clear();
-    if (!bvhTree) return;
-    int count = (int)colliders.size();
+    if (!tree || !tree->root) return;
 
-    // 线程局部存储
-    std::vector<std::vector<std::pair<Collider*, Collider*>>> threadPairs;
+    // 1. 并行更新所有叶子节点（每个collider独立）
+#pragma omp parallel for num_threads(4) schedule(dynamic)
+    for (int i = 0; i < (int)tree->leafNodes.size(); ++i)
+    {
+        BVHNode* leaf = tree->leafNodes[i];
+        Collider* col = leaf->data.leaf.collider;
+        if (col && col->isDirty)
+        {
+            col->UpdateWorldAABB();
+            leaf->aabb = col->aabb;
+        }
+    }
 
+    // 2. 使用OpenMP任务依赖递归更新内部节点
 #pragma omp parallel
     {
-        int threadId = omp_get_thread_num();
-        int numThreads = omp_get_num_threads();
 #pragma omp single
-        { threadPairs.resize(numThreads); }
+        {
+            ParallelUpdateNodeAABB(tree->root);
+        }
+    }
+}
 
-#pragma omp for schedule(dynamic, 32)
-        for (int i = 0; i < count; ++i)
+void ParallelPhysics::ParallelUpdateNodeAABB(BVHNode* node)
+{
+    if (node->isLeaf) return;
+
+    // 左子树任务（依赖当前节点左子指针）
+#pragma omp task depend(out: node->data.child.left)
+    ParallelUpdateNodeAABB(node->data.child.left);
+
+    // 右子树任务
+#pragma omp task depend(out: node->data.child.right)
+    ParallelUpdateNodeAABB(node->data.child.right);
+
+    // 当前节点更新任务（依赖左右子任务完成）
+#pragma omp task depend(in: node->data.child.left, node->data.child.right) \
+                     depend(out: node)
+    {
+        node->UpdateAABB();
+    }
+}
+
+// ============================================================================
+// 并行宽相位碰撞检测（线程本地存储 + 合并）
+// ============================================================================
+void ParallelPhysics::HandleBroadCollisionsParallel()
+{
+    const int numThreads = 4;
+    std::vector<std::vector<std::pair<Collider*, Collider*>>> localPairs(numThreads);
+
+#pragma omp parallel num_threads(numThreads)
+    {
+        int tid = omp_get_thread_num();
+        auto& myPairs = localPairs[tid];
+
+#pragma omp for schedule(dynamic)
+        for (int i = 0; i < (int)colliders.size(); ++i)
         {
             Collider* collider = colliders[i];
-            if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
+            if (collider->rigidbody->type != RigidbodyComponent::Dynamic)
+                continue;
+
+            std::vector<Collider*> potentials;
+            if (bvhTree) potentials = bvhTree->Query(collider->aabb);
+
+            for (Collider* other : potentials)
             {
-                std::vector<Collider*> potentialCollisions = bvhTree->Query(collider->aabb);
-                for (Collider* other : potentialCollisions)
-                {
-                    if (other == collider) continue;
-                    // 简单的单向检查
-                    if (collider < other)
+                if (other == collider) continue;
+
+                // 简单去重（每个线程的局部列表内去重）
+                bool duplicate = false;
+                for (auto& p : myPairs)
+                    if ((p.first == collider && p.second == other) ||
+                        (p.first == other && p.second == collider))
                     {
-                        threadPairs[threadId].push_back({ collider, other });
+                        duplicate = true;
+                        break;
                     }
-                }
+                if (!duplicate)
+                    myPairs.push_back({ collider, other });
             }
         }
     }
-    // 合并
-    for (const auto& local : threadPairs) {
-        colliderPairs.insert(colliderPairs.end(), local.begin(), local.end());
-    }
+
+    // 合并所有线程的局部列表到全局colliderPairs
+    colliderPairs.clear();
+    for (auto& vec : localPairs)
+        colliderPairs.insert(colliderPairs.end(), vec.begin(), vec.end());
 }
 
-// 构建批次 (针对 Stack 优化的 Static 处理)
-void ParallelPhysics::BuildConstraintBatches()
-{
-    for (auto& batch : constraintBatches) batch.clear();
-    if (constraintBatches.size() < 20) constraintBatches.resize(20);
-
-    // 索引映射
-    colliderIndexMap.clear();
-    for (int i = 0; i < colliders.size(); ++i) colliderIndexMap[colliders[i]] = i;
-
-    // 追踪依赖
-    std::vector<int> bodyLastBatchIndex(colliders.size(), -1);
-
-    for (const auto& pair : colliderPairs)
-    {
-        Collider* a = pair.first;
-        Collider* b = pair.second;
-
-        int idxA = colliderIndexMap[a];
-        int idxB = colliderIndexMap[b];
-
-        // 关键：Static 物体不产生依赖
-        // 地板是 Static，所有接触地板的箱子都可以放在 Batch 0 并行处理
-        int batchIdxA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? bodyLastBatchIndex[idxA] : -1;
-        int batchIdxB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ? bodyLastBatchIndex[idxB] : -1;
-
-        int targetBatch = std::max(batchIdxA, batchIdxB) + 1;
-
-        if (targetBatch >= constraintBatches.size()) {
-            constraintBatches.resize(targetBatch + 5);
-        }
-
-        constraintBatches[targetBatch].push_back(pair);
-
-        if (a->rigidbody->type == RigidbodyComponent::Dynamic) bodyLastBatchIndex[idxA] = targetBatch;
-        if (b->rigidbody->type == RigidbodyComponent::Dynamic) bodyLastBatchIndex[idxB] = targetBatch;
-    }
-}
-
-// 纯粹的求解过程
-void ParallelPhysics::SolveBatchesParallel()
-{
-    // 按颜色批次顺序执行
-    for (const auto& batch : constraintBatches)
-    {
-        if (batch.empty()) continue;
-
-        // 批次内部并行：这是无锁的，因为 Graph Coloring 保证了数据独立
-#pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < batch.size(); ++i)
-        {
-            Collider* colliderA = batch[i].first;
-            Collider* colliderB = batch[i].second;
-
-            // 每次 Solver 迭代都重新检测碰撞有点浪费，
-            // 理想情况是把 ContactInfo 缓存下来只做 Solve。
-            // 但为了兼容你的现有架构，我们这里还是做全套 GJK+Solve。
-            // 由于并行化，这比串行还是快。
-            CollisionInfo collisionInfo = GJK_CheckCollision(colliderA, colliderB);
-
-            if (collisionInfo.flag && collisionInfo.depth > 0.001f)
-            {
-                // 并行写入 Velocity 和 Position，无竞争
-                PositionCorrection(colliderA, colliderB, collisionInfo);
-                ApplyImpulse(colliderA, colliderB, collisionInfo);
-            }
-        }
-        // 隐式 Barrier：等待该 Batch 完成，力传播一层
-    }
-}
-
-// HandleNarrowCollisionsParallel 不再需要了，或者只是简单包裹一下
+// ============================================================================
+// 并行窄相位GJK检测（线程本地存储 + 合并）
+// ============================================================================
 void ParallelPhysics::HandleNarrowCollisionsParallel()
 {
-    // 留空或删除，因为逻辑已经移到 UpdatePhysics 的主循环里了
+    const int numThreads = 4;
+    std::vector<std::vector<CollisionData>> localCollisionData(numThreads);
+
+    int totalPairs = (int)colliderPairs.size();
+
+#pragma omp parallel num_threads(numThreads)
+    {
+        int tid = omp_get_thread_num();
+        auto& myData = localCollisionData[tid];
+
+#pragma omp for schedule(dynamic)
+        for (int i = 0; i < totalPairs; ++i)
+        {
+            auto& pair = colliderPairs[i];
+            CollisionInfo info = GJK_CheckCollision(pair.first, pair.second);
+            if (info.flag && info.depth > 1e-3f)
+            {
+                myData.emplace_back(pair.first, pair.second, info);
+            }
+        }
+    }
+
+    // 合并到全局collisionData
+    collisionData.clear();
+    for (auto& vec : localCollisionData)
+        collisionData.insert(collisionData.end(), vec.begin(), vec.end());
+}
+
+// ============================================================================
+// 冲突判断：两个碰撞数据是否共享任意一个刚体
+// ============================================================================
+bool ParallelPhysics::HasConflict(const CollisionData& a, const CollisionData& b) const
+{
+    return a.colliderA == b.colliderA ||
+        a.colliderA == b.colliderB ||
+        a.colliderB == b.colliderA ||
+        a.colliderB == b.colliderB;
+}
+
+// ============================================================================
+// 构建冲突图 + 贪心着色（生成颜色分组）
+// ============================================================================
+void ParallelPhysics::BuildColorGroups()
+{
+    int n = (int)collisionData.size();
+    if (n == 0) return;
+
+    std::vector<int> colors(n, -1);
+
+    // 贪心序着色（按碰撞数据当前顺序）
+    for (int i = 0; i < n; ++i)
+    {
+        std::set<int> neighborColors;
+        for (int j = 0; j < i; ++j)
+        {
+            if (colors[j] != -1 && HasConflict(collisionData[i], collisionData[j]))
+                neighborColors.insert(colors[j]);
+        }
+
+        int color = 0;
+        while (neighborColors.find(color) != neighborColors.end())
+            ++color;
+        colors[i] = color;
+    }
+
+    // 确定最大颜色数并重组为颜色组
+    int maxColor = 0;
+    for (int c : colors) if (c > maxColor) maxColor = c;
+
+    colorGroups.clear();
+    colorGroups.resize(maxColor + 1);
+    for (int i = 0; i < n; ++i)
+        colorGroups[colors[i]].push_back(i);
+}
+
+// ============================================================================
+// 并行冲量求解（单次迭代）
+// ============================================================================
+void ParallelPhysics::SolveCollisionsParallel(int iter)
+{
+    // 顺序处理每个颜色组（组间串行）
+    for (const auto& group : colorGroups)
+    {
+        int groupSize = (int)group.size();
+
+        // 组内完全并行（无冲突）
+#pragma omp parallel for num_threads(4) schedule(static)
+        for (int i = 0; i < groupSize; ++i)
+        {
+            int idx = group[i];
+            CollisionData& data = collisionData[idx];
+
+            ApplyImpulse(
+                data.colliderA,
+                data.colliderB,
+                data.info.normal,
+                data.info.contactPointA,
+                data.info.contactPointB,
+                data.info.depth,
+                iter
+            );
+        }
+    }
+}
+
+// ============================================================================
+// 并行位置修正（复用颜色分组）
+// ============================================================================
+void ParallelPhysics::ApplyPositionCorrectionsParallel()
+{
+    if (colorGroups.empty()) return;
+
+    for (const auto& group : colorGroups)
+    {
+        int groupSize = (int)group.size();
+
+#pragma omp parallel for num_threads(4) schedule(static)
+        for (int i = 0; i < groupSize; ++i)
+        {
+            int idx = group[i];
+            CollisionData& data = collisionData[idx];
+            if (data.info.depth <= 1e-3f) continue;
+
+            Collider* a = data.colliderA;
+            Collider* b = data.colliderB;
+            const CollisionInfo& info = data.info;
+
+            float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
+            float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / b->rigidbody->mass : 0.0f;
+            float totalInvMass = invMassA + invMassB;
+            if (totalInvMass == 0.0f) continue;
+
+            glm::vec3 correction = info.depth / totalInvMass * info.normal * positionCorrectionFactor;
+            a->transform->position -= correction * invMassA;
+            b->transform->position += correction * invMassB;
+            a->isDirty = true;
+            b->isDirty = true;
+        }
+    }
 }

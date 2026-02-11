@@ -1,7 +1,7 @@
 #include "Engine.h"
 #include <iostream>
 #include <stdexcept>
-#include "../Physics/Physics.h"
+#include "../Physics/ParallelPhysics.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
@@ -36,7 +36,7 @@ Engine::Engine()
     camera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
     editor = new Editor(window); editor->engine = this;
-	physics = new ParallelPhysics(); physics->engine = this;
+	physics = new Physics(); physics->engine = this;
 
     scene->InitializeBaseGeometries(resource);
 }

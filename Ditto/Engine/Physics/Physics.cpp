@@ -2,13 +2,13 @@
 #include "../Core/Engine.h"
 #include <iostream>
 #include <algorithm>
+#include <set>
 
 void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 {
     for (auto collider : colliders) delete collider; colliders.clear();
     if (bvhTree) delete bvhTree;
 
-    // 为每个游戏对象生成碰撞体
     for (GameObject* obj : gameobjects)
     {
         TransformComponent* transform = obj->GetComponent<TransformComponent>();
@@ -21,7 +21,6 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
             collider->transform = transform;
             collider->rigidbody = rigidbody;
 
-            // 根据渲染器类型选择网格
             switch (renderer->type)
             {
             case RendererComponent::Cube:
@@ -31,30 +30,18 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
                 collider->mesh = engine->resource->sphereMesh;
                 break;
             default:
-                delete collider;
-                continue; // 跳过不支持的类型
+                continue;
             }
 
-            // 计算转动惯量张量（基于形状和缩放）
             rigidbody->CalculateInertia(renderer->type, transform->scale);
-
-            // 设置本地AABB
             collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
-
-            // 更新世界AABB
-            collider->UpdateWorldAABB();
-
-            // 添加到碰撞体列表
-            colliders.push_back(collider);
+            collider->UpdateWorldAABB(); colliders.push_back(collider);
         }
     }
 
     if (!colliders.empty()) bvhTree = new BVHTree(colliders);
 }
 
-// ============================================================================
-// 更新物理（主循环）
-// ============================================================================
 void Physics::UpdatePhysics(float dt)
 {
     t += dt; if (t < deltaTime) return;
@@ -63,29 +50,32 @@ void Physics::UpdatePhysics(float dt)
 
     for (int step = 0; step < steps; ++step)
     {
-        for (int i = 0; i < 4; i++) 
-        {
-            // 1. 积分力（更新速度和角速度）
-            IntegrateForce(deltaTime / 4);
+        // 1. 清除上一帧的碰撞数据
+        collisionData.clear(); colliderPairs.clear();
 
-            for (int iter = 0; iter < iterations; iter++)
-            {
-                // 2. 更新BVH树
-                if (bvhTree) bvhTree->UpdateBVHTree();
-                // 3. 处理宽相位碰撞检测
-                HandleBroadCollisions();
-                // 4. 处理窄相位碰撞检测和响应
-                HandleNarrowCollisions();
-            }
-        }
+        // 2. 积分力（更新速度和角速度）
+        IntegrateForce(deltaTime);
+
+        // 3. 更新BVH树
+        if (bvhTree) bvhTree->UpdateBVHTree();
+
+        // 4. 宽相位碰撞检测
+        HandleBroadCollisions();
+
+        // 5. 窄相位碰撞检测
+        HandleNarrowCollisions();
+
+        // 6. 多轮顺序冲量求解
+        for (int iter = 0; iter < iterations; ++iter)
+            SolveCollisions(iter);
+
+        // 7. 应用位置修正
+        ApplyPositionCorrections();
     }
 
-	for (auto iter : colliders) iter->transform->UpdateTransform();
+    for (auto collider : colliders) collider->transform->UpdateTransform();
 }
 
-// ============================================================================
-// 积分力（更新速度和角速度）
-// ============================================================================
 void Physics::IntegrateForce(float dt)
 {
     for (Collider* collider : colliders)
@@ -95,159 +85,95 @@ void Physics::IntegrateForce(float dt)
             TransformComponent* transform = collider->transform;
             RigidbodyComponent* rb = collider->rigidbody;
 
-            // 应用重力
-            if (rb->useGravity) rb->velocity.y += -9.8f * dt;
+            if (rb->useGravity) rb->velocity.y += -gravity * dt;
 
-            // 应用阻尼（指数衰减）
-            rb->velocity *= glm::max(0.0f, glm::pow(1.0f - rb->damp, dt));
-            rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - rb->angularDamp, dt));
-
-            // 计算预测位置（用于碰撞检测）
+            rb->velocity *= glm::max(0.0f, glm::pow(1.0f - linearDamping, dt));
+            rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - angularDamping, dt));
             transform->position += rb->velocity * dt;
-			transform->rotation += rb->angularVelocity * dt;
+            transform->rotation += rb->angularVelocity * dt;
 
-            // 标记为需要更新AABB
             collider->isDirty = true;
         }
     }
 }
 
-// ============================================================================
-// 宽相位碰撞检测
-// ============================================================================
 void Physics::HandleBroadCollisions()
 {
-    colliderPairs.clear();
-
-    // 为每个动态碰撞体查询潜在碰撞对
     for (Collider* collider : colliders)
     {
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
         {
-            // 使用BVH树查询可能碰撞的物体
             std::vector<Collider*> potentialCollisions;
-            if (bvhTree) {
-                potentialCollisions = bvhTree->Query(collider->aabb);
-            }
+            if (bvhTree) potentialCollisions = bvhTree->Query(collider->aabb);
 
-            // 过滤自身和重复碰撞对
             for (Collider* other : potentialCollisions)
             {
                 if (other == collider) continue;
 
-                // 避免重复添加碰撞对（A,B 和 B,A）
                 bool alreadyExists = false;
                 for (const auto& pair : colliderPairs)
-                {
-                    if ((pair.first == collider && pair.second == other) ||
-                        (pair.first == other && pair.second == collider))
+                    if ((pair.first == collider && pair.second == other) || (pair.first == other && pair.second == collider))
                     {
-                        alreadyExists = true;
-                        break;
+                        alreadyExists = true; break;
                     }
-                }
 
                 if (!alreadyExists)
-                {
-                    // 只检测动态-动态和动态-静态碰撞
-                    if (other->rigidbody->type == RigidbodyComponent::Dynamic ||
-                        other->rigidbody->type == RigidbodyComponent::Static)
-                    {
+                    if (other->rigidbody->type == RigidbodyComponent::Dynamic || other->rigidbody->type == RigidbodyComponent::Static)
                         colliderPairs.push_back({ collider, other });
-                    }
-                }
             }
         }
     }
 }
 
-// ============================================================================
-// 窄相位碰撞检测和响应（冲量法）
-// ============================================================================
 void Physics::HandleNarrowCollisions()
 {
-    // 遍历所有碰撞对
     for (auto& pair : colliderPairs)
     {
-        Collider* colliderA = pair.first;
-        Collider* colliderB = pair.second;
-
-        // 使用GJK-EPA进行精确碰撞检测
+        Collider* colliderA = pair.first, * colliderB = pair.second;
         CollisionInfo collisionInfo = GJK_CheckCollision(colliderA, colliderB);
 
-        if (collisionInfo.flag && collisionInfo.depth > 0.0f)
-        {
-            // 轻微的位置修正，防止持续穿透
-            // 注意：这是辅助修正，不是主要的碰撞响应机制
-			PositionCorrection(colliderA, colliderB, collisionInfo);
-
-            // 应用冲量（更新速度和角速度）
-            ApplyImpulse(colliderA, colliderB, collisionInfo);
-        }
+        if (collisionInfo.flag && collisionInfo.depth > 1e-3)
+            collisionData.push_back(CollisionData(colliderA, colliderB, collisionInfo));
     }
 }
 
-void Physics::PositionCorrection(Collider* a, Collider* b, CollisionInfo& info)
+void Physics::SolveCollisions(int iter)
 {
-    if (info.depth > 0)
-    {
-        float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ?
-            1.0f / a->rigidbody->mass : 0.0f;
-        float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ?
-            1.0f / b->rigidbody->mass : 0.0f;
-        float totalInvMass = invMassA + invMassB;
+     for (auto& data : collisionData) data.processed = false;
 
-        if (totalInvMass > 0.0f)
-        {
-            // 使用较小的修正因子，避免与冲量法冲突
-            glm::vec3 correction = info.depth / totalInvMass * info.normal;
+     std::sort(collisionData.begin(), collisionData.end(), 
+         [](const CollisionData& a, const CollisionData& b) { return a.info.depth > b.info.depth; });
 
-            a->transform->position -= correction * invMassA;
-            b->transform->position += correction * invMassB;
+     for (auto& data : collisionData)
+     {
+         if (data.processed) continue;
 
-            // 标记为需要更新AABB
-            a->isDirty = true;
-            b->isDirty = true;
-        }
-    }
+         ApplyImpulse(data.colliderA, data.colliderB, data.info.normal, data.info.contactPointA, data.info.contactPointB, data.info.depth, iter);
+
+         data.processed = true;
+     }
 }
 
-// ============================================================================
-// 应用冲量（核心碰撞响应函数）
-// ============================================================================
-void Physics::ApplyImpulse(Collider* a, Collider* b, CollisionInfo& info)
+void Physics::ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,
+    const glm::vec3& contactPointA, const glm::vec3& contactPointB,
+    float penetrationDepth, int iteration)
 {
-    // 计算质量倒数
-    float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ?
-        1.0f / a->rigidbody->mass : 0.0f;
-    float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ?
-        1.0f / b->rigidbody->mass : 0.0f;
+    float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
+    float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / b->rigidbody->mass : 0.0f;
 
-    // 获取世界坐标系下的逆惯量张量
-    glm::mat3 invInertiaA = CalculateWorldInverseInertia(a);
-    glm::mat3 invInertiaB = CalculateWorldInverseInertia(b);
 
-    // 接触点相对于质心的向量
-    glm::vec3 rA = info.contactPointA - a->transform->position;
-    glm::vec3 rB = info.contactPointB - b->transform->position;
+    glm::mat3 invInertiaA = CalculateWorldInverseInertia(a), invInertiaB = CalculateWorldInverseInertia(b);
+    glm::vec3 rA = contactPointA - a->transform->position, rB = contactPointB - b->transform->position;
 
-    // 计算接触点处的相对速度（考虑线速度和角速度）
     glm::vec3 velA = a->rigidbody->velocity + glm::cross(a->rigidbody->angularVelocity, rA);
     glm::vec3 velB = b->rigidbody->velocity + glm::cross(b->rigidbody->angularVelocity, rB);
     glm::vec3 relativeVel = velB - velA;
 
-    // 计算法线方向的速度分量
-    float normalVel = glm::dot(relativeVel, info.normal);
+    float normalVel = glm::dot(relativeVel, normal);
+    if (normalVel > 0.2f) return;
 
-    // 如果物体正在分离，不应用冲量
-    if (normalVel > 0.0f) return;
-
-    // 计算恢复系数（取两个物体的最小值）
-    float e = 0.8;
-
-    // 计算有效质量项
-    glm::vec3 crossA = glm::cross(rA, info.normal);
-    glm::vec3 crossB = glm::cross(rB, info.normal);
+    glm::vec3 crossA = glm::cross(rA, normal);
+    glm::vec3 crossB = glm::cross(rB, normal);
 
     glm::vec3 invInertiaCrossA = invInertiaA * crossA;
     glm::vec3 invInertiaCrossB = invInertiaB * crossB;
@@ -258,55 +184,42 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, CollisionInfo& info)
     float denominator = termA + termB;
     if (denominator == 0.0f) return;
 
-    // 计算法线冲量大小
-    float j = -(1.0f + e) * normalVel / denominator;
+    float biasFactor = 0.3f * (1.0f - float(iteration) / iterations);
+    float bias = biasFactor * penetrationDepth / deltaTime;
+    float j = -(1.0f + restitution) * normalVel + bias;
+    j = glm::max(0.0f, j / denominator);
 
-    // 确保冲量是正的（推动物体分开）
-    j = glm::max(j, 0.0f);
+    glm::vec3 impulse = j * normal;
 
-    // 法线冲量向量
-    glm::vec3 impulse = j * info.normal;
-
-    // === 应用线速度冲量 ===
     if (a->rigidbody->type == RigidbodyComponent::Dynamic)
     {
         a->rigidbody->velocity -= impulse * invMassA;
+        a->rigidbody->angularVelocity += invInertiaA * glm::cross(rA, impulse);
     }
 
     if (b->rigidbody->type == RigidbodyComponent::Dynamic)
     {
         b->rigidbody->velocity += impulse * invMassB;
-    }
-
-    // === 应用角速度冲量 ===
-    if (a->rigidbody->type == RigidbodyComponent::Dynamic)
-    {
-        glm::vec3 torque = glm::cross(rA, impulse);
-        a->rigidbody->angularVelocity += invInertiaA * torque;
-    }
-
-    if (b->rigidbody->type == RigidbodyComponent::Dynamic)
-    {
         glm::vec3 torque = glm::cross(rB, -impulse);
-        b->rigidbody->angularVelocity += invInertiaB * torque;
+        b->rigidbody->angularVelocity += invInertiaB * glm::cross(rB, -impulse);
     }
 
-    // === 摩擦处理 ===
-    // 计算切向方向
-    glm::vec3 tangent = relativeVel - info.normal * normalVel;
+    glm::vec3 tangent = relativeVel - normal * normalVel;
     float tangentLen = glm::length(tangent);
 
-    if (tangentLen > 0.001f)
+    if (tangentLen > 1e-3)
     {
         tangent = glm::normalize(tangent);
         float tangentVel = glm::dot(relativeVel, tangent);
 
-        // 计算切向有效质量
-        glm::vec3 invInertiaCrossAT = invInertiaA * glm::cross(rA, tangent);
-        glm::vec3 invInertiaCrossBT = invInertiaB * glm::cross(rB, tangent);
+        glm::vec3 crossAT = glm::cross(rA, tangent);
+        glm::vec3 crossBT = glm::cross(rB, tangent);
 
-        float termAT = invMassA + glm::dot(glm::cross(rA, tangent), invInertiaCrossAT);
-        float termBT = invMassB + glm::dot(glm::cross(rB, tangent), invInertiaCrossBT);
+        glm::vec3 invInertiaCrossAT = invInertiaA * crossAT;
+        glm::vec3 invInertiaCrossBT = invInertiaB * crossBT;
+
+        float termAT = invMassA + glm::dot(crossAT, invInertiaCrossAT);
+        float termBT = invMassB + glm::dot(crossBT, invInertiaCrossBT);
 
         float denominatorT = termAT + termBT;
 
@@ -314,36 +227,40 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, CollisionInfo& info)
         {
             float jt = -tangentVel / denominatorT;
 
-            // 库仑摩擦定律
-            float friction = 0.5f;
+            float friction = (fabs(tangentVel) < 0.01f) ? staticFriction : dynamicFriction;
             float maxFriction = friction * fabs(j);
             jt = glm::clamp(jt, -maxFriction, maxFriction);
 
             glm::vec3 tangentImpulse = jt * tangent;
-
-            // 应用摩擦冲量（线速度）
             if (a->rigidbody->type == RigidbodyComponent::Dynamic)
-            {
-                a->rigidbody->velocity += tangentImpulse * invMassA;
-            }
+                a->rigidbody->velocity -= tangentImpulse * invMassA;
 
             if (b->rigidbody->type == RigidbodyComponent::Dynamic)
-            {
-                b->rigidbody->velocity -= tangentImpulse * invMassB;
-            }
+                b->rigidbody->velocity += tangentImpulse * invMassB;
+        }
+    }
+}
 
-            // 应用摩擦冲量（角速度）
-            if (a->rigidbody->type == RigidbodyComponent::Dynamic)
-            {
-                glm::vec3 torqueFriction = glm::cross(rA, tangentImpulse);
-                a->rigidbody->angularVelocity += invInertiaA * torqueFriction;
-            }
+void Physics::ApplyPositionCorrections()
+{
+    for (auto& data : collisionData)
+    {
+        if (data.info.depth > 1e-3)
+        {
+            Collider* a = data.colliderA;
+            Collider* b = data.colliderB;
+            const CollisionInfo& info = data.info;
 
-            if (b->rigidbody->type == RigidbodyComponent::Dynamic)
-            {
-                glm::vec3 torqueFriction = glm::cross(rB, -tangentImpulse);
-                b->rigidbody->angularVelocity += invInertiaB * torqueFriction;
-            }
+            float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
+            float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / b->rigidbody->mass : 0.0f;
+            float totalInvMass = invMassA + invMassB;
+
+            glm::vec3 correction = info.depth / totalInvMass * info.normal * positionCorrectionFactor;
+
+            a->transform->position -= correction * invMassA;
+            b->transform->position += correction * invMassB;
+
+            a->isDirty = true; b->isDirty = true;
         }
     }
 }
