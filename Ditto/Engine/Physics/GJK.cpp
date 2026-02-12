@@ -5,31 +5,33 @@
 
 // --- 核心辅助函数 ---
 
-static glm::vec3 GetSupportPoint(Collider* collider, const glm::vec3& direction) {
-    // 1. 处理变换矩阵
-    glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), collider->transform->position);
-    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(collider->transform->rotation));
-    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(collider->transform->scale[0], collider->transform->scale[1], collider->transform->scale[2]));
-    glm::mat4 transformMat = translationMat * rotationMat * scaleMat;
+static glm::vec3 GetSupportPoint(Collider* collider, const glm::vec3& direction)
+{
+    // 1. 获取世界矩阵（自动包含父级变换）
+    glm::mat4 worldMat = collider->transform->GetWorldModel();
 
-    // 2. 转换方向到局部空间 (逆缩放和旋转)
-    glm::vec3 localDir = glm::inverse(glm::mat3(rotationMat * scaleMat)) * direction;
+    // 2. 将方向转换到局部空间
+    //    使用世界矩阵的逆转置（正确处理非均匀缩放）
+    glm::mat3 worldToLocalRotScale = glm::mat3(glm::inverse(worldMat));
+    glm::vec3 localDir = glm::normalize(worldToLocalRotScale * direction);
 
-    // 3. 寻找局部空间支持点 (修复：去掉除以 vertex 长度的逻辑)
+    // 3. 寻找局部空间支持点（顶点坐标位于模型局部空间）
     glm::vec3 localSupport(0.0f);
     float maxDot = -std::numeric_limits<float>::infinity();
-
-    for (const auto& vertex : collider->mesh->vertices) {
+    for (const auto& vertex : collider->mesh->vertices)
+    {
         float dot = glm::dot(vertex, localDir);
-        if (dot > maxDot) {
+        if (dot > maxDot)
+        {
             maxDot = dot;
             localSupport = vertex;
         }
     }
 
-    // 4. 转回世界空间
-    return glm::vec3(transformMat * glm::vec4(localSupport, 1.0f));
+    // 4. 变换回世界空间
+    return glm::vec3(worldMat * glm::vec4(localSupport, 1.0f));
 }
+
 
 static SupportPoint GetMinkowskiSupport(Collider* colliderA, Collider* colliderB, const glm::vec3& direction) {
     glm::vec3 supportA = GetSupportPoint(colliderA, direction);
@@ -266,13 +268,14 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
     return {};
 }
 
-glm::mat3 CalculateWorldInverseInertia(Collider* collider) {
-    if (collider->rigidbody->type != RigidbodyComponent::Dynamic) {
+glm::mat3 CalculateWorldInverseInertia(Collider* collider)
+{
+    if (collider->rigidbody->type != RigidbodyComponent::Dynamic)
         return glm::mat3(0.0f);
-    }
 
-    // 获取旋转矩阵
-    glm::mat3 rotationMatrix = glm::mat3_cast(glm::quat(collider->transform->rotation));
+    // 获取世界旋转矩阵（从世界矩阵提取）
+    glm::mat4 worldMat = collider->transform->GetWorldModel();
+    glm::mat3 rotationMatrix = glm::mat3(worldMat); // 提取 3x3 部分
 
     // 将局部逆惯量张量转换到世界坐标系
     // I_world^-1 = R * I_local^-1 * R^T

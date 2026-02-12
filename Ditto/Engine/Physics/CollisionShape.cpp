@@ -37,14 +37,10 @@ bool AABB::Contains(AABB other)
 
 void Collider::UpdateWorldAABB()
 {
-    glm::mat4 translationMat = glm::translate(glm::mat4(1.0f), transform->position);
-    glm::mat4 rotationMat = glm::mat4_cast(glm::quat(transform->rotation));  // 使用预测的旋转
-    glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), transform->scale);
+    // 获取世界矩阵（自动处理脏标记，递归父级变换）
+    glm::mat4 worldMat = transform->GetWorldModel();
 
-    glm::mat4 transformMat = translationMat * rotationMat * scaleMat;
-
-    glm::vec3 corners[8] =
-    {
+    glm::vec3 corners[8] = {
         glm::vec3(localAABB.min.x, localAABB.min.y, localAABB.min.z),
         glm::vec3(localAABB.max.x, localAABB.min.y, localAABB.min.z),
         glm::vec3(localAABB.min.x, localAABB.max.y, localAABB.min.z),
@@ -58,9 +54,9 @@ void Collider::UpdateWorldAABB()
     aabb.min = glm::vec3(std::numeric_limits<float>::max());
     aabb.max = glm::vec3(std::numeric_limits<float>::lowest());
 
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < 8; ++i)
     {
-        glm::vec4 worldPos = transformMat * glm::vec4(corners[i], 1.0f);
+        glm::vec4 worldPos = worldMat * glm::vec4(corners[i], 1.0f);
         aabb.Expand(glm::vec3(worldPos));
     }
 

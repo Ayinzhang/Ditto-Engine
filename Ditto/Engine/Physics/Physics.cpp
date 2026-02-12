@@ -4,44 +4,6 @@
 #include <algorithm>
 #include <set>
 
-void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
-{
-    for (auto collider : colliders) delete collider; colliders.clear();
-    if (bvhTree) delete bvhTree;
-
-    for (GameObject* obj : gameobjects)
-    {
-        TransformComponent* transform = obj->GetComponent<TransformComponent>();
-        RendererComponent* renderer = obj->GetComponent<RendererComponent>();
-        RigidbodyComponent* rigidbody = obj->GetComponent<RigidbodyComponent>();
-
-        if (transform && renderer && rigidbody)
-        {
-            Collider* collider = new Collider();
-            collider->transform = transform;
-            collider->rigidbody = rigidbody;
-
-            switch (renderer->type)
-            {
-            case RendererComponent::Cube:
-                collider->mesh = engine->resource->cubeMesh;
-                break;
-            case RendererComponent::Sphere:
-                collider->mesh = engine->resource->sphereMesh;
-                break;
-            default:
-                continue;
-            }
-
-            rigidbody->CalculateInertia(renderer->type, transform->scale);
-            collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
-            collider->UpdateWorldAABB(); colliders.push_back(collider);
-        }
-    }
-
-    if (!colliders.empty()) bvhTree = new BVHTree(colliders);
-}
-
 void Physics::UpdatePhysics(float dt)
 {
     t += dt; if (t < deltaTime) return;
@@ -76,6 +38,53 @@ void Physics::UpdatePhysics(float dt)
     for (auto collider : colliders) collider->transform->UpdateTransform();
 }
 
+void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
+{
+    // 清除旧数据
+    for (auto collider : colliders) delete collider; colliders.clear();
+    if (bvhTree) delete bvhTree;
+
+    // 递归遍历所有根物体及其子物体
+    for (GameObject* root : gameobjects)
+        CollectCollidersRecursive(root, colliders);
+
+    if (!colliders.empty())
+        bvhTree = new BVHTree(colliders);
+}
+
+void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic)
+{
+    if (!obj->enabled) return;
+
+    TransformComponent* transform = obj->GetComponent<TransformComponent>();
+    RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+    RigidbodyComponent* rigidbody = obj->GetComponent<RigidbodyComponent>();
+
+    if (transform && renderer && rigidbody)
+    {
+        Collider* collider = new Collider();
+        collider->transform = transform;
+        collider->rigidbody = rigidbody;
+
+        // 有父物体的物体强制设为静态（不会移动）
+        if (parentIsDynamic) collider->rigidbody->type = RigidbodyComponent::Static;
+
+        switch (renderer->type)
+        {
+        case RendererComponent::Cube:  collider->mesh = engine->resource->cubeMesh; break;
+        case RendererComponent::Sphere:collider->mesh = engine->resource->sphereMesh; break;
+        default: break;
+        }
+
+        rigidbody->CalculateInertia(renderer->type, transform->scale);
+        collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
+        collider->UpdateWorldAABB(); outColliders.push_back(collider);
+    }
+
+    bool nextParentIsDynamic = parentIsDynamic || (rigidbody && rigidbody ->type == RigidbodyComponent::Dynamic);
+    for (GameObject* child : obj->children) CollectCollidersRecursive(child, outColliders, nextParentIsDynamic);
+}
+
 void Physics::IntegrateForce(float dt)
 {
     for (Collider* collider : colliders)
@@ -92,7 +101,7 @@ void Physics::IntegrateForce(float dt)
             transform->position += rb->velocity * dt;
             transform->rotation += rb->angularVelocity * dt;
 
-            collider->isDirty = true;
+            transform->localDirty = true; collider->isDirty = true;
         }
     }
 }

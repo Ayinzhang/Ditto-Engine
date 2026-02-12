@@ -1,56 +1,51 @@
 #pragma once
+
 #include "Physics.h"
+#include "../../3rdParty/TaskFlow/taskflow.hpp"
+#include <mutex>
 #include <vector>
-#include <omp.h>
+#include <unordered_map>
+#include <thread>
 
 /**
- * @brief 完全并行化物理引擎（OpenMP 4线程 + 图着色 + 工作窃取风格任务依赖）
- *
- * 并行覆盖阶段：
- * - 积分力：parallel for
- * - BVH更新：叶子并行 + 内部节点OpenMP Task依赖
- * - 宽相位碰撞检测：TLS + 合并
- * - 窄相位GJK检测：TLS + 合并
- * - 冲量求解：图着色分组，组内parallel for
- * - 位置修正：复用着色分组，组内parallel for
- * - 变换更新：parallel for
- *
- * 完全无锁（仅合并阶段短暂临界，可忽略）
+ * @brief 并行物理引擎，继承自 Physics。
+ *        使用 TaskFlow 任务图管理物理阶段依赖，并在碰撞求解阶段采用图染色实现无冲突并行。
+ *        针对性能进行了优化：
+ *        - 复用 taskflow 对象，避免每帧构造开销
+ *        - 使用带分块的 parallel_for 减少任务数量
+ *        - 粗测阶段采用线程本地缓冲降低锁争用
+ *        - 迭代求解与位置修正按颜色组并行，组内使用分块并行
  */
-class ParallelPhysics : public Physics
+struct ParallelPhysics : public Physics
 {
-public:
-    // 重写主物理更新函数（完全接管）
-    void UpdatePhysics(float dt) override;
+    tf::Executor executor;          // 线程池
+    tf::Taskflow taskflow;          // 每帧复用的任务图（每帧 clear 后重建）
+
+    // 线程同步互斥锁
+    std::mutex colliderPairsMutex;
+    std::mutex collisionDataMutex;
+
+    // 图染色相关数据
+    std::vector<int> collisionColors;       // 每个碰撞对的颜色索引
+    int numColors;                          // 总颜色数
+    std::vector<std::vector<int>> colorGroups; // 按颜色分组后的碰撞对索引列表
+
+    // 分块大小控制（根据场景规模可调）
+    static constexpr size_t CHUNK_SIZE = 64;   // parallel_for 的默认分块大小
+
+    ParallelPhysics();
+
+    // 重写物理更新，采用任务图 + 染色并行
+    virtual void UpdatePhysics(float dt) override;
 
 private:
-    // ----------------------------- 并行阶段实现 -----------------------------
+    // 根据当前碰撞数据构建冲突图并着色，同时生成颜色分组
+    void BuildConflictGraphAndColorGroups(const std::vector<CollisionData>& data);
 
-    /// 并行积分力（4线程）
-    void IntegrateForceParallel(float dt);
-
-    /// 并行BVH更新（叶子并行 + 内部节点任务依赖）
-    static void ParallelUpdateBVHTree(BVHTree* tree);
-    static void ParallelUpdateNodeAABB(BVHNode* node);   // 递归任务函数
-
-    /// 并行宽相位碰撞检测（TLS）
-    void HandleBroadCollisionsParallel();
-
-    /// 并行窄相位GJK检测（TLS）
-    void HandleNarrowCollisionsParallel();
-
-    /// 构建冲突图并着色（生成颜色分组）
-    void BuildColorGroups();
-
-    /// 判断两个碰撞数据是否冲突（共享刚体）
-    bool HasConflict(const CollisionData& a, const CollisionData& b) const;
-
-    /// 并行冲量求解（单次迭代，组内并行）
-    void SolveCollisionsParallel(int iter);
-
-    /// 并行位置修正（复用颜色分组）
-    void ApplyPositionCorrectionsParallel();
-
-    // ----------------------------- 成员变量 -----------------------------
-    std::vector<std::vector<int>> colorGroups;   ///< 颜色分组：每组是collisionData中的索引列表
+    // 粗测阶段的线程本地缓冲区类型
+    struct ThreadLocalBuffer
+    {
+        std::vector<std::pair<Collider*, Collider*>> localPairs;
+        void clear() { localPairs.clear(); }
+    };
 };

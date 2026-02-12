@@ -22,7 +22,7 @@ struct CollisionData {
 struct Physics
 {
     Engine* engine;
-    BVHTree* bvhTree;
+    BVHTree* bvhTree = nullptr;
     std::vector<Collider*> colliders;
     std::vector<std::pair<Collider*, Collider*>> colliderPairs;
     std::vector<CollisionData> collisionData; // 存储所有碰撞信息
@@ -38,6 +38,7 @@ struct Physics
     float positionCorrectionFactor = 0.8f; // 位置修正强度
 
     void GenerateColliders(const std::vector<GameObject*>& gameobjects);
+    void CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic = false);
     virtual void UpdatePhysics(float dt);
 
     void IntegrateForce(float dt);
