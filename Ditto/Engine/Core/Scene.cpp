@@ -10,14 +10,14 @@ Scene::Scene()
 
     GameObject* lightObj = new GameObject("DirLight");
     lightObj->AddComponent<LightComponent>();
-	lightObj->GetComponent<TransformComponent>()->rotation[0] = -120.0f;
-	lightObj->GetComponent<TransformComponent>()->UpdateTransform();
+    lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
+    lightObj->GetComponent<TransformComponent>()->UpdateTransform();
     gameObjects.push_back(lightObj);
 
-    GameObject* gameObject = new GameObject("Cube");
-    gameObject->AddComponent<RendererComponent>();
-    gameObject->AddComponent<RigidbodyComponent>();
-    gameObjects.push_back(gameObject);
+    GameObject* cube = new GameObject("Cube");
+    cube->AddComponent<RendererComponent>();
+    cube->AddComponent<RigidbodyComponent>();
+    gameObjects.push_back(cube);
 
     geometryBatches[RendererComponent::Cube] = new GeometryInstances(RendererComponent::Cube);
     geometryBatches[RendererComponent::Sphere] = new GeometryInstances(RendererComponent::Sphere);
@@ -27,8 +27,7 @@ Scene::~Scene()
 {
     for (GameObject* obj : gameObjects) delete obj;
     for (auto& pair : geometryBatches) delete pair.second;
-
-    for (auto& pair : baseGeometries) 
+    for (auto& pair : baseGeometries)
     {
         if (pair.second.VAO) glDeleteVertexArrays(1, &pair.second.VAO);
         if (pair.second.VBO) glDeleteBuffers(1, &pair.second.VBO);
@@ -42,62 +41,78 @@ GeometryInstances::~GeometryInstances()
     if (colorSSBO) glDeleteBuffers(1, &colorSSBO);
 }
 
+void Scene::ClearScene()
+{
+    for (GameObject* obj : gameObjects) delete obj;
+    gameObjects.clear();
+    mainLight = nullptr;
+}
+
 void Scene::CollectRenderData()
 {
-    for (auto& pair : geometryBatches) 
+    // 清空批次
+    for (auto& pair : geometryBatches)
     {
-        pair.second->modelMatrices.clear(); pair.second->instanceColors.clear();
-        pair.second->instanceCount = 0; pair.second->dirty = true;
+        pair.second->modelMatrices.clear();
+        pair.second->instanceColors.clear();
+        pair.second->instanceCount = 0;
+        pair.second->dirty = true;
     }
 
     mainLight = nullptr;
-    for (GameObject* obj : gameObjects) 
-    {
-        if (!obj->enabled) continue;
-
-        LightComponent* light = obj->GetComponent<LightComponent>();
-        if (light && light->enabled) { mainLight = obj; break; }
-    }
-
-    for (GameObject* obj : gameObjects) 
-    {
-        if (!obj->enabled) continue;
-
-        RendererComponent* renderer = obj->GetComponent<RendererComponent>();
-        TransformComponent* transform = obj->GetComponent<TransformComponent>();
-
-        if (renderer && renderer->enabled && transform && transform->enabled) 
+    std::function<void(GameObject*)> findLight = [&](GameObject* obj)
         {
-            auto it = geometryBatches.find(renderer->type);
-            if (it != geometryBatches.end()) 
-            {
-                GeometryInstances* batch = it->second;
+            if (!obj->enabled) return;
+            if (!mainLight && obj->GetComponent<LightComponent>()) mainLight = obj;
+            for (auto child : obj->children) findLight(child);
+        };
+    for (auto root : gameObjects) findLight(root);
 
-                batch->modelMatrices.push_back(transform->model);
-                batch->instanceColors.push_back(glm::vec4(renderer->color[0], renderer->color[1], renderer->color[2], renderer->color[3]));
-                batch->instanceCount++;
-                batch->dirty = true;
+    std::function<void(GameObject*)> collect = [&](GameObject* obj)
+        {
+            if (!obj->enabled) return;
+
+            RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+            TransformComponent* transform = obj->GetComponent<TransformComponent>();
+
+            if (renderer && renderer->enabled && transform && transform->enabled)
+            {
+                auto it = geometryBatches.find(renderer->type);
+                if (it != geometryBatches.end())
+                {
+                    GeometryInstances* batch = it->second;
+                    batch->modelMatrices.push_back(transform->GetWorldModel());
+                    batch->instanceColors.push_back(glm::vec4(renderer->color));
+                    batch->instanceCount++;
+                    batch->dirty = true;
+                }
             }
-        }
-    }
+
+            for (auto child : obj->children)
+                collect(child);
+        };
+
+    for (auto root : gameObjects)
+        collect(root);
 }
 
 void Scene::UpdateSSBOs()
 {
-    for (auto& pair : geometryBatches) 
+    for (auto& pair : geometryBatches)
     {
         GeometryInstances* batch = pair.second;
-
         if (!batch->dirty || batch->instanceCount == 0) continue;
 
         if (batch->modelSSBO == 0) glGenBuffers(1, &batch->modelSSBO);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::mat4), batch->modelMatrices.data(), GL_DYNAMIC_DRAW);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::mat4),
+            batch->modelMatrices.data(), GL_DYNAMIC_DRAW);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, batch->modelSSBO);
 
         if (batch->colorSSBO == 0) glGenBuffers(1, &batch->colorSSBO);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->colorSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::vec4), batch->instanceColors.data(), GL_DYNAMIC_DRAW);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::vec4),
+            batch->instanceColors.data(), GL_DYNAMIC_DRAW);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -112,17 +127,16 @@ void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& proje
     UpdateSSBOs();
 
     glUseProgram(shader->id);
-	shader->SetUniformMat4("view", view);
-	shader->SetUniformMat4("projection", projection);
-	shader->SetUniformVec3("viewPos", viewPos);
-	shader->SetUniformVec3("lightCol", GetLightColor());
-	shader->SetUniformVec3("lightDir", GetLightDirection());
-	shader->SetUniform1f("lightIntensity", GetLightIntensity());
+    shader->SetUniformMat4("view", view);
+    shader->SetUniformMat4("projection", projection);
+    shader->SetUniformVec3("viewPos", viewPos);
+    shader->SetUniformVec3("lightCol", GetLightColor());
+    shader->SetUniformVec3("lightDir", GetLightDirection());
+    shader->SetUniform1f("lightIntensity", GetLightIntensity());
 
-    for (auto& pair : geometryBatches) 
+    for (auto& pair : geometryBatches)
     {
         GeometryInstances* batch = pair.second;
-
         if (batch->instanceCount == 0) continue;
         auto geoIt = baseGeometries.find(batch->type);
         if (geoIt == baseGeometries.end()) continue;
@@ -138,8 +152,10 @@ void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& proje
 
         glBindVertexArray(geometry.VAO);
 
-        if (geometry.indexCount > 0)  glDrawElementsInstanced(GL_TRIANGLES, geometry.indexCount, GL_UNSIGNED_INT, 0, batch->instanceCount);
-        else glDrawArraysInstanced(GL_TRIANGLES, 0, geometry.vertexCount, batch->instanceCount);
+        if (geometry.indexCount > 0)
+            glDrawElementsInstanced(GL_TRIANGLES, geometry.indexCount, GL_UNSIGNED_INT, 0, batch->instanceCount);
+        else
+            glDrawArraysInstanced(GL_TRIANGLES, 0, geometry.vertexCount, batch->instanceCount);
 
         glBindVertexArray(0);
     }
@@ -147,7 +163,7 @@ void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& proje
 
 void Scene::InitializeBaseGeometries(Resource* resource)
 {
-    if (resource->cubeModel && !resource->cubeModel->vertexData.empty()) 
+    if (resource->cubeModel && !resource->cubeModel->vertexData.empty())
     {
         BaseGeometry cubeGeo;
 
@@ -200,27 +216,32 @@ void Scene::InitializeBaseGeometries(Resource* resource)
 
 glm::vec3 Scene::GetLightColor() const
 {
-    if (mainLight) 
+    if (mainLight)
     {
         LightComponent* light = mainLight->GetComponent<LightComponent>();
-        if (light) return glm::vec3(light->color[0], light->color[1], light->color[2]);
+        if (light) return glm::vec3(light->color);
     }
     return glm::vec3(1.0f);
 }
 
 glm::vec3 Scene::GetLightDirection() const
 {
-    if (mainLight) 
+    if (mainLight)
     {
         TransformComponent* transform = mainLight->GetComponent<TransformComponent>();
-        if (transform) return transform->forward;
+        if (transform)
+        {
+            glm::mat4 world = transform->GetWorldModel();
+            glm::vec3 worldForward = glm::normalize(glm::vec3(world * glm::vec4(0, 0, -1, 0)));
+            return worldForward;
+        }
     }
     return glm::normalize(glm::vec3(-1, -2, -1));
 }
 
 float Scene::GetLightIntensity() const
 {
-    if (mainLight) 
+    if (mainLight)
     {
         LightComponent* light = mainLight->GetComponent<LightComponent>();
         if (light) return light->intensity;
@@ -228,20 +249,16 @@ float Scene::GetLightIntensity() const
     return 1.0f;
 }
 
+// --- 序列化头 ---
 struct SceneHeader
 {
-    char magic[4]; uint32_t version, gameObjectCount; uint64_t fileSize;
+    char magic[4];
+    uint32_t version;
+    uint32_t gameObjectCount;
+    uint64_t fileSize;
 };
-
 const uint32_t SCENE_VERSION = 1;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
-
-void Scene::ClearScene()
-{
-    for (GameObject* obj : gameObjects) delete obj;
-    gameObjects.clear();
-    mainLight = nullptr;
-}
 
 bool Scene::SaveScene(const std::string& filepath)
 {
@@ -256,23 +273,22 @@ bool Scene::SaveScene(const std::string& filepath)
     {
         SceneHeader header;
         memset(&header, 0, sizeof(header));
-
         memcpy(header.magic, SCENE_MAGIC, 4);
         header.version = SCENE_VERSION;
         header.gameObjectCount = static_cast<uint32_t>(gameObjects.size());
-
         header.fileSize = 0;
+
         file.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
         uint32_t nameLength = static_cast<uint32_t>(name.length());
         file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
         file.write(name.c_str(), nameLength);
 
-        for (GameObject* obj : gameObjects) obj->Serialize(file);
+        for (GameObject* obj : gameObjects)
+            obj->Serialize(file);
 
         std::streampos endPos = file.tellp();
         header.fileSize = static_cast<uint64_t>(endPos);
-
         file.seekp(0);
         file.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
@@ -300,13 +316,11 @@ bool Scene::LoadScene(const std::string& filepath)
     {
         SceneHeader header;
         file.read(reinterpret_cast<char*>(&header), sizeof(header));
-
         if (memcmp(header.magic, SCENE_MAGIC, 4) != 0)
         {
             std::cerr << "Invalid scene file: wrong magic number" << std::endl;
             return false;
         }
-
         if (header.version != SCENE_VERSION)
         {
             std::cerr << "Unsupported scene version: " << header.version
@@ -316,7 +330,6 @@ bool Scene::LoadScene(const std::string& filepath)
 
         uint32_t nameLength = 0;
         file.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
-
         std::vector<char> nameBuffer(nameLength + 1, '\0');
         file.read(nameBuffer.data(), nameLength);
         name = std::string(nameBuffer.data());
@@ -346,10 +359,8 @@ bool Scene::LoadScene(const std::string& filepath)
     catch (const std::exception& e)
     {
         std::cerr << "Error loading scene: " << e.what() << std::endl;
-
         ClearScene();
         name = "Load Failed";
-
         file.close();
         return false;
     }

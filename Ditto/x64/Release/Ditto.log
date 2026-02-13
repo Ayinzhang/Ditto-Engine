@@ -1,6 +1,100 @@
 ﻿  正在扫描源以查找模块依赖项...
+cl : 命令行  warning D9025: 正在重写“/openmp-”(用“/openmp:llvm”)
+  glm.cppm
+  正在编译...
+cl : 命令行  warning D9025: 正在重写“/openmp-”(用“/openmp:llvm”)
+  glm.cppm
+cl : 命令行  warning D9025: 正在重写“/openmp-”(用“/openmp:llvm”)
+  glad.c
+cl : 命令行  warning D9025: 正在重写“/openmp-”(用“/openmp:llvm”)
+  glm.cpp
+  imgui.cpp
+  imgui_demo.cpp
+  imgui_draw.cpp
+  imgui_impl_glfw.cpp
+  imgui_impl_opengl3.cpp
+  imgui_impl_win32.cpp
+  imgui_tables.cpp
+  imgui_widgets.cpp
+  Editor.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(13,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
+  (编译源文件“Editor/Editor.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Editor/Editor.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+E:\Engine Source\Ditto\Ditto\Editor\Editor.cpp(23,23): warning C4244: “=”: 从“float”转换到“int”，可能丢失数据
+  Engine.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(13,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
+  (编译源文件“Engine/Core/Engine.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Core/Engine.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(59,30): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(61,51): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(61,133): warning C4244: “+=”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(136,53): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Engine.cpp(135,86): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+  GameObject.cpp
+  Scene.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(13,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
+  (编译源文件“Engine/Core/Scene.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Core/Scene.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(156,97): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.cpp(158,79): warning C4267: “参数”: 从“size_t”转换到“GLsizei”，可能丢失数据
+  Camera.cpp
+  Shader.cpp
+  Main.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(13,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
+  (编译源文件“Engine/Main.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Main.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+  CollisionShape.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Physics\CollisionShape.cpp(96,53): warning C4267: “参数”: 从“size_t”转换到“int”，可能丢失数据
+  GJK.cpp
+  ParallelPhysics.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(13,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
+  (编译源文件“Engine/Physics/ParallelPhysics.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
+      参见“Resource”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Shader”: 类型名称以前使用“class”现在使用的是“struct”
+  (编译源文件“Engine/Physics/ParallelPhysics.cpp”)
+      E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
+      参见“Shader”的声明
+  
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(14,15): warning C4244: “初始化”: 从“genType”转换到“int”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(14,15): warning C4244:         with
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(14,15): warning C4244:         [
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(14,15): warning C4244:             genType=float
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(14,15): warning C4244:         ]
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(122,13): error C3005: “depend”: OpenMP“task”指令上出现意外的标记
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(126,13): error C3005: “depend”: OpenMP“task”指令上出现意外的标记
+E:\Engine Source\Ditto\Ditto\Engine\Physics\ParallelPhysics.cpp(130,13): error C3005: “depend”: OpenMP“task”指令上出现意外的标记
   Physics.cpp
-E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(12,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
+E:\Engine Source\Ditto\Ditto\Engine\Core\Scene.h(13,7): warning C4099: “Resource”: 类型名称以前使用“struct”现在使用的是“class”
   (编译源文件“Engine/Physics/Physics.cpp”)
       E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.h(7,8):
       参见“Resource”的声明
@@ -10,15 +104,11 @@ E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8): warning C4099: “Sh
       E:\Engine Source\Ditto\Ditto\Engine\Graphics\Shader.h(5,8):
       参见“Shader”的声明
   
-E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244: “初始化”: 从“genType”转换到“int”，可能丢失数据
-E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:         with
-E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:         [
-E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:             genType=float
-E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(62,15): warning C4244:         ]
-E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(246,13): warning C4305: “初始化”: 从“double”到“float”截断
-  正在生成代码
-  1 of 4131 functions (<0.1%) were compiled, the rest were copied from previous compilation.
-    0 functions were new in current compilation
-    63 functions had inline decision re-evaluated but remain unchanged
-  已完成代码的生成
-  Ditto.vcxproj -> E:\Engine Source\Ditto\x64\Release\Ditto.exe
+E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(11,15): warning C4244: “初始化”: 从“genType”转换到“int”，可能丢失数据
+E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(11,15): warning C4244:         with
+E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(11,15): warning C4244:         [
+E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(11,15): warning C4244:             genType=float
+E:\Engine Source\Ditto\Ditto\Engine\Physics\Physics.cpp(11,15): warning C4244:         ]
+  正在编译...
+  Resource.cpp
+E:\Engine Source\Ditto\Ditto\Engine\Resources\Resource.cpp(86,37): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据

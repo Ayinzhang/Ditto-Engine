@@ -64,6 +64,9 @@
     <Filter Include="源文件\Engine\Physics">
       <UniqueIdentifier>{4ca95b89-4782-4646-84ef-d52410582398}</UniqueIdentifier>
     </Filter>
+    <Filter Include="三方库\TaskFlow">
+      <UniqueIdentifier>{e0a2b3c9-07d3-4787-88a2-0441956c00c7}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="3rdParty\GLFW\glfw3.h">
@@ -1010,6 +1013,198 @@
     </ClInclude>
     <ClInclude Include="Engine\Physics\ParallelPhysics.h">
       <Filter>头文件\Engine\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\algorithm.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\data_pipeline.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\find.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\for_each.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\module.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\partitioner.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\pipeline.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\reduce.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\scan.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\sort.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\algorithm\transform.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\async.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\async_task.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\atomic_notifier.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\declarations.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\environment.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\error.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\executor.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\flow_builder.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\graph.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\nonblocking_notifier.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\observer.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\runtime.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\semaphore.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\task.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\taskflow.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\task_group.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\topology.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\worker.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\core\wsq.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\find.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\for_each.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\matmul.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\merge.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\reduce.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\scan.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\single_task.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\sort.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\transform.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\transpose.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cudaflow.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_capturer.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_device.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_error.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_execution_policy.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_graph.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_graph_exec.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_memory.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_meta.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_optimizer.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_stream.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\taskflow.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\iterator.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\lazy_string.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\macros.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\math.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\mpmc.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\object_pool.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\os.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\serializer.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\small_vector.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\stream.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\traits.hpp">
+      <Filter>三方库\TaskFlow</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdParty\TaskFlow\utility\uuid.hpp">
+      <Filter>三方库\TaskFlow</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

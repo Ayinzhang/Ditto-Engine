@@ -21,6 +21,7 @@ struct Editor
     void DrawInspector();
     void DrawPopups();
 
+    void DrawGameObjectNode(GameObject* obj);
     void CopySelectedObject();
     void DeleteSelectedObject();
 };

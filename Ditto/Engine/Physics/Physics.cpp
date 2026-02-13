@@ -193,7 +193,7 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,
     float denominator = termA + termB;
     if (denominator == 0.0f) return;
 
-    float biasFactor = 0.3f * (1.0f - float(iteration) / iterations);
+    float biasFactor = 0.3f *(1.0f - float(iteration) / iterations);
     float bias = biasFactor * penetrationDepth / deltaTime;
     float j = -(1.0f + restitution) * normalVel + bias;
     j = glm::max(0.0f, j / denominator);

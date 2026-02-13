@@ -1,7 +1,6 @@
 #include "Engine.h"
 #include <iostream>
 #include <stdexcept>
-#include "../Physics/ParallelPhysics.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
@@ -36,7 +35,7 @@ Engine::Engine()
     camera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
     editor = new Editor(window); editor->engine = this;
-	physics = new Physics(); physics->engine = this;
+	physics = new ParallelPhysics(); physics->engine = this;
 
     scene->InitializeBaseGeometries(resource);
 }
@@ -62,6 +61,7 @@ void Engine::Run()
         ProcessInput(); glfwPollEvents();
 
         glfwGetFramebufferSize(window, &window_width, &window_height);
+        if (window_width <= 0 || window_height <= 0) continue;
         glViewport(0, 0, window_width, window_height);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -69,7 +69,7 @@ void Engine::Run()
         RenderScene();
         editor->Draw();
 
-        glfwSwapBuffers(window);
+        if (window) glfwSwapBuffers(window);
     }
 }
 

@@ -37,15 +37,15 @@ struct Physics
     float dynamicFriction = 0.5f; // 较大的动摩擦
     float positionCorrectionFactor = 0.8f; // 位置修正强度
 
-    void GenerateColliders(const std::vector<GameObject*>& gameobjects);
-    void CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic = false);
+    virtual void GenerateColliders(const std::vector<GameObject*>& gameobjects);
+    virtual void CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic = false);
     virtual void UpdatePhysics(float dt);
 
-    void IntegrateForce(float dt);
-    void HandleBroadCollisions();
-    void HandleNarrowCollisions();
-    void SolveCollisions(int iter);
-    void ApplyPositionCorrections();
+    virtual void IntegrateForce(float dt);
+    virtual void HandleBroadCollisions();
+    virtual void HandleNarrowCollisions();
+    virtual void SolveCollisions(int iter);
+    virtual void ApplyPositionCorrections();
 
     void ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,
         const glm::vec3& contactPointA, const glm::vec3& contactPointB,
