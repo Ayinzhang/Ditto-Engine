@@ -1,17 +1,12 @@
 #pragma once
 #include "Physics.h"
-#include "../../3rdParty/TaskFlow/taskflow.hpp"
 
-struct ParallelPhysics : public Physics
+class ParallelPhysics : public Physics
 {
-    virtual void UpdatePhysics(float dt) override;
-    virtual void SolveCollisions(int iter) override;
-
-private:
-    void BuildColorGroups();
-    bool HasConflict(const CollisionData& a, const CollisionData& b) const;
-
-    tf::Executor executor;
-    tf::Taskflow taskflow;
-    std::vector<std::vector<int>> colorGroups;
+public:
+    // 重写需要并行的核心函数
+    virtual void IntegrateForce(float dt) override;
+    virtual void HandleBroadCollisions() override;
+    virtual void HandleNarrowCollisions() override;
+    virtual void UpdatePhysics(float dt) override; // 完全重写更新循环
 };

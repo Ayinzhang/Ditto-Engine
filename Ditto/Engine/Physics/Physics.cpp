@@ -45,8 +45,7 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
     if (bvhTree) delete bvhTree;
 
     // 递归遍历所有根物体及其子物体
-    for (GameObject* root : gameobjects)
-        CollectCollidersRecursive(root, colliders);
+    for (GameObject* root : gameobjects) CollectCollidersRecursive(root, colliders);
 
     if (!colliders.empty())
         bvhTree = new BVHTree(colliders);
@@ -78,7 +77,7 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>&
 
         rigidbody->CalculateInertia(renderer->type, transform->scale);
         collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
-        collider->UpdateWorldAABB(); outColliders.push_back(collider);
+		collider->UpdateWorldAABB(); outColliders.push_back(collider); collider->id = outColliders.size();
     }
 
     bool nextParentIsDynamic = parentIsDynamic || (rigidbody && rigidbody ->type == RigidbodyComponent::Dynamic);

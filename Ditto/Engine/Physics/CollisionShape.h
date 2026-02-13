@@ -30,7 +30,7 @@ struct Collider
 	AABB aabb, localAABB;
 	MeshData* mesh;
 
-	bool isDirty;
+    bool isDirty; int id;
 
 	void UpdateWorldAABB();
 };

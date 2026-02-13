@@ -1,102 +1,184 @@
 #include "ParallelPhysics.h"
-#include "../Core/Engine.h"
-#include "../../3rdParty/TaskFlow/algorithm/for_each.hpp"
+#include <future>
+#include <thread>
+#include <algorithm>
 
-void ParallelPhysics::UpdatePhysics(float dt)
+// 辅助：并行执行无返回值的任务，按范围分割
+static void ParallelFor(size_t count, std::function<void(size_t)> func) 
 {
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    if (numThreads == 0) numThreads = 1;
+    size_t chunkSize = (count + numThreads - 1) / numThreads;
+    std::vector<std::future<void>> futures;
+
+    for (unsigned int t = 0; t < numThreads; ++t) {
+        size_t start = t * chunkSize;
+        size_t end = std::min(start + chunkSize, count);
+        if (start >= end) break;
+
+        futures.emplace_back(std::async(std::launch::async, [start, end, &func]() {
+            for (size_t i = start; i < end; ++i) {
+                func(i); }
+            }));
+    }
+
+    for (auto& f : futures) {
+        f.wait();
+    }
+}
+
+void ParallelPhysics::IntegrateForce(float dt) {
+    size_t n = colliders.size();
+    if (n == 0) return;
+
+    ParallelFor(n, [this, dt](size_t i) {
+        Collider* collider = colliders[i];
+        if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
+            TransformComponent* transform = collider->transform;
+            RigidbodyComponent* rb = collider->rigidbody;
+
+            if (rb->useGravity)
+                rb->velocity.y += -gravity * dt;
+
+            rb->velocity *= glm::max(0.0f, glm::pow(1.0f - linearDamping, dt));
+            rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - angularDamping, dt));
+            transform->position += rb->velocity * dt;
+            transform->rotation += rb->angularVelocity * dt;
+
+            transform->localDirty = true;
+            collider->isDirty = true;
+        }
+        });
+}
+
+void ParallelPhysics::HandleBroadCollisions() {
+    colliderPairs.clear();
+    if (!bvhTree) return;
+
+    // 收集所有动态物体的索引
+    std::vector<size_t> dynamicIndices;
+    for (size_t i = 0; i < colliders.size(); ++i) {
+        if (colliders[i]->rigidbody->type == RigidbodyComponent::Dynamic)
+            dynamicIndices.push_back(i);
+    }
+    size_t numDyn = dynamicIndices.size();
+    if (numDyn == 0) return;
+
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    size_t chunkSize = (numDyn + numThreads - 1) / numThreads;
+    std::vector<std::future<std::vector<std::pair<Collider*, Collider*>>>> futures;
+
+    for (unsigned int t = 0; t < numThreads; ++t) {
+        size_t start = t * chunkSize;
+        size_t end = std::min(start + chunkSize, numDyn);
+        if (start >= end) break;
+
+        futures.emplace_back(std::async(std::launch::async, [this, &dynamicIndices, start, end]() 
+            {
+            std::vector<std::pair<Collider*, Collider*>> localPairs;
+            for (size_t idx = start; idx < end; ++idx) {
+                Collider* collider = colliders[dynamicIndices[idx]];
+
+                // 查询可能与当前动态物体碰撞的其他物体
+                std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
+                for (Collider* other : potential) {
+                    if (other == collider) continue;
+                    // 只考虑动态或静态物体
+                    if (other->rigidbody->type != RigidbodyComponent::Dynamic &&
+                        other->rigidbody->type != RigidbodyComponent::Static)
+                        continue;
+
+                    // 保证配对顺序一致，方便后续去重
+                    if (collider < other)
+                        localPairs.emplace_back(collider, other);
+                    else
+                        localPairs.emplace_back(other, collider);
+                }
+            }
+            return localPairs;
+            }));
+    }
+
+    // 收集所有线程的局部结果
+    std::vector<std::pair<Collider*, Collider*>> allPairs;
+    for (auto& f : futures) {
+        auto local = f.get();
+        allPairs.insert(allPairs.end(), local.begin(), local.end());
+    }
+
+    // 去重
+    std::sort(allPairs.begin(), allPairs.end());
+    allPairs.erase(std::unique(allPairs.begin(), allPairs.end()), allPairs.end());
+
+    colliderPairs = std::move(allPairs);
+}
+
+void ParallelPhysics::HandleNarrowCollisions() 
+{
+    collisionData.clear();
+    size_t numPairs = colliderPairs.size();
+    if (numPairs == 0) return;
+
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    size_t chunkSize = (numPairs + numThreads - 1) / numThreads;
+    std::vector<std::future<std::vector<CollisionData>>> futures;
+
+    for (unsigned int t = 0; t < numThreads; ++t) {
+        size_t start = t * chunkSize;
+        size_t end = std::min(start + chunkSize, numPairs);
+        if (start >= end) break;
+
+        futures.emplace_back(std::async(std::launch::async, [this, start, end]() {
+            std::vector<CollisionData> localData;
+            for (size_t i = start; i < end; ++i) {
+                auto& pair = colliderPairs[i];
+                CollisionInfo info = GJK_CheckCollision(pair.first, pair.second);
+                if (info.flag && info.depth > 1e-3f) {
+                    localData.emplace_back(pair.first, pair.second, info);
+                }
+            }
+            return localData;
+            }));
+    }
+
+    for (auto& f : futures) {
+        auto local = f.get();
+        collisionData.insert(collisionData.end(), local.begin(), local.end());
+    }
+}
+
+void ParallelPhysics::UpdatePhysics(float dt) {
     t += dt;
     if (t < deltaTime) return;
+
     int steps = glm::min(3.0f, t / deltaTime);
     t = fmod(t, deltaTime);
 
-    for (int step = 0; step < steps; ++step)
+    for (int step = 0; step < steps; ++step) 
     {
+        // 清空上一帧数据
         collisionData.clear();
         colliderPairs.clear();
 
+        // 并行积分
         IntegrateForce(deltaTime);
 
+        // BVH 更新（单线程）
         if (bvhTree) bvhTree->UpdateBVHTree();
 
+        // 并行宽阶段
         HandleBroadCollisions();
 
+        // 并行窄阶段
         HandleNarrowCollisions();
 
-        BuildColorGroups();
-
+        // 顺序求解碰撞（迭代）
         for (int iter = 0; iter < iterations; ++iter)
-            SolveCollisions(iter);
+            SolveCollisions(iter);          // 调用基类实现
 
-        ApplyPositionCorrections();
+        // 顺序位置修正
+        ApplyPositionCorrections();          // 调用基类实现
     }
 
-    for (auto collider : colliders)
-        collider->transform->UpdateTransform();
-}
-
-void ParallelPhysics::SolveCollisions(int iter)
-{
-    taskflow.clear();
-    tf::Task prev_gate;
-
-    for (const auto& group : colorGroups)
-    {
-        std::vector<tf::Task> tasks;
-        tasks.reserve(group.size());
-
-        for (int idx : group)
-        {
-            CollisionData& data = collisionData[idx];
-            tf::Task t = taskflow.emplace([this, &data, iter]() {
-                ApplyImpulse(data.colliderA, data.colliderB,
-                    data.info.normal,
-                    data.info.contactPointA,
-                    data.info.contactPointB,
-                    data.info.depth,
-                    iter);
-                });
-
-            // 依赖：必须在前一组所有任务完成后才能开始
-            if (!prev_gate.empty()) t.succeed(prev_gate);
-            tasks.push_back(t);
-        }
-
-        // 创建本组的“门任务”：依赖本组所有任务，同时作为下一组的依赖
-        tf::Task gate = taskflow.emplace([]() {}).name("gate");
-        for (auto& t : tasks) gate.succeed(t);
-        prev_gate = gate;
-    }
-
-    // 整个迭代只提交一次，等待一次
-    executor.run(taskflow).wait();
-}
-
-bool ParallelPhysics::HasConflict(const CollisionData& a, const CollisionData& b) const
-{
-    return a.colliderA == b.colliderA || a.colliderA == b.colliderB || a.colliderB == b.colliderA || a.colliderB == b.colliderB;
-}
-
-void ParallelPhysics::BuildColorGroups()
-{
-    colorGroups.clear(); const size_t n = collisionData.size(); if (n == 0) return;
-    
-    std::vector<int> colors(n, -1);
-    
-    for (size_t i = 0; i < n; ++i)
-    {
-        std::vector<bool> used(colorGroups.size(), false);
-    
-        for (size_t j = 0; j < n; ++j)
-        {
-            if (i == j) continue;
-            if (colors[j] != -1 && HasConflict(collisionData[i], collisionData[j])) used[colors[j]] = true;
-        }
-    
-        int color = 0;
-        while (color < (int)used.size() && used[color]) ++color;
-    
-        colors[i] = color;
-        if (color == (int)colorGroups.size()) colorGroups.emplace_back();
-        colorGroups[color].push_back((int)i);
-    }
+    for (auto collider : colliders) collider->transform->UpdateTransform();
 }
