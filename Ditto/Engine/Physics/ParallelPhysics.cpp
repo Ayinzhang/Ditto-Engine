@@ -1,29 +1,37 @@
 #include "ParallelPhysics.h"
-#include <future>
-#include <thread>
 #include <algorithm>
+#include <vector>
 
-// 辅助：并行执行无返回值的任务，按范围分割
-static void ParallelFor(size_t count, std::function<void(size_t)> func) 
-{
-    unsigned int numThreads = std::thread::hardware_concurrency();
-    if (numThreads == 0) numThreads = 1;
-    size_t chunkSize = (count + numThreads - 1) / numThreads;
-    std::vector<std::future<void>> futures;
+ThreadPool ParallelPhysics::threadPool;
 
-    for (unsigned int t = 0; t < numThreads; ++t) {
-        size_t start = t * chunkSize;
-        size_t end = std::min(start + chunkSize, count);
-        if (start >= end) break;
+void ParallelPhysics::UpdatePhysics(float dt) {
+    t += dt;
+    if (t < deltaTime) return;
 
-        futures.emplace_back(std::async(std::launch::async, [start, end, &func]() {
-            for (size_t i = start; i < end; ++i) {
-                func(i); }
-            }));
+    int steps = glm::min(3.0f, t / deltaTime);
+    t = fmod(t, deltaTime);
+
+    for (int step = 0; step < steps; ++step) {
+        collisionData.clear();
+        colliderPairs.clear();
+
+        IntegrateForce(deltaTime);
+        if (bvhTree) bvhTree->UpdateBVHTree();
+        HandleBroadCollisions();
+        HandleNarrowCollisions();
+        BuildCollisionGroups();
+
+        for (int iter = 0; iter < iterations; ++iter)
+            SolveCollisions(iter);
+
+        ApplyPositionCorrections();
     }
 
-    for (auto& f : futures) {
-        f.wait();
+    size_t n = colliders.size();
+    if (n > 0) {
+        threadPool.parallel_for(0, n, [this](size_t i) {
+            colliders[i]->transform->UpdateTransform();
+            });
     }
 }
 
@@ -31,11 +39,11 @@ void ParallelPhysics::IntegrateForce(float dt) {
     size_t n = colliders.size();
     if (n == 0) return;
 
-    ParallelFor(n, [this, dt](size_t i) {
+    threadPool.parallel_for(0, n, [this, dt](size_t i) {
         Collider* collider = colliders[i];
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
-            TransformComponent* transform = collider->transform;
-            RigidbodyComponent* rb = collider->rigidbody;
+            auto* transform = collider->transform;
+            auto* rb = collider->rigidbody;
 
             if (rb->useGravity)
                 rb->velocity.y += -gravity * dt;
@@ -55,7 +63,6 @@ void ParallelPhysics::HandleBroadCollisions() {
     colliderPairs.clear();
     if (!bvhTree) return;
 
-    // 收集所有动态物体的索引
     std::vector<size_t> dynamicIndices;
     for (size_t i = 0; i < colliders.size(); ++i) {
         if (colliders[i]->rigidbody->type == RigidbodyComponent::Dynamic)
@@ -64,121 +71,197 @@ void ParallelPhysics::HandleBroadCollisions() {
     size_t numDyn = dynamicIndices.size();
     if (numDyn == 0) return;
 
-    unsigned int numThreads = std::thread::hardware_concurrency();
+    size_t numThreads = threadPool.thread_count();
     size_t chunkSize = (numDyn + numThreads - 1) / numThreads;
-    std::vector<std::future<std::vector<std::pair<Collider*, Collider*>>>> futures;
+    size_t numBlocks = (numDyn + chunkSize - 1) / chunkSize;
 
-    for (unsigned int t = 0; t < numThreads; ++t) {
-        size_t start = t * chunkSize;
+    std::vector<std::vector<std::pair<Collider*, Collider*>>> localPairs(numBlocks);
+
+    threadPool.parallel_for(0, numBlocks, [&](size_t blockIdx) {
+        size_t start = blockIdx * chunkSize;
         size_t end = std::min(start + chunkSize, numDyn);
-        if (start >= end) break;
-
-        futures.emplace_back(std::async(std::launch::async, [this, &dynamicIndices, start, end]() 
-            {
-            std::vector<std::pair<Collider*, Collider*>> localPairs;
-            for (size_t idx = start; idx < end; ++idx) {
-                Collider* collider = colliders[dynamicIndices[idx]];
-
-                // 查询可能与当前动态物体碰撞的其他物体
-                std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
-                for (Collider* other : potential) {
-                    if (other == collider) continue;
-                    // 只考虑动态或静态物体
-                    if (other->rigidbody->type != RigidbodyComponent::Dynamic &&
-                        other->rigidbody->type != RigidbodyComponent::Static)
-                        continue;
-
-                    // 保证配对顺序一致，方便后续去重
-                    if (collider < other)
-                        localPairs.emplace_back(collider, other);
-                    else
-                        localPairs.emplace_back(other, collider);
-                }
+        auto& local = localPairs[blockIdx];
+        for (size_t idx = start; idx < end; ++idx) {
+            Collider* collider = colliders[dynamicIndices[idx]];
+            std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
+            for (Collider* other : potential) {
+                if (other == collider) continue;
+                if (other->rigidbody->type != RigidbodyComponent::Dynamic &&
+                    other->rigidbody->type != RigidbodyComponent::Static)
+                    continue;
+                if (collider < other)
+                    local.emplace_back(collider, other);
+                else
+                    local.emplace_back(other, collider);
             }
-            return localPairs;
-            }));
-    }
+        }
+        });
 
-    // 收集所有线程的局部结果
     std::vector<std::pair<Collider*, Collider*>> allPairs;
-    for (auto& f : futures) {
-        auto local = f.get();
+    for (auto& local : localPairs) {
         allPairs.insert(allPairs.end(), local.begin(), local.end());
     }
 
-    // 去重
     std::sort(allPairs.begin(), allPairs.end());
     allPairs.erase(std::unique(allPairs.begin(), allPairs.end()), allPairs.end());
-
     colliderPairs = std::move(allPairs);
 }
 
-void ParallelPhysics::HandleNarrowCollisions() 
-{
+void ParallelPhysics::HandleNarrowCollisions() {
     collisionData.clear();
     size_t numPairs = colliderPairs.size();
     if (numPairs == 0) return;
 
-    unsigned int numThreads = std::thread::hardware_concurrency();
+    size_t numThreads = threadPool.thread_count();
     size_t chunkSize = (numPairs + numThreads - 1) / numThreads;
-    std::vector<std::future<std::vector<CollisionData>>> futures;
+    size_t numBlocks = (numPairs + chunkSize - 1) / chunkSize;
 
-    for (unsigned int t = 0; t < numThreads; ++t) {
-        size_t start = t * chunkSize;
+    std::vector<std::vector<CollisionData>> localData(numBlocks);
+
+    threadPool.parallel_for(0, numBlocks, [&](size_t blockIdx) {
+        size_t start = blockIdx * chunkSize;
         size_t end = std::min(start + chunkSize, numPairs);
-        if (start >= end) break;
-
-        futures.emplace_back(std::async(std::launch::async, [this, start, end]() {
-            std::vector<CollisionData> localData;
-            for (size_t i = start; i < end; ++i) {
-                auto& pair = colliderPairs[i];
-                CollisionInfo info = GJK_CheckCollision(pair.first, pair.second);
-                if (info.flag && info.depth > 1e-3f) {
-                    localData.emplace_back(pair.first, pair.second, info);
-                }
+        auto& local = localData[blockIdx];
+        for (size_t i = start; i < end; ++i) {
+            auto& pair = colliderPairs[i];
+            CollisionInfo info = GJK_CheckCollision(pair.first, pair.second);
+            if (info.flag && info.depth > 1e-3f) {
+                local.emplace_back(pair.first, pair.second, info);
             }
-            return localData;
-            }));
-    }
+        }
+        });
 
-    for (auto& f : futures) {
-        auto local = f.get();
+    for (auto& local : localData) {
         collisionData.insert(collisionData.end(), local.begin(), local.end());
     }
 }
 
-void ParallelPhysics::UpdatePhysics(float dt) {
-    t += dt;
-    if (t < deltaTime) return;
+void ParallelPhysics::BuildCollisionGroups() {
+    collisionGroups.clear();
+    if (collisionData.empty()) return;
 
-    int steps = glm::min(3.0f, t / deltaTime);
-    t = fmod(t, deltaTime);
+    std::sort(collisionData.begin(), collisionData.end(),
+        [](const CollisionData& a, const CollisionData& b) {
+            return a.info.depth > b.info.depth;
+        });
 
-    for (int step = 0; step < steps; ++step) 
-    {
-        // 清空上一帧数据
-        collisionData.clear();
-        colliderPairs.clear();
+    static std::vector<int> bodyMask;
+    static std::vector<int> bodyEpoch;
+    static int globalEpoch = 0;
 
-        // 并行积分
-        IntegrateForce(deltaTime);
-
-        // BVH 更新（单线程）
-        if (bvhTree) bvhTree->UpdateBVHTree();
-
-        // 并行宽阶段
-        HandleBroadCollisions();
-
-        // 并行窄阶段
-        HandleNarrowCollisions();
-
-        // 顺序求解碰撞（迭代）
-        for (int iter = 0; iter < iterations; ++iter)
-            SolveCollisions(iter);          // 调用基类实现
-
-        // 顺序位置修正
-        ApplyPositionCorrections();          // 调用基类实现
+    size_t maxId = 0;
+    for (auto& data : collisionData) {
+        maxId = std::max(maxId, (size_t)data.colliderA->id);
+        maxId = std::max(maxId, (size_t)data.colliderB->id);
+    }
+    if (bodyMask.size() <= maxId) {
+        bodyMask.resize(maxId + 1, 0);
+        bodyEpoch.resize(maxId + 1, 0);
     }
 
-    for (auto collider : colliders) collider->transform->UpdateTransform();
+    ++globalEpoch;
+
+    for (auto& data : collisionData) {
+        int aId = data.colliderA->id;
+        int bId = data.colliderB->id;
+        int groupIdx = 0;
+        while (true) {
+            if (groupIdx >= (int)collisionGroups.size()) {
+                collisionGroups.emplace_back();
+                collisionGroups.back().push_back(&data);
+                bodyMask[aId] = groupIdx + 1;
+                bodyEpoch[aId] = globalEpoch;
+                bodyMask[bId] = groupIdx + 1;
+                bodyEpoch[bId] = globalEpoch;
+                break;
+            }
+            bool aOccupied = (bodyEpoch[aId] == globalEpoch && bodyMask[aId] == groupIdx + 1);
+            bool bOccupied = (bodyEpoch[bId] == globalEpoch && bodyMask[bId] == groupIdx + 1);
+            if (!aOccupied && !bOccupied) {
+                collisionGroups[groupIdx].push_back(&data);
+                bodyMask[aId] = groupIdx + 1;
+                bodyEpoch[aId] = globalEpoch;
+                bodyMask[bId] = groupIdx + 1;
+                bodyEpoch[bId] = globalEpoch;
+                break;
+            }
+            ++groupIdx;
+        }
+    }
+}
+
+void ParallelPhysics::SolveCollisions(int iter) {
+    for (auto& group : collisionGroups) {
+        size_t groupSize = group.size();
+        if (groupSize == 0) continue;
+        if (groupSize < MIN_PARALLEL_GROUP_SIZE) {
+            for (CollisionData* data : group) {
+                ApplyImpulse(data->colliderA, data->colliderB,
+                    data->info.normal,
+                    data->info.contactPointA,
+                    data->info.contactPointB,
+                    data->info.depth, iter);
+            }
+        }
+        else {
+            threadPool.parallel_for(0, groupSize, [this, iter, &group](size_t idx) {
+                CollisionData* data = group[idx];
+                ApplyImpulse(data->colliderA, data->colliderB,
+                    data->info.normal,
+                    data->info.contactPointA,
+                    data->info.contactPointB,
+                    data->info.depth, iter);
+                });
+        }
+    }
+}
+
+void ParallelPhysics::ApplyPositionCorrections() {
+    for (auto& group : collisionGroups) {
+        size_t groupSize = group.size();
+        if (groupSize == 0) continue;
+        if (groupSize < MIN_PARALLEL_GROUP_SIZE) {
+            for (CollisionData* data : group) {
+                if (data->info.depth > 1e-3f) {
+                    Collider* a = data->colliderA;
+                    Collider* b = data->colliderB;
+                    const CollisionInfo& info = data->info;
+
+                    float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
+                    float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / b->rigidbody->mass : 0.0f;
+                    float totalInvMass = invMassA + invMassB;
+
+                    glm::vec3 correction = info.depth / totalInvMass * info.normal * positionCorrectionFactor;
+
+                    a->transform->position -= correction * invMassA;
+                    b->transform->position += correction * invMassB;
+
+                    a->isDirty = true;
+                    b->isDirty = true;
+                }
+            }
+        }
+        else {
+            threadPool.parallel_for(0, groupSize, [this, &group](size_t idx) {
+                CollisionData* data = group[idx];
+                if (data->info.depth > 1e-3f) {
+                    Collider* a = data->colliderA;
+                    Collider* b = data->colliderB;
+                    const CollisionInfo& info = data->info;
+
+                    float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
+                    float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / b->rigidbody->mass : 0.0f;
+                    float totalInvMass = invMassA + invMassB;
+
+                    glm::vec3 correction = info.depth / totalInvMass * info.normal * positionCorrectionFactor;
+
+                    a->transform->position -= correction * invMassA;
+                    b->transform->position += correction * invMassB;
+
+                    a->isDirty = true;
+                    b->isDirty = true;
+                }
+                });
+        }
+    }
 }
