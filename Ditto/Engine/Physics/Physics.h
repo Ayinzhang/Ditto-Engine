@@ -25,17 +25,17 @@ struct Physics
     BVHTree* bvhTree = nullptr;
     std::vector<Collider*> colliders;
     std::vector<std::pair<Collider*, Collider*>> colliderPairs;
-    std::vector<CollisionData> collisionData; // 存储所有碰撞信息
+    std::vector<CollisionData> collisionData;
 
     float t = 0, deltaTime = 1.0f / 60; int iterations = 4;
 
     float gravity = 9.8f;
     float linearDamping = 0.1f;
     float angularDamping = 0.2f;
-    float restitution = 0.3f; // 堆叠时用较小的恢复系数
-    float staticFriction = 0.8f; // 较大的静摩擦
-    float dynamicFriction = 0.5f; // 较大的动摩擦
-    float positionCorrectionFactor = 0.8f; // 位置修正强度
+    float restitution = 0.3f;
+    float staticFriction = 0.8f;
+    float dynamicFriction = 0.5f;
+    float positionCorrectionFactor = 0.8f;
 
     virtual void GenerateColliders(const std::vector<GameObject*>& gameobjects);
     virtual void CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic = false);

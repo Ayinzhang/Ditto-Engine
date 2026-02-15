@@ -258,6 +258,7 @@ void Editor::DrawScene()
         ppf = 1e6f * engine->physicsTime / engine->physicsCnt;
         frame = 0; deltaTime = 0; engine->physicsCnt = 0; engine->physicsTime = 0;
     }
+    else if (deltaTime < 0) deltaTime = 0;
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
 

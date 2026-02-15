@@ -323,70 +323,6 @@
     <ClInclude Include="3rdParty\ImGui\imstb_rectpack.h" />
     <ClInclude Include="3rdParty\ImGui\imstb_textedit.h" />
     <ClInclude Include="3rdParty\ImGui\imstb_truetype.h" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\algorithm.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\data_pipeline.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\find.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\for_each.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\module.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\partitioner.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\pipeline.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\reduce.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\scan.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\sort.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\algorithm\transform.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\async.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\async_task.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\atomic_notifier.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\declarations.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\environment.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\error.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\executor.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\flow_builder.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\graph.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\nonblocking_notifier.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\observer.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\runtime.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\semaphore.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\task.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\taskflow.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\task_group.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\topology.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\worker.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\core\wsq.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\find.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\for_each.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\matmul.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\merge.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\reduce.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\scan.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\single_task.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\sort.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\transform.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\algorithm\transpose.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cudaflow.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_capturer.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_device.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_error.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_execution_policy.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_graph.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_graph_exec.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_memory.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_meta.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_optimizer.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\cuda\cuda_stream.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\taskflow.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\iterator.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\lazy_string.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\macros.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\math.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\mpmc.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\object_pool.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\os.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\serializer.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\small_vector.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\stream.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\traits.hpp" />
-    <ClInclude Include="3rdParty\TaskFlow\utility\uuid.hpp" />
     <ClInclude Include="Editor\Editor.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
@@ -396,8 +332,11 @@
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
     <ClInclude Include="Engine\Physics\GJK.h" />
     <ClInclude Include="Engine\Physics\ParallelPhysics.h" />
+    <ClInclude Include="Engine\Physics\ParallelPhysicsBarrier.h" />
     <ClInclude Include="Engine\Physics\Physics.h" />
+    <ClInclude Include="Engine\Physics\ThreadPool.h" />
     <ClInclude Include="Engine\Resources\Resource.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3.lib" />
@@ -571,8 +510,16 @@
     <ClCompile Include="Engine\Physics\CollisionShape.cpp" />
     <ClCompile Include="Engine\Physics\GJK.cpp" />
     <ClCompile Include="Engine\Physics\ParallelPhysics.cpp" />
+    <ClCompile Include="Engine\Physics\ParallelPhysicsBarrier.cpp" />
     <ClCompile Include="Engine\Physics\Physics.cpp" />
+    <ClCompile Include="Engine\Physics\ThreadPool.cpp" />
     <ClCompile Include="Engine\Resources\Resource.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Ditto.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Assets\Icon\ditto.ico" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -671,6 +618,7 @@
       <AdditionalOptions>
       </AdditionalOptions>
       <DisableLanguageExtensions>false</DisableLanguageExtensions>
+      <OpenMPSupport>false</OpenMPSupport>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
