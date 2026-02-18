@@ -220,7 +220,7 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b)
                 barycentric.z * f.supportC.pointA;
 
             res.contactPointB = barycentric.x * f.supportA.pointB +
-                barycentric.z * f.supportB.pointB +
+                barycentric.y * f.supportB.pointB +
                 barycentric.z * f.supportC.pointB;
 
             return res;
