@@ -50,7 +50,6 @@ void Scene::ClearScene()
 
 void Scene::CollectRenderData()
 {
-    // Çå¿ÕÅú´Î
     for (auto& pair : geometryBatches)
     {
         pair.second->modelMatrices.clear();
@@ -88,8 +87,7 @@ void Scene::CollectRenderData()
                 }
             }
 
-            for (auto child : obj->children)
-                collect(child);
+            for (auto child : obj->children) collect(child);
         };
 
     for (auto root : gameObjects)

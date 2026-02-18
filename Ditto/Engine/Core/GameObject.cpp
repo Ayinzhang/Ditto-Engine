@@ -4,7 +4,6 @@
 #include <fstream>
 #include <algorithm>
 
-// --- ¸¨ÖúÐòÁÐ»¯º¯Êý ---
 static void WriteString(std::ofstream& file, const std::string& str)
 {
     uint32_t length = static_cast<uint32_t>(str.length());
@@ -216,7 +215,6 @@ void GameObject::Deserialize(std::ifstream& file)
     }
 }
 
-// ========== TransformComponent ==========
 TransformComponent::TransformComponent()
     : position(0.0f), rotation(0.0f), scale(1.0f),
     lastPosition(0.0f), lastRotation(0.0f), lastScale(1.0f),
@@ -334,7 +332,6 @@ void TransformComponent::Deserialize(std::ifstream& file)
     UpdateTransform();
 }
 
-// ========== LightComponent ==========
 LightComponent::LightComponent() : color(1.0f), intensity(1.0f) { index = 1 << 1; }
 LightComponent::LightComponent(LightComponent* other) : color(other->color), intensity(other->intensity) { index = 1 << 1; }
 void LightComponent::OnInspectorGUI()
@@ -363,7 +360,6 @@ void LightComponent::Deserialize(std::ifstream& file)
     file.read(reinterpret_cast<char*>(&intensity), sizeof(intensity));
 }
 
-// ========== RendererComponent ==========
 RendererComponent::RendererComponent(Type _type) : type(_type), color(1.0f, 1.0f, 1.0f, 1.0f) { index = 1 << 2; }
 RendererComponent::RendererComponent(RendererComponent* other) : type(other->type), color(other->color) { index = 1 << 2; }
 void RendererComponent::OnInspectorGUI()
@@ -398,7 +394,6 @@ void RendererComponent::Deserialize(std::ifstream& file)
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
 }
 
-// ========== RigidbodyComponent ==========
 RigidbodyComponent::RigidbodyComponent()
     : type(Dynamic), mass(1.0f), useGravity(true), damp(0.05f), angularDamp(0.05f),
     velocity(0.0f), angularVelocity(0.0f) {
@@ -440,6 +435,7 @@ void RigidbodyComponent::OnInspectorGUI()
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
 }
+
 void RigidbodyComponent::CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale)
 {
     inertia = glm::mat3(0.0f);
@@ -464,6 +460,7 @@ void RigidbodyComponent::CalculateInertia(RendererComponent::Type shapeType, con
     }
     inverseInertia = glm::inverse(inertia);
 }
+
 void RigidbodyComponent::Serialize(std::ofstream& file) const
 {
     int32_t typeInt = static_cast<int32_t>(type);
@@ -473,6 +470,7 @@ void RigidbodyComponent::Serialize(std::ofstream& file) const
     file.write(reinterpret_cast<const char*>(&damp), sizeof(damp));
     file.write(reinterpret_cast<const char*>(&angularDamp), sizeof(angularDamp));
 }
+
 void RigidbodyComponent::Deserialize(std::ifstream& file)
 {
     int32_t typeInt = 0;

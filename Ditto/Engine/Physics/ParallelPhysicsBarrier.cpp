@@ -1,4 +1,3 @@
-// ParallelPhysicsBarrier.cpp
 #include "ParallelPhysicsBarrier.h"
 #include "ThreadPool.h"
 #include <algorithm>

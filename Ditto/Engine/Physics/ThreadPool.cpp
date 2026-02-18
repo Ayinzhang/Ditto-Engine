@@ -1,43 +1,41 @@
-// ThreadPool.cpp
 #include "ThreadPool.h"
 #include <algorithm>
 #include <cassert>
 
-ThreadPool::ThreadPool(size_t numThreads) : stop(false), next_thread_index(0) {
+ThreadPool::ThreadPool(size_t numThreads) : stop(false), next_thread_index(0) 
+{
     workers.reserve(numThreads);
-    for (size_t i = 0; i < numThreads; ++i) {
+    for (size_t i = 0; i < numThreads; ++i) 
         workers.push_back(std::make_unique<Worker>());
-    }
 
     threads.reserve(numThreads);
-    for (size_t i = 0; i < numThreads; ++i) {
+    for (size_t i = 0; i < numThreads; ++i) 
         threads.emplace_back(&ThreadPool::worker_loop, this, i);
-    }
 }
 
-ThreadPool::~ThreadPool() {
+ThreadPool::~ThreadPool() 
+{
     stop = true;
-    cv.notify_all(); // 唤醒所有可能等待的线程
-    for (auto& t : threads) {
-        if (t.joinable()) t.join();
-    }
+    cv.notify_all();
+    for (auto& t : threads) if (t.joinable()) t.join();
 }
 
-void ThreadPool::enqueue(std::function<void()> task) {
-    // 轮询选择一个目标线程的本地队列
+void ThreadPool::enqueue(std::function<void()> task) 
+{
     size_t target = next_thread_index.fetch_add(1, std::memory_order_relaxed) % workers.size();
     {
         std::unique_lock lock(workers[target]->mutex);
         workers[target]->tasks.push_back(std::move(task));
     }
-    cv.notify_one(); // 唤醒一个等待线程
+    cv.notify_one();
 }
 
-void ThreadPool::parallel_for(size_t start, size_t end, std::function<void(size_t)> func) {
+void ThreadPool::parallel_for(size_t start, size_t end, std::function<void(size_t)> func) 
+{
     if (start >= end) return;
     size_t total = end - start;
     size_t numThreads = workers.size();
-    size_t chunkSize = (total + numThreads - 1) / numThreads; // 简单分块
+    size_t chunkSize = (total + numThreads - 1) / numThreads; 
 
     std::atomic<size_t> remaining(0);
     std::mutex local_mutex;
@@ -60,12 +58,12 @@ void ThreadPool::parallel_for(size_t start, size_t end, std::function<void(size_
             });
     }
 
-    // 等待所有块完成
     std::unique_lock<std::mutex> lock(local_mutex);
     local_cv.wait(lock, [&remaining] { return remaining == 0; });
 }
 
-bool ThreadPool::has_any_task() const {
+bool ThreadPool::has_any_task() const 
+{
     for (const auto& worker : workers) {
         std::unique_lock lock(worker->mutex);
         if (!worker->tasks.empty()) {
@@ -75,13 +73,13 @@ bool ThreadPool::has_any_task() const {
     return false;
 }
 
-void ThreadPool::worker_loop(size_t myIndex) {
+void ThreadPool::worker_loop(size_t myIndex) 
+{
     Worker& myWorker = *workers[myIndex];
 
-    while (!stop) {
+    while (!stop) 
+    {
         std::function<void()> task;
-
-        // 1. 尝试从本地队列头部取任务（LIFO 策略，提高缓存局部性）
         {
             std::unique_lock lock(myWorker.mutex, std::try_to_lock);
             if (lock.owns_lock() && !myWorker.tasks.empty()) {
@@ -90,7 +88,6 @@ void ThreadPool::worker_loop(size_t myIndex) {
             }
         }
 
-        // 2. 如果本地队列为空，尝试从其他线程的队列尾部窃取任务
         if (!task) {
             size_t numWorkers = workers.size();
             for (size_t offset = 1; offset < numWorkers; ++offset) {
@@ -98,19 +95,16 @@ void ThreadPool::worker_loop(size_t myIndex) {
                 Worker& victim = *workers[victimIdx];
                 std::unique_lock lock(victim.mutex, std::try_to_lock);
                 if (lock.owns_lock() && !victim.tasks.empty()) {
-                    task = std::move(victim.tasks.back()); // 从尾部窃取
+                    task = std::move(victim.tasks.back());
                     victim.tasks.pop_back();
                     break;
                 }
             }
         }
 
-        // 3. 执行任务
-        if (task) {
-            task();
-        }
-        else {
-            // 4. 无任务，等待条件变量
+        if (task)  task();
+        else 
+        {
             std::unique_lock<std::mutex> lock(cv_mutex);
             cv.wait(lock, [this] { return stop || has_any_task(); });
         }

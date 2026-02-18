@@ -83,7 +83,7 @@ ModelData::ModelData(const std::string& path)
     }
 
     file.close();
-    vertexCount = vertexData.size() / 8;
+    vertexCount = vertexData.size() / 6;
 }
 
 Resource::~Resource()

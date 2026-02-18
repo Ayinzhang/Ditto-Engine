@@ -4,7 +4,6 @@
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../3rdParty/ImGui/imgui_impl_opengl3.h"
-#include <algorithm>
 
 Editor::Editor(void* window)
 {
@@ -48,7 +47,6 @@ void Editor::Draw()
 
 void Editor::DrawToolbar()
 {
-    // ... 完全保持原样，无改动 ...
     if (ImGui::BeginMainMenuBar())
     {
         if (ImGui::BeginMenu("File"))
@@ -102,21 +100,17 @@ void Editor::DrawToolbar()
     }
 }
 
-// ========== 递归绘制节点 + 拖拽 ==========
 void Editor::DrawGameObjectNode(GameObject* obj)
 {
     ImGui::PushID(obj);
 
     bool hasChildren = !obj->children.empty();
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
-        | ImGuiTreeNodeFlags_OpenOnDoubleClick
-        | ImGuiTreeNodeFlags_SpanAvailWidth;
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
     if (selectedObject == obj) flags |= ImGuiTreeNodeFlags_Selected;
     if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
     bool nodeOpen = ImGui::TreeNodeEx(obj->name.c_str(), flags);
 
-    // --- 拖拽源 ---
     if (ImGui::BeginDragDropSource())
     {
         ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
@@ -124,7 +118,6 @@ void Editor::DrawGameObjectNode(GameObject* obj)
         ImGui::EndDragDropSource();
     }
 
-    // --- 拖拽目标（成为子物体）---
     if (ImGui::BeginDragDropTarget())
     {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
@@ -132,8 +125,7 @@ void Editor::DrawGameObjectNode(GameObject* obj)
             GameObject* droppedObj = *(GameObject**)payload->Data;
             if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
             {
-                if (droppedObj->parent)
-                    droppedObj->RemoveFromParent();
+                if (droppedObj->parent) droppedObj->RemoveFromParent();
                 else
                 {
                     auto& rootList = engine->scene->gameObjects;
@@ -149,7 +141,6 @@ void Editor::DrawGameObjectNode(GameObject* obj)
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
         selectedObject = obj;
 
-    // --- 右键菜单 ---
     if (ImGui::BeginPopupContextItem())
     {
         if (ImGui::MenuItem("Create Child"))
@@ -184,7 +175,6 @@ void Editor::DrawHierarchy()
     ImGui::SetNextWindowSize(ImVec2(hierarchyWidth, windowHeight));
     ImGui::Begin("Hierarchy");
 
-    // --- 空白处右键菜单（创建根物体）---
     if (ImGui::BeginPopupContextWindow())
     {
         if (ImGui::MenuItem("Create Cube"))
@@ -204,7 +194,6 @@ void Editor::DrawHierarchy()
         ImGui::EndPopup();
     }
 
-    // --- 空白处拖拽目标（将物体拖到空白处，成为根物体）---
     if (ImGui::BeginDragDropTarget())
     {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
@@ -212,17 +201,13 @@ void Editor::DrawHierarchy()
             GameObject* droppedObj = *(GameObject**)payload->Data;
             if (droppedObj)
             {
-                // 从原父移除
-                if (droppedObj->parent)
-                    droppedObj->RemoveFromParent();
+                if (droppedObj->parent) droppedObj->RemoveFromParent();
                 else
                 {
-                    // 已在根列表，先移除（避免重复）
                     auto& rootList = engine->scene->gameObjects;
                     auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
                     if (it != rootList.end()) rootList.erase(it);
                 }
-                // 添加到根列表
                 engine->scene->gameObjects.push_back(droppedObj);
                 droppedObj->parent = nullptr;
             }
@@ -230,16 +215,13 @@ void Editor::DrawHierarchy()
         ImGui::EndDragDropTarget();
     }
 
-    // 绘制所有根物体
-    for (GameObject* obj : engine->scene->gameObjects)
-        DrawGameObjectNode(obj);
+    for (GameObject* obj : engine->scene->gameObjects) DrawGameObjectNode(obj);
 
     ImGui::End();
 }
 
 void Editor::DrawScene()
 {
-    // ... 完全保持原样 ...
     float menuBarHeight = ImGui::GetFrameHeight();
     float windowWidth = ImGui::GetIO().DisplaySize.x;
     float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
@@ -276,7 +258,6 @@ void Editor::DrawScene()
 
 void Editor::DrawInspector()
 {
-    // ... 完全保持原样 ...
     float menuBarHeight = ImGui::GetFrameHeight();
     float windowWidth = ImGui::GetIO().DisplaySize.x;
     float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
@@ -288,11 +269,7 @@ void Editor::DrawInspector()
     ImGui::SetNextWindowSize(ImVec2(inspectorWidth, windowHeight));
     ImGui::Begin("Inspector");
 
-    if (!selectedObject)
-    {
-        ImGui::End();
-        return;
-    }
+    if (!selectedObject) { ImGui::End(); return; }
 
     if (engine->state == Engine::State::Play) ImGui::BeginDisabled();
     selectedObject->OnInspectorGUI();
@@ -303,7 +280,6 @@ void Editor::DrawInspector()
 
 void Editor::DrawPopups()
 {
-    // ... 完全保持原样（已包含 selectedObject = nullptr 处理）...
     if (showSavePopup)
     {
         ImGui::OpenPopup("Save Scene");
@@ -335,7 +311,7 @@ void Editor::DrawPopups()
 
     if (ImGui::BeginPopupModal("Load Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
-        selectedObject = nullptr;   // 加载时清空选中
+        selectedObject = nullptr;
         ImGui::Text("Path"); ImGui::SameLine();
         static char loadPathBuffer[256] = "Assets/Scenes/scene.bin";
         ImGui::InputText("##Path", loadPathBuffer, sizeof(loadPathBuffer));
@@ -383,7 +359,7 @@ void Editor::DeleteSelectedObject()
         if (it != rootList.end()) rootList.erase(it);
     }
 
-    delete selectedObject;   // 递归删除所有子物体
+    delete selectedObject;
 
     if (parent)
         selectedObject = parent;

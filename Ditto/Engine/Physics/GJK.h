@@ -34,4 +34,3 @@ struct CollisionInfo
 };
 
 CollisionInfo GJK_CheckCollision(Collider* colliderA, Collider* colliderB);
-glm::mat3 CalculateWorldInverseInertia(Collider* collider);

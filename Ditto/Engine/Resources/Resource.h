@@ -16,8 +16,7 @@ struct Resource
 
 struct ModelData // For Rendering
 {
-	std::string modelName;
-	int vertexCount;
+	std::string modelName; int vertexCount;
 	std::vector<float> vertexData;
 	ModelData(const std::string& path);
 	struct FaceIndices { int posIdx, texIdx, normIdx; };

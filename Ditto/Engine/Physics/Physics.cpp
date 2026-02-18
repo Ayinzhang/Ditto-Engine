@@ -12,26 +12,19 @@ void Physics::UpdatePhysics(float dt)
 
     for (int step = 0; step < steps; ++step)
     {
-        // 1. 清除上一帧的碰撞数据
         collisionData.clear(); colliderPairs.clear();
 
-        // 2. 积分力（更新速度和角速度）
         IntegrateForce(deltaTime);
 
-        // 3. 更新BVH树
         if (bvhTree) bvhTree->UpdateBVHTree();
 
-        // 4. 宽相位碰撞检测
         HandleBroadCollisions();
 
-        // 5. 窄相位碰撞检测
         HandleNarrowCollisions();
 
-        // 6. 多轮顺序冲量求解
         for (int iter = 0; iter < iterations; ++iter)
             SolveCollisions(iter);
 
-        // 7. 应用位置修正
         ApplyPositionCorrections();
     }
 
@@ -40,11 +33,9 @@ void Physics::UpdatePhysics(float dt)
 
 void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 {
-    // 清除旧数据
     for (auto collider : colliders) delete collider; colliders.clear();
     if (bvhTree) delete bvhTree;
 
-    // 递归遍历所有根物体及其子物体
     for (GameObject* root : gameobjects) CollectCollidersRecursive(root, colliders);
 
     if (!colliders.empty())
@@ -65,7 +56,6 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>&
         collider->transform = transform;
         collider->rigidbody = rigidbody;
 
-        // 有父物体的物体强制设为静态（不会移动）
         if (parentIsDynamic) collider->rigidbody->type = RigidbodyComponent::Static;
 
         switch (renderer->type)
@@ -160,6 +150,17 @@ void Physics::SolveCollisions(int iter)
 
          data.processed = true;
      }
+}
+
+glm::mat3 CalculateWorldInverseInertia(Collider* collider)
+{
+    if (collider->rigidbody->type != RigidbodyComponent::Dynamic)
+        return glm::mat3(0.0f);
+
+    glm::mat4 worldMat = collider->transform->GetWorldModel();
+    glm::mat3 rotationMatrix = glm::mat3(worldMat);
+
+    return rotationMatrix * collider->rigidbody->inverseInertia * glm::transpose(rotationMatrix);
 }
 
 void Physics::ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,

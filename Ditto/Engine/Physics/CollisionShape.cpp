@@ -280,8 +280,7 @@ void BVHTree::QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>&
     if (node->isLeaf) 
     {
         Collider* collider = node->data.leaf.collider;
-        if (collider //&& !(bounds.min == collider->aabb.min && bounds.max == collider->aabb.max) 
-            && collider->aabb.CheckCollision(bounds)) results.push_back(collider);
+        if (collider && collider->aabb.CheckCollision(bounds)) results.push_back(collider);
     }
     else 
     {

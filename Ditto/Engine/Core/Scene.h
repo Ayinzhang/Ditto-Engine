@@ -34,7 +34,7 @@ struct GeometryInstances
 struct Scene
 {
     std::string name;
-    std::vector<GameObject*> gameObjects;   // 仅根物体
+    std::vector<GameObject*> gameObjects;
 
     GameObject* mainLight = nullptr;
     std::unordered_map<RendererComponent::Type, BaseGeometry> baseGeometries;

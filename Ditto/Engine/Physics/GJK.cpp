@@ -3,35 +3,23 @@
 #include <algorithm>
 #include <vector>
 
-// --- 核心辅助函数 ---
-
 static glm::vec3 GetSupportPoint(Collider* collider, const glm::vec3& direction)
 {
-    // 1. 获取世界矩阵（自动包含父级变换）
     glm::mat4 worldMat = collider->transform->GetWorldModel();
 
-    // 2. 将方向转换到局部空间
-    //    使用世界矩阵的逆转置（正确处理非均匀缩放）
     glm::mat3 worldToLocalRotScale = glm::mat3(glm::inverse(worldMat));
     glm::vec3 localDir = glm::normalize(worldToLocalRotScale * direction);
 
-    // 3. 寻找局部空间支持点（顶点坐标位于模型局部空间）
     glm::vec3 localSupport(0.0f);
     float maxDot = -std::numeric_limits<float>::infinity();
     for (const auto& vertex : collider->mesh->vertices)
     {
         float dot = glm::dot(vertex, localDir);
-        if (dot > maxDot)
-        {
-            maxDot = dot;
-            localSupport = vertex;
-        }
+        if (dot > maxDot) { maxDot = dot; localSupport = vertex; }
     }
 
-    // 4. 变换回世界空间
     return glm::vec3(worldMat * glm::vec4(localSupport, 1.0f));
 }
-
 
 static SupportPoint GetMinkowskiSupport(Collider* colliderA, Collider* colliderB, const glm::vec3& direction) {
     glm::vec3 supportA = GetSupportPoint(colliderA, direction);
@@ -39,24 +27,20 @@ static SupportPoint GetMinkowskiSupport(Collider* colliderA, Collider* colliderB
     return SupportPoint(supportA - supportB, supportA, supportB);
 }
 
-// --- GJK 状态机更新 ---
-
-bool UpdateSimplex(std::vector<SupportPoint>& simplex, glm::vec3& direction) {
-    if (simplex.size() == 2) { // 线段
+bool UpdateSimplex(std::vector<SupportPoint>& simplex, glm::vec3& direction) 
+{
+    if (simplex.size() == 2) 
+    { 
         glm::vec3 A = simplex[1].point;
         glm::vec3 B = simplex[0].point;
         glm::vec3 AB = B - A;
         glm::vec3 AO = -A;
 
-        if (glm::dot(AB, AO) > 0) {
-            direction = glm::cross(glm::cross(AB, AO), AB);
-        }
-        else {
-            simplex = { simplex[1] };
-            direction = AO;
-        }
+        if (glm::dot(AB, AO) > 0) direction = glm::cross(glm::cross(AB, AO), AB);
+        else { simplex = { simplex[1] }; direction = AO;  }
     }
-    else if (simplex.size() == 3) { // 三角形
+    else if (simplex.size() == 3) 
+    { 
         glm::vec3 A = simplex[2].point;
         glm::vec3 B = simplex[1].point;
         glm::vec3 C = simplex[0].point;
@@ -65,33 +49,39 @@ bool UpdateSimplex(std::vector<SupportPoint>& simplex, glm::vec3& direction) {
         glm::vec3 AO = -A;
         glm::vec3 ABC = glm::cross(AB, AC);
 
-        if (glm::dot(glm::cross(ABC, AC), AO) > 0) {
-            if (glm::dot(AC, AO) > 0) {
+        if (glm::dot(glm::cross(ABC, AC), AO) > 0) 
+        {
+            if (glm::dot(AC, AO) > 0) 
+            {
                 simplex = { simplex[0], simplex[2] };
                 direction = glm::cross(glm::cross(AC, AO), AC);
             }
-            else {
+            else 
+            {
                 simplex = { simplex[1], simplex[2] };
                 return UpdateSimplex(simplex, direction);
             }
         }
-        else {
-            if (glm::dot(glm::cross(AB, ABC), AO) > 0) {
+        else 
+        {
+            if (glm::dot(glm::cross(AB, ABC), AO) > 0) 
+            {
                 simplex = { simplex[1], simplex[2] };
                 return UpdateSimplex(simplex, direction);
             }
-            else {
-                if (glm::dot(ABC, AO) > 0) {
-                    direction = ABC;
-                }
-                else {
-                    simplex = { simplex[1], simplex[0], simplex[2] }; // 保持逆时针
+            else 
+            {
+                if (glm::dot(ABC, AO) > 0) direction = ABC;
+                else 
+                {
+                    simplex = { simplex[1], simplex[0], simplex[2] };
                     direction = -ABC;
                 }
             }
         }
     }
-    else if (simplex.size() == 4) { // 四面体
+    else if (simplex.size() == 4) 
+    {
         glm::vec3 A = simplex[3].point;
         glm::vec3 B = simplex[2].point;
         glm::vec3 C = simplex[1].point;
@@ -104,13 +94,13 @@ bool UpdateSimplex(std::vector<SupportPoint>& simplex, glm::vec3& direction) {
         if (glm::dot(ABC, AO) > 0) { simplex = { simplex[1], simplex[2], simplex[3] }; direction = ABC; return false; }
         if (glm::dot(ACD, AO) > 0) { simplex = { simplex[0], simplex[1], simplex[3] }; direction = ACD; return false; }
         if (glm::dot(ADB, AO) > 0) { simplex = { simplex[2], simplex[0], simplex[3] }; direction = ADB; return false; }
-        return true; // 包含原点
+        return true;
     }
     return false;
 }
 
-glm::vec3 GetClosestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
-    // 计算三角形上距离p最近的点
+glm::vec3 GetClosestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) 
+{
     glm::vec3 ab = b - a;
     glm::vec3 ac = c - a;
     glm::vec3 ap = p - a;
@@ -153,7 +143,8 @@ glm::vec3 GetClosestPointOnTriangle(const glm::vec3& p, const glm::vec3& a, cons
     return a + ab * v + ac * w;
 }
 
-glm::vec3 GetBarycentricCoordinates(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+glm::vec3 GetBarycentricCoordinates(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) 
+{
     glm::vec3 v0 = b - a;
     glm::vec3 v1 = c - a;
     glm::vec3 v2 = p - a;
@@ -171,18 +162,17 @@ glm::vec3 GetBarycentricCoordinates(const glm::vec3& p, const glm::vec3& a, cons
 
     return glm::vec3(u, v, w);
 }
-// --- EPA 实现 ---
 
-CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
+CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) 
+{
     std::vector<Triangle> faces;
-    // 初始四面体的4个面 (确保法线朝外)
-    auto addFace = [&](int i, int j, int k) {
+    auto addFace = [&](int i, int j, int k) 
+        {
         Triangle t;
         t.a = simplex[i].point;
         t.b = simplex[j].point;
         t.c = simplex[k].point;
         
-        // 保存支撑点信息
         t.supportA = simplex[i];
         t.supportB = simplex[j];
         t.supportC = simplex[k];
@@ -190,8 +180,8 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
         t.normal = glm::normalize(glm::cross(t.b - t.a, t.c - t.a));
         t.dis = glm::dot(t.normal, t.a);
 
-        if (t.dis < 0) {
-            // 翻转法线时也要交换支撑点
+        if (t.dis < 0) 
+        {
             std::swap(t.b, t.c);
             std::swap(t.supportB, t.supportC);
             t.normal = -t.normal;
@@ -222,12 +212,9 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
             res.normal = f.normal;
             res.depth = d;
 
-            // 计算接触点：找到三角形上距离原点最近的点
-            // 使用重心坐标插值
             glm::vec3 closestPoint = GetClosestPointOnTriangle(glm::vec3(0), f.a, f.b, f.c);
             glm::vec3 barycentric = GetBarycentricCoordinates(closestPoint, f.a, f.b, f.c);
 
-            // 插值得到实际接触点
             res.contactPointA = barycentric.x * f.supportA.pointA +
                 barycentric.y * f.supportB.pointA +
                 barycentric.z * f.supportC.pointA;
@@ -239,7 +226,6 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
             return res;
         }
 
-        // 移除可见面并重建 (此处简化处理，实际生产建议使用 Horizon Edge 算法)
         std::vector<Edge> edges;
         for (int i = (int)faces.size() - 1; i >= 0; i--) {
             if (glm::dot(faces[i].normal, p.point - faces[i].a) > 0) {
@@ -268,38 +254,23 @@ CollisionInfo EPA(std::vector<SupportPoint> simplex, Collider* a, Collider* b) {
     return {};
 }
 
-glm::mat3 CalculateWorldInverseInertia(Collider* collider)
+
+CollisionInfo GJK_CheckCollision(Collider* colliderA, Collider* colliderB) 
 {
-    if (collider->rigidbody->type != RigidbodyComponent::Dynamic)
-        return glm::mat3(0.0f);
-
-    // 获取世界旋转矩阵（从世界矩阵提取）
-    glm::mat4 worldMat = collider->transform->GetWorldModel();
-    glm::mat3 rotationMatrix = glm::mat3(worldMat); // 提取 3x3 部分
-
-    // 将局部逆惯量张量转换到世界坐标系
-    // I_world^-1 = R * I_local^-1 * R^T
-    return rotationMatrix * collider->rigidbody->inverseInertia * glm::transpose(rotationMatrix);
-}
-
-// --- 主入口 ---
-
-CollisionInfo GJK_CheckCollision(Collider* colliderA, Collider* colliderB) {
     CollisionInfo result;
-    glm::vec3 direction = glm::vec3(1, 0, 0); // 初始方向
+    glm::vec3 direction = glm::vec3(1, 0, 0);
 
     std::vector<SupportPoint> simplex;
     simplex.push_back(GetMinkowskiSupport(colliderA, colliderB, direction));
     direction = -simplex[0].point;
 
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 50; ++i) 
+    {
         SupportPoint next = GetMinkowskiSupport(colliderA, colliderB, direction);
-        if (glm::dot(next.point, direction) < 0) return result; // 没过原点，无碰撞
+        if (glm::dot(next.point, direction) < 0) return result;
 
         simplex.push_back(next);
-        if (UpdateSimplex(simplex, direction)) {
-            return EPA(simplex, colliderA, colliderB); // 包含原点，进 EPA
-        }
+        if (UpdateSimplex(simplex, direction)) return EPA(simplex, colliderA, colliderB);
     }
     return result;
 }

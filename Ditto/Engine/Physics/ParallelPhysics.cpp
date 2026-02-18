@@ -30,8 +30,7 @@ void ParallelPhysics::UpdatePhysics(float dt) {
     size_t n = colliders.size();
     if (n > 0) {
         threadPool.parallel_for(0, n, [this](size_t i) {
-            colliders[i]->transform->UpdateTransform();
-            });
+            colliders[i]->transform->UpdateTransform(); });
     }
 }
 

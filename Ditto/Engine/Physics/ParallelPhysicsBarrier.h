@@ -1,4 +1,3 @@
-// ParallelPhysicsBarrier.h
 #pragma once
 #include "ParallelPhysics.h"
 #include <barrier>
