@@ -170,7 +170,6 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,
     float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
     float invMassB = (b->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / b->rigidbody->mass : 0.0f;
 
-
     glm::mat3 invInertiaA = CalculateWorldInverseInertia(a), invInertiaB = CalculateWorldInverseInertia(b);
     glm::vec3 rA = contactPointA - a->transform->position, rB = contactPointB - b->transform->position;
 
@@ -193,7 +192,7 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,
     float denominator = termA + termB;
     if (denominator == 0.0f) return;
 
-    float biasFactor = 0.3f *(1.0f - float(iteration) / iterations);
+    float biasFactor = 0.3f * (1.0f - float(iteration) / iterations);
     float bias = biasFactor * penetrationDepth / deltaTime;
     float j = -(1.0f + restitution) * normalVel + bias;
     j = glm::max(0.0f, j / denominator);
@@ -209,7 +208,6 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,
     if (b->rigidbody->type == RigidbodyComponent::Dynamic)
     {
         b->rigidbody->velocity += impulse * invMassB;
-        glm::vec3 torque = glm::cross(rB, -impulse);
         b->rigidbody->angularVelocity += invInertiaB * glm::cross(rB, -impulse);
     }
 
@@ -241,11 +239,13 @@ void Physics::ApplyImpulse(Collider* a, Collider* b, const glm::vec3& normal,
             jt = glm::clamp(jt, -maxFriction, maxFriction);
 
             glm::vec3 tangentImpulse = jt * tangent;
-            if (a->rigidbody->type == RigidbodyComponent::Dynamic)
-                a->rigidbody->velocity -= tangentImpulse * invMassA;
 
+            if (a->rigidbody->type == RigidbodyComponent::Dynamic)
+                a->rigidbody->velocity -= tangentImpulse * invMassA,
+                a->rigidbody->angularVelocity += invInertiaA * glm::cross(rA, tangentImpulse);
             if (b->rigidbody->type == RigidbodyComponent::Dynamic)
-                b->rigidbody->velocity += tangentImpulse * invMassB;
+                b->rigidbody->velocity += tangentImpulse * invMassB,
+                b->rigidbody->angularVelocity += invInertiaB * glm::cross(rB, -tangentImpulse);
         }
     }
 }
