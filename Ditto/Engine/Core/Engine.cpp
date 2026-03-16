@@ -32,7 +32,11 @@ Engine::Engine()
 
     resource = new Resource();
     scene = new Scene();
-    camera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
+    // Scene编辑器相机 - 俯视角度方便编辑
+    sceneCamera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
+    // Game游戏相机 - 更贴近游戏视角
+    gameCamera = new Camera(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
+    sceneCamera = sceneCamera; // 默认激活Scene相机
     shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
     editor = new Editor(window); editor->engine = this;
 	physics = new ParallelPhysics(); physics->engine = this;
@@ -44,7 +48,8 @@ Engine::~Engine()
 {
     delete editor;
     delete shader;
-    delete camera;
+    delete sceneCamera;
+    delete gameCamera;
     delete scene;
     delete resource;
     if (window) glfwDestroyWindow(window);
@@ -63,39 +68,59 @@ void Engine::Run()
         glfwGetFramebufferSize(window, &window_width, &window_height);
         if (window_width <= 0 || window_height <= 0) continue;
         glViewport(0, 0, window_width, window_height);
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        RenderScene();
+        // 现在由Editor在各个窗口内分别调用渲染
         editor->Draw();
 
         if (window) glfwSwapBuffers(window);
     }
 }
 
-void Engine::RenderScene()
+void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
 {
-    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // 设置视口到对应窗口区域
+    int x = (int)viewport.Min.x;
+    int y = (int)(ImGui::GetIO().DisplaySize.y - viewport.Max.y); // OpenGL原点在左下，ImGui在左上，需要翻转Y
+    int w = (int)(viewport.Max.x - viewport.Min.x);
+    int h = (int)(viewport.Max.y - viewport.Min.y);
+    
+    glViewport(x, y, w, h);
+    glScissor(x, y, w, h);
+    glEnable(GL_SCISSOR_TEST);
+    
+    // 只清除深度，颜色已在Run()里清成浅灰了
+    glClear(GL_DEPTH_BUFFER_BIT);
 
+    glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
 
-    mat4 view = camera->GetViewMatrix();
-    mat4 projection = perspective(radians(45.0f), (float)window_width / (float)window_height, 0.1f, 100.0f);
+    // 根据窗口类型选择相机：Scene用sceneCamera，Game用gameCamera
+    Camera* cam = isGameView ? gameCamera : sceneCamera;
+    mat4 view = cam->GetViewMatrix();
+    mat4 projection = perspective(radians(45.0f), (float)w / (float)h, 0.1f, 100.0f);
 
-    scene->Render(shader, view, projection, camera->position, window_width, window_height);
+    // 传窗口宽高用于gizmo之类计算
+    scene->Render(shader, view, projection, cam->position, w, h);
+
+    glDisable(GL_SCISSOR_TEST);
 }
 
 void Engine::ProcessInput()
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) state = Exit;
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera->position += camera->forward * keySpeed;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera->position -= camera->forward * keySpeed;
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera->position -= camera->right * keySpeed;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera->position += camera->right * keySpeed;
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera->position += camera->up * keySpeed;
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) camera->position -= camera->up * keySpeed;
+    if (editor->isSceneActive)
+    {
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) sceneCamera->position += sceneCamera->forward * keySpeed;
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) sceneCamera->position -= sceneCamera->forward * keySpeed;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) sceneCamera->position -= sceneCamera->right * keySpeed;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) sceneCamera->position += sceneCamera->right * keySpeed;
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) sceneCamera->position += sceneCamera->up * keySpeed;
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) sceneCamera->position -= sceneCamera->up * keySpeed;
+    }
 
     static bool altPressedLastFrame = false;
     bool altPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
@@ -131,7 +156,8 @@ void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)
 {
     Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
     if (!engine->enableMouse) { engine->lastX = xpos; engine->lastY = ypos; return; }
-    engine->camera->ProcessMouseMovement(engine->mouseSpeed * (xpos - engine->lastX) / engine->window_width,
+	if (engine->editor->isSceneActive)
+    engine->sceneCamera->ProcessMouseMovement(engine->mouseSpeed * (xpos - engine->lastX) / engine->window_width,
         engine->mouseSpeed * (ypos - engine->lastY) / engine->window_height);
     engine->lastX = xpos;
     engine->lastY = ypos;

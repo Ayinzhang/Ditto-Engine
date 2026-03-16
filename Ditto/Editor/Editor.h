@@ -8,7 +8,7 @@ struct Editor
     Engine* engine = nullptr;
     GameObject* selectedObject = nullptr;
     char sceneNameBuffer[16] = "Default";
-    bool showHierarchy, showScene, showInspector, showSavePopup, showLoadPopup;
+    bool showHierarchy, showScene, showInspector, showGame, showProject, showSavePopup, showLoadPopup, isSceneActive;
     int frame; float fps, ppf, deltaTime;
     Editor(void* window);
     ~Editor();
@@ -16,6 +16,8 @@ struct Editor
     void DrawToolbar();
     void DrawHierarchy();
     void DrawScene();
+    void DrawGame();
+    void DrawProject();
     void DrawInspector();
     void DrawPopups();
 

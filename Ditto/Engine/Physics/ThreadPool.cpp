@@ -10,7 +10,7 @@ ThreadPool::ThreadPool(size_t numThreads) : stop(false), next_thread_index(0)
 
     threads.reserve(numThreads);
     for (size_t i = 0; i < numThreads; ++i) 
-        threads.emplace_back(&ThreadPool::worker_loop, this, i);
+        threads.emplace_back(&ThreadPool::WorkerLoop, this, i);
 }
 
 ThreadPool::~ThreadPool() 
@@ -20,7 +20,7 @@ ThreadPool::~ThreadPool()
     for (auto& t : threads) if (t.joinable()) t.join();
 }
 
-void ThreadPool::enqueue(std::function<void()> task) 
+void ThreadPool::Enqueue(std::function<void()> task) 
 {
     size_t target = next_thread_index.fetch_add(1, std::memory_order_relaxed) % workers.size();
     {
@@ -30,7 +30,7 @@ void ThreadPool::enqueue(std::function<void()> task)
     cv.notify_one();
 }
 
-void ThreadPool::parallel_for(size_t start, size_t end, std::function<void(size_t)> func) 
+void ThreadPool::ParallelFor(size_t start, size_t end, std::function<void(size_t)> func) 
 {
     if (start >= end) return;
     size_t total = end - start;
@@ -41,20 +41,18 @@ void ThreadPool::parallel_for(size_t start, size_t end, std::function<void(size_
     std::mutex local_mutex;
     std::condition_variable local_cv;
 
-    for (size_t t = 0; t < numThreads; ++t) {
+    for (size_t t = 0; t < numThreads; ++t) 
+    {
         size_t blockStart = start + t * chunkSize;
         size_t blockEnd = std::min(blockStart + chunkSize, end);
         if (blockStart >= blockEnd) break;
 
         remaining++;
-        enqueue([this, blockStart, blockEnd, &func, &remaining, &local_cv, &local_mutex]() {
-            for (size_t i = blockStart; i < blockEnd; ++i) {
-                func(i);
-            }
+        Enqueue([this, blockStart, blockEnd, &func, &remaining, &local_cv, &local_mutex]() 
+            {
+            for (size_t i = blockStart; i < blockEnd; ++i) func(i);
             std::unique_lock<std::mutex> lock(local_mutex);
-            if (--remaining == 0) {
-                local_cv.notify_one();
-            }
+            if (--remaining == 0) local_cv.notify_one();
             });
     }
 
@@ -62,18 +60,16 @@ void ThreadPool::parallel_for(size_t start, size_t end, std::function<void(size_
     local_cv.wait(lock, [&remaining] { return remaining == 0; });
 }
 
-bool ThreadPool::has_any_task() const 
+bool ThreadPool::HasAnyTask() const 
 {
     for (const auto& worker : workers) {
         std::unique_lock lock(worker->mutex);
-        if (!worker->tasks.empty()) {
-            return true;
-        }
+        if (!worker->tasks.empty()) return true;
     }
     return false;
 }
 
-void ThreadPool::worker_loop(size_t myIndex) 
+void ThreadPool::WorkerLoop(size_t myIndex) 
 {
     Worker& myWorker = *workers[myIndex];
 
@@ -106,7 +102,7 @@ void ThreadPool::worker_loop(size_t myIndex)
         else 
         {
             std::unique_lock<std::mutex> lock(cv_mutex);
-            cv.wait(lock, [this] { return stop || has_any_task(); });
+            cv.wait(lock, [this] { return stop || HasAnyTask(); });
         }
     }
 }

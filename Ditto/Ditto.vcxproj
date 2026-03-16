@@ -330,6 +330,7 @@
     <ClInclude Include="Engine\Graphics\Camera.h" />
     <ClInclude Include="Engine\Graphics\Shader.h" />
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
+    <ClInclude Include="Engine\Physics\ComputePhysics.h" />
     <ClInclude Include="Engine\Physics\GJK.h" />
     <ClInclude Include="Engine\Physics\ParallelPhysics.h" />
     <ClInclude Include="Engine\Physics\ParallelPhysicsBarrier.h" />
@@ -508,6 +509,7 @@
     <ClCompile Include="Engine\Graphics\Shader.cpp" />
     <ClCompile Include="Engine\Main.cpp" />
     <ClCompile Include="Engine\Physics\CollisionShape.cpp" />
+    <ClCompile Include="Engine\Physics\ComputePhysics.cpp" />
     <ClCompile Include="Engine\Physics\GJK.cpp" />
     <ClCompile Include="Engine\Physics\ParallelPhysics.cpp" />
     <ClCompile Include="Engine\Physics\ParallelPhysicsBarrier.cpp" />

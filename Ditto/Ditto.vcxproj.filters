@@ -1020,6 +1020,9 @@
     <ClInclude Include="resource.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Physics\ComputePhysics.h">
+      <Filter>头文件\Engine\Physics</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
@@ -1537,6 +1540,9 @@
       <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Physics\ThreadPool.cpp">
+      <Filter>源文件\Engine\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Physics\ComputePhysics.cpp">
       <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
   </ItemGroup>

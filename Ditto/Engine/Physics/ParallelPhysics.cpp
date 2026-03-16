@@ -29,7 +29,7 @@ void ParallelPhysics::UpdatePhysics(float dt) {
 
     size_t n = colliders.size();
     if (n > 0) {
-        threadPool.parallel_for(0, n, [this](size_t i) {
+        threadPool.ParallelFor(0, n, [this](size_t i) {
             colliders[i]->transform->UpdateTransform(); });
     }
 }
@@ -38,7 +38,7 @@ void ParallelPhysics::IntegrateForce(float dt) {
     size_t n = colliders.size();
     if (n == 0) return;
 
-    threadPool.parallel_for(0, n, [this, dt](size_t i) {
+    threadPool.ParallelFor(0, n, [this, dt](size_t i) {
         Collider* collider = colliders[i];
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
             auto* transform = collider->transform;
@@ -70,13 +70,13 @@ void ParallelPhysics::HandleBroadCollisions() {
     size_t numDyn = dynamicIndices.size();
     if (numDyn == 0) return;
 
-    size_t numThreads = threadPool.thread_count();
+    size_t numThreads = threadPool.workers.size();
     size_t chunkSize = (numDyn + numThreads - 1) / numThreads;
     size_t numBlocks = (numDyn + chunkSize - 1) / chunkSize;
 
     std::vector<std::vector<std::pair<Collider*, Collider*>>> localPairs(numBlocks);
 
-    threadPool.parallel_for(0, numBlocks, [&](size_t blockIdx) {
+    threadPool.ParallelFor(0, numBlocks, [&](size_t blockIdx) {
         size_t start = blockIdx * chunkSize;
         size_t end = std::min(start + chunkSize, numDyn);
         auto& local = localPairs[blockIdx];
@@ -111,24 +111,21 @@ void ParallelPhysics::HandleNarrowCollisions() {
     size_t numPairs = colliderPairs.size();
     if (numPairs == 0) return;
 
-    size_t numThreads = threadPool.thread_count();
+    size_t numThreads = threadPool.workers.size();
     size_t chunkSize = (numPairs + numThreads - 1) / numThreads;
     size_t numBlocks = (numPairs + chunkSize - 1) / chunkSize;
 
     std::vector<std::vector<CollisionData>> localData(numBlocks);
 
-    threadPool.parallel_for(0, numBlocks, [&](size_t blockIdx) {
+    threadPool.ParallelFor(0, numBlocks, [&](size_t blockIdx) {
         size_t start = blockIdx * chunkSize;
         size_t end = std::min(start + chunkSize, numPairs);
         auto& local = localData[blockIdx];
         for (size_t i = start; i < end; ++i) {
             auto& pair = colliderPairs[i];
             CollisionInfo info = GJK_CheckCollision(pair.first, pair.second);
-            if (info.flag && info.depth > 1e-3f) {
-                local.emplace_back(pair.first, pair.second, info);
-            }
-        }
-        });
+            if (info.flag && info.depth > 1e-3f) local.emplace_back(pair.first, pair.second, info);
+        }});
 
     for (auto& local : localData) {
         collisionData.insert(collisionData.end(), local.begin(), local.end());
@@ -203,7 +200,7 @@ void ParallelPhysics::SolveCollisions(int iter) {
             }
         }
         else {
-            threadPool.parallel_for(0, groupSize, [this, iter, &group](size_t idx) {
+            threadPool.ParallelFor(0, groupSize, [this, iter, &group](size_t idx) {
                 CollisionData* data = group[idx];
                 ApplyImpulse(data->colliderA, data->colliderB,
                     data->info.normal,
@@ -241,7 +238,7 @@ void ParallelPhysics::ApplyPositionCorrections() {
             }
         }
         else {
-            threadPool.parallel_for(0, groupSize, [this, &group](size_t idx) {
+            threadPool.ParallelFor(0, groupSize, [this, &group](size_t idx) {
                 CollisionData* data = group[idx];
                 if (data->info.depth > 1e-3f) {
                     Collider* a = data->colliderA;

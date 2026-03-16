@@ -22,7 +22,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
         size_t n = colliders.size();
         if (n == 0) continue;
 
-        size_t numThreads = threadPool.thread_count();
+        size_t numThreads = threadPool.workers.size();
         if (numThreads == 0) numThreads = 1;
 
         // C++20 屏障，用于线程间同步
@@ -37,7 +37,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
         std::vector<std::vector<CollisionData>> threadLocalCollisionData(numThreads);
 
         for (size_t tid = 0; tid < numThreads; ++tid) {
-            threadPool.enqueue([this, tid, numThreads, n, &sync,
+            threadPool.Enqueue([this, tid, numThreads, n, &sync,
                 &threadLocalPairs, &threadLocalCollisionData,
                 &tasksRemaining, &cv, &cvMutex] {
                     size_t start = tid * n / numThreads;

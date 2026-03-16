@@ -8,6 +8,7 @@
 #include "../../Engine/Resources/Resource.h"
 #include "../../3rdParty/GLFW/glfw3.h"
 #include "../../3rdParty/ImGui/imgui.h"
+#include "../../3rdParty/ImGui/imgui_internal.h"
 
 struct Engine
 {
@@ -20,7 +21,7 @@ struct Engine
     Editor* editor;
     int physicsCnt;
 	float deltaTime, lastTime, curTime, physicsTime;
-    Camera* camera;
+    Camera* sceneCamera, *gameCamera;
     bool enableMouse;
     float keySpeed, mouseSpeed;
     double lastX, lastY;
@@ -34,7 +35,7 @@ struct Engine
 
     void Run();
     void ProcessInput();
-    void RenderScene();
+    void RenderSceneToViewport(ImRect viewport, bool isGameView);
     void SetEngineState(State state);
     static void MouseCallBack(GLFWwindow* window, double xpos, double ypos);
 };

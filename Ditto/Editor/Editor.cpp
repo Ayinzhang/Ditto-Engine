@@ -5,6 +5,16 @@
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../3rdParty/ImGui/imgui_impl_opengl3.h"
 
+static ImRect GetCurrentViewportRect()
+{
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (!window)
+        return ImRect(ImVec2(0, 0), ImVec2(0, 0));
+    ImVec2 min = window->InnerRect.Min;
+    ImVec2 max = window->InnerRect.Max;
+    return ImRect(min, max);
+}
+
 Editor::Editor(void* window)
 {
     IMGUI_CHECKVERSION();
@@ -17,6 +27,8 @@ Editor::Editor(void* window)
     showHierarchy = true;
     showScene = true;
     showInspector = true;
+    showGame = true;
+    showProject = true;
     showSavePopup = false;
     showLoadPopup = false;
     frame = deltaTime = 0;
@@ -31,18 +43,19 @@ Editor::~Editor()
 
 void Editor::Draw()
 {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+    isSceneActive = false;
+    ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
 
     DrawToolbar();
     if (showHierarchy) DrawHierarchy();
     if (showScene) DrawScene();
+    if (showGame) DrawGame();
+    if (showProject) DrawProject();
     if (showInspector) DrawInspector();
     DrawPopups();
 
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    ImGui::Render(); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    if(isSceneActive) engine->sceneCamera = engine->sceneCamera;
 }
 
 void Editor::DrawToolbar()
@@ -59,6 +72,8 @@ void Editor::DrawToolbar()
         {
             if (ImGui::MenuItem("Toggle Hierarchy", NULL, showHierarchy)) showHierarchy = !showHierarchy;
             if (ImGui::MenuItem("Toggle Scene", NULL, showScene)) showScene = !showScene;
+            if (ImGui::MenuItem("Toggle Game", NULL, showGame)) showGame = !showGame;
+            if (ImGui::MenuItem("Toggle Project", NULL, showProject)) showProject = !showProject;
             if (ImGui::MenuItem("Toggle Inspector", NULL, showInspector)) showInspector = !showInspector;
             ImGui::EndMenu();
         }
@@ -169,10 +184,11 @@ void Editor::DrawHierarchy()
     float menuBarHeight = ImGui::GetFrameHeight();
     float windowWidth = ImGui::GetIO().DisplaySize.x;
     float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float hierarchyWidth = 0.125f * windowWidth;
+    float columnWidth = windowWidth / 3.0f;
+    float halfHeight = windowHeight / 2.0f;
 
-    ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
-    ImGui::SetNextWindowSize(ImVec2(hierarchyWidth, windowHeight));
+    ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight + halfHeight)); // 左下
+    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
     ImGui::Begin("Hierarchy");
 
     if (ImGui::BeginPopupContextWindow())
@@ -225,14 +241,24 @@ void Editor::DrawScene()
     float menuBarHeight = ImGui::GetFrameHeight();
     float windowWidth = ImGui::GetIO().DisplaySize.x;
     float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float hierarchyWidth = 0.125f * windowWidth;
-    float sceneWidth = 0.625f * windowWidth;
+    float columnWidth = windowWidth / 3.0f;
+    float halfHeight = windowHeight / 2.0f;
 
-    ImGui::SetNextWindowPos(ImVec2(hierarchyWidth, menuBarHeight));
-    ImGui::SetNextWindowSize(ImVec2(sceneWidth, windowHeight));
+    ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight)); // 左上
+    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
+    ImGui::SetNextWindowBgAlpha(0.0f); // 背景完全透明，不遮挡OpenGL渲染
     ImGui::Begin("Scene");
-    ImGui::Text("Scene View");
+    
+    // 只有Scene窗口获得焦点时才激活Scene相机控制
+    if (ImGui::IsWindowFocused()) isSceneActive = true;
+    
+    // 获取窗口渲染区域并调用引擎渲染Scene视图（编辑器视角）
+    ImRect sceneViewportRect = GetCurrentViewportRect();
+    ImGui::GetWindowDrawList()->PushClipRect(sceneViewportRect.Min, sceneViewportRect.Max, true);
+    engine->RenderSceneToViewport(sceneViewportRect, false);
+    ImGui::GetWindowDrawList()->PopClipRect();
 
+    // 避免文字被遮挡，用ForegroundDrawList
     frame++; deltaTime += engine->deltaTime;
     if (deltaTime > 1.0f)
     {
@@ -256,17 +282,53 @@ void Editor::DrawScene()
     ImGui::End();
 }
 
+void Editor::DrawGame()
+{
+    float menuBarHeight = ImGui::GetFrameHeight();
+    float windowWidth = ImGui::GetIO().DisplaySize.x;
+    float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
+    float columnWidth = windowWidth / 3.0f;
+    float halfHeight = windowHeight / 2.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(columnWidth, menuBarHeight)); // 中上
+    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::Begin("Game");
+    
+    // 获取窗口渲染区域并调用引擎渲染Game视图（游戏运行视角）
+    ImRect gameViewportRect = GetCurrentViewportRect();
+    ImGui::GetWindowDrawList()->PushClipRect(gameViewportRect.Min, gameViewportRect.Max, true);
+    engine->RenderSceneToViewport(gameViewportRect, true);
+    ImGui::GetWindowDrawList()->PopClipRect();
+
+    ImGui::End();
+}
+
+void Editor::DrawProject()
+{
+    float menuBarHeight = ImGui::GetFrameHeight();
+    float windowWidth = ImGui::GetIO().DisplaySize.x;
+    float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
+    float columnWidth = windowWidth / 3.0f;
+    float halfHeight = windowHeight / 2.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(columnWidth, menuBarHeight + halfHeight)); // 中下
+    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
+    ImGui::Begin("Project");
+    ImGui::Text("Project View");
+
+    ImGui::End();
+}
+
 void Editor::DrawInspector()
 {
     float menuBarHeight = ImGui::GetFrameHeight();
     float windowWidth = ImGui::GetIO().DisplaySize.x;
     float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float hierarchyWidth = 0.125f * windowWidth;
-    float sceneWidth = 0.625f * windowWidth;
-    float inspectorWidth = 0.25f * windowWidth;
+    float columnWidth = windowWidth / 3.0f;
 
-    ImGui::SetNextWindowPos(ImVec2(hierarchyWidth + sceneWidth, menuBarHeight));
-    ImGui::SetNextWindowSize(ImVec2(inspectorWidth, windowHeight));
+    ImGui::SetNextWindowPos(ImVec2(2 * columnWidth, menuBarHeight)); // 右侧
+    ImGui::SetNextWindowSize(ImVec2(columnWidth, windowHeight));
     ImGui::Begin("Inspector");
 
     if (!selectedObject) { ImGui::End(); return; }

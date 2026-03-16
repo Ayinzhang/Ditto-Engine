@@ -10,20 +10,16 @@
 
 struct ThreadPool 
 {
-public:
     explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
     ~ThreadPool();
 
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
 
-    void enqueue(std::function<void()> task);
+    void Enqueue(std::function<void()> task);
 
-    void parallel_for(size_t start, size_t end, std::function<void(size_t)> func);
+    void ParallelFor(size_t start, size_t end, std::function<void(size_t)> func);
 
-    size_t thread_count() const { return workers.size(); }
-
-private:
     struct Worker 
     {
         std::deque<std::function<void()>> tasks;
@@ -38,7 +34,7 @@ private:
     std::mutex cv_mutex;
     std::condition_variable cv;
 
-    bool has_any_task() const;
+    bool HasAnyTask() const;
 
-    void worker_loop(size_t myIndex);
+    void WorkerLoop(size_t myIndex);
 };
