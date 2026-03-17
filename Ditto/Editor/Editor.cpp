@@ -1,7 +1,9 @@
 ﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "Editor.h"
 #include "LayoutManager.h"
+#include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Engine.h"
+#include <iostream>
 #include "../Engine/Core/GameObject.h"
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
@@ -43,11 +45,16 @@ Editor::Editor(void* window)
     showSavePopup = false;
     showLoadPopup = false;
     showSaveLayoutPopup = false;
+    showProjectSelector = true;  // 启动时显示项目选择
+    projectLoaded = false;
     dockingInitialized = false;
     frame = deltaTime = 0;
     
     // 初始化布局管理器
     LayoutManager::GetInstance().Initialize("../../Ditto/Ditto/Assets/Settings");
+    
+    // 初始化项目管理器
+    ProjectManager::GetInstance().Initialize("../../Ditto/Ditto/Projects");
 }
 
 Editor::~Editor()
@@ -61,6 +68,15 @@ void Editor::Draw()
 {
     isSceneActive = false;
     ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
+
+    // 如果项目未加载，显示项目选择界面
+    if (showProjectSelector)
+    {
+        DrawProjectSelector();
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        return;
+    }
 
     // 设置全屏DockSpace
     SetupDocking();
@@ -519,17 +535,163 @@ void Editor::DrawGame()
 
 void Editor::DrawProject()
 {
+    ProjectManager& pm = ProjectManager::GetInstance();
+    Project* proj = pm.GetCurrentProject();
+    
+    if (!proj)
+    {
+        ImGui::Begin("Project");
+        ImGui::TextDisabled("No project loaded");
+        ImGui::End();
+        return;
+    }
+    
+    std::string assetsPath = pm.GetProjectAssetsPath();
+    static std::string currentFolder = "Assets/Scenes";
+    static float splitterPos = 150.0f;
+    
     ImGui::Begin("Project");
     
-    ImGui::Text("Project View");
-
-    // 保存窗口状态
+    // 顶部路径栏
+    ImGui::Text("Project");
+    ImGui::SameLine();
+    ImGui::Text(" > ");
+    ImGui::SameLine();
+    ImGui::Text(currentFolder.c_str());
+    ImGui::Separator();
+    
+    float panelWidth = ImGui::GetContentRegionAvail().x;
+    float panelHeight = ImGui::GetContentRegionAvail().y;
+    
+    // 确保splitterPos在合理范围内
+    if (splitterPos < 100) splitterPos = 100;
+    if (splitterPos > panelWidth - 100) splitterPos = panelWidth - 100;
+    
+    // 左边 - 文件夹树（无边框）
+    ImGui::BeginChild("Folders", ImVec2(splitterPos, panelHeight), false);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+    
+    // Assets
+    if (ImGui::TreeNode("Assets"))
     {
-        ImVec2 pos = ImGui::GetWindowPos();
-        ImVec2 size = ImGui::GetWindowSize();
-        bool collapsed = ImGui::IsWindowCollapsed();
-        //LayoutManager::GetInstance().SaveCurrentWindowState("Project", pos, size, true, collapsed);
+        ImGui::Indent(0, 0.5f);   // 缩进一半
+        
+        // Scenes
+        bool isSelected_Scenes = (currentFolder == "Assets/Scenes");
+        if (ImGui::Selectable("Scenes", isSelected_Scenes)) currentFolder = "Assets/Scenes";
+        
+        // Models
+        bool isSelected_Models = (currentFolder == "Assets/Models");
+        if (ImGui::Selectable("Models", isSelected_Models)) currentFolder = "Assets/Models";
+        
+        // Materials
+        bool isSelected_Materials = (currentFolder == "Assets/Materials");
+        if (ImGui::Selectable("Materials", isSelected_Materials)) currentFolder = "Assets/Materials";
+        
+        // Prefabs
+        bool isSelected_Prefabs = (currentFolder == "Assets/Prefabs");
+        if (ImGui::Selectable("Prefabs", isSelected_Prefabs)) currentFolder = "Assets/Prefabs";
+        
+        ImGui::Unindent(0, 0.5f);
+        ImGui::TreePop();
     }
+    ImGui::PopStyleColor();
+    ImGui::EndChild();
+    
+    // 分隔条 - 细线
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 0.5f));
+    ImGui::Button("##splitter", ImVec2(1, panelHeight));
+    ImGui::PopStyleColor();
+    
+    if (ImGui::IsItemHovered())
+    {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
+    
+    // 拖动分隔条
+    if (ImGui::IsItemActive())
+    {
+        splitterPos += ImGui::GetIO().MouseDelta.x;
+        if (splitterPos < 100) splitterPos = 100;
+        if (splitterPos > panelWidth - 100) splitterPos = panelWidth - 100;
+    }
+    
+    ImGui::SameLine();
+    
+    // 右边 - 文件视图（无边框）
+    ImGui::BeginChild("View", ImVec2(0, panelHeight), false);
+    
+    // 获取当前文件夹路径
+    std::string folderPath = assetsPath;
+    size_t pos = currentFolder.find('/');
+    if (pos != std::string::npos)
+    {
+        folderPath = assetsPath + "/" + currentFolder.substr(pos + 1);
+    }
+    
+    // 文件网格显示
+    float itemWidth = 80;
+    float itemHeight = 80;
+    float currentX = 0;
+    float availWidth = ImGui::GetContentRegionAvail().x;
+    
+    try
+    {
+        if (fs::exists(folderPath))
+        {
+            for (const auto& entry : fs::directory_iterator(folderPath))
+            {
+                if (entry.is_regular_file())
+                {
+                    std::string filename = entry.path().filename().string();
+                    std::string ext = entry.path().extension().string();
+                    
+                    // 换行
+                    if (currentX + itemWidth > availWidth)
+                    {
+                        ImGui::NewLine();
+                        currentX = 0;
+                    }
+                    
+                    // 文件项
+                    ImGui::BeginGroup();
+                    
+                    // 文件图标区域
+                    ImVec2 cursorPos = ImGui::GetCursorPos();
+                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
+                    ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[]");
+                    
+                    // 文件名
+                    std::string displayName = filename;
+                    if (ext == ".bin") displayName = filename.substr(0, filename.size() - 4);
+                    if (displayName.size() > 10) displayName = displayName.substr(0, 8) + "..";
+                    
+                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - ImGui::CalcTextSize(displayName.c_str()).x) / 2, cursorPos.y + 50));
+                    ImGui::Text(displayName.c_str());
+                    
+                    // 点击处理
+                    ImGui::SetCursorPos(cursorPos);
+                    ImGui::InvisibleButton(("file_" + filename).c_str(), ImVec2(itemWidth, itemHeight));
+                    
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                    {
+                        if (ext == ".bin")
+                        {
+                            LoadSceneFromProject(entry.path().string());
+                        }
+                    }
+                    
+                    currentX += itemWidth;
+                    ImGui::EndGroup();
+                    ImGui::SameLine();
+                }
+            }
+        }
+    }
+    catch (const std::exception&) {}
+    
+    ImGui::EndChild();
 
     ImGui::End();
 }
@@ -677,4 +839,189 @@ void Editor::DeleteSelectedObject()
         selectedObject = engine->scene->gameObjects.back();
     else
         selectedObject = nullptr;
+}
+
+// 项目选择界面
+void Editor::DrawProjectSelector()
+{
+    ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y));
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                            ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                            ImGuiWindowFlags_NoBackground;
+    
+    ImGui::Begin("ProjectSelector", nullptr, flags);
+    
+    // 标题
+    float windowWidth = ImGui::GetWindowWidth();
+    ImGui::SetCursorPosX((windowWidth - 200) * 0.5f);
+    ImGui::SetCursorPosY(100);
+    ImGui::SetWindowFontScale(2.0f);
+    ImGui::Text("Ditto Engine");
+    ImGui::SetWindowFontScale(1.0f);
+    
+    // 项目列表
+    ProjectManager& pm = ProjectManager::GetInstance();
+    auto projects = pm.GetAllProjects();
+    static int selectedProject = -1;
+    
+    ImGui::SetCursorPosY(180);
+    float listWidth = 400;
+    float listHeight = 250;
+    ImGui::SetCursorPosX((windowWidth - listWidth) * 0.5f);
+    ImGui::BeginChild("ProjectList", ImVec2(listWidth, listHeight), true);
+    
+    if (projects.empty())
+    {
+        ImGui::TextDisabled("No projects yet.");
+    }
+    else
+    {
+        for (int i = 0; i < projects.size(); i++)
+        {
+            if (ImGui::Selectable(projects[i].name.c_str(), selectedProject == i))
+            {
+                selectedProject = i;
+            }
+        }
+    }
+    ImGui::EndChild();
+    
+    // 按钮 - 居中，与列表框对齐
+    float buttonWidth = 150;
+    float buttonSpacing = 20;
+    float buttonsWidth = buttonWidth * 2 + buttonSpacing;
+    float buttonsStartX = (windowWidth - buttonsWidth) * 0.5f;
+    
+    ImGui::SetCursorPosX(buttonsStartX);
+    if (ImGui::Button("Create", ImVec2(buttonWidth, 40)))
+    {
+        showNewProjectPopup = true;
+    }
+    
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(buttonsStartX + buttonWidth + buttonSpacing);
+    if (ImGui::Button("Open", ImVec2(buttonWidth, 40)))
+    {
+        if (selectedProject >= 0 && selectedProject < projects.size())
+        {
+            OpenProject(projects[selectedProject].path);
+        }
+    }
+    
+    // 保存选中的项目索引
+    static int lastSelectedProject = -1;
+    if (lastSelectedProject != selectedProject)
+    {
+        lastSelectedProject = selectedProject;
+    }
+    
+    ImGui::End();
+    
+    // 新建项目弹窗
+    if (showNewProjectPopup)
+    {
+        ImGui::OpenPopup("Create Project");
+        showNewProjectPopup = false;
+    }
+    
+    if (ImGui::BeginPopupModal("Create Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Project Name:"); ImGui::SameLine();
+        ImGui::InputText("##ProjectName", projectNameBuffer, sizeof(projectNameBuffer));
+        
+        if (ImGui::Button("Create", ImVec2(120, 0)))
+        {
+            if (strlen(projectNameBuffer) > 0)
+            {
+                if (pm.CreateProject(projectNameBuffer))
+                {
+                    // 打开新创建的项目
+                    std::string newProjectPath = pm.GetAllProjects().back().path;
+                    OpenProject(newProjectPath);
+                    strcpy_s(projectNameBuffer, "MyProject");
+                }
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+            strcpy_s(projectNameBuffer, "MyProject");
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void Editor::OpenProject(const std::string& projectPath)
+{
+    ProjectManager& pm = ProjectManager::GetInstance();
+    if (pm.OpenProject(projectPath))
+    {
+        projectLoaded = true;
+        showProjectSelector = false;
+        
+        // 加载上次场景（如果有）
+        Project* proj = pm.GetCurrentProject();
+        if (proj && !proj->lastScene.empty())
+        {
+            std::string fullPath = proj->path + "/" + proj->lastScene;
+            if (engine && engine->scene)
+            {
+                engine->scene->LoadScene(fullPath.c_str());
+            }
+        }
+    }
+}
+
+void Editor::LoadSceneFromProject(const std::string& scenePath)
+{
+    if (engine && engine->scene)
+    {
+        engine->scene->LoadScene(scenePath.c_str());
+        
+        // 保存到项目配置
+        Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+        if (proj)
+        {
+            // 提取相对路径
+            size_t pos = scenePath.find("/Assets/");
+            if (pos != std::string::npos)
+            {
+                proj->lastScene = scenePath.substr(pos + 1);
+                
+                // 保存到project.json
+                std::string projectFile = proj->path + "/project.json";
+                // TODO: 更新project.json中的lastScene
+            }
+        }
+    }
+}
+
+std::vector<std::string> Editor::GetProjectScenes()
+{
+    std::vector<std::string> scenes;
+    ProjectManager& pm = ProjectManager::GetInstance();
+    std::string scenesPath = pm.GetProjectScenesPath();
+    
+    try
+    {
+        if (fs::exists(scenesPath))
+        {
+            for (const auto& entry : fs::directory_iterator(scenesPath))
+            {
+                if (entry.is_regular_file() && entry.path().extension() == ".bin")
+                {
+                    scenes.push_back(entry.path().string());
+                }
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Error reading scenes: " << e.what() << std::endl;
+    }
+    
+    return scenes;
 }

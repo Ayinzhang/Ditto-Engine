@@ -1026,6 +1026,9 @@
     <ClInclude Include="Editor\LayoutManager.h">
       <Filter>头文件\Editor</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Core\ProjectManager.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
@@ -1550,6 +1553,9 @@
     </ClCompile>
     <ClCompile Include="Editor\LayoutManager.cpp">
       <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\ProjectManager.cpp">
+      <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

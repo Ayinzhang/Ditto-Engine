@@ -12142,20 +12142,20 @@ ImVec2 ImGui::GetCursorStartPos()
     return window->DC.CursorStartPos - window->Pos;
 }
 
-void ImGui::Indent(float indent_w)
+void ImGui::Indent(float indent_w, float scale)
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = GetCurrentWindow();
-    window->DC.Indent.x += (indent_w != 0.0f) ? indent_w : g.Style.IndentSpacing;
-    window->DC.CursorPos.x = window->Pos.x + window->DC.Indent.x + window->DC.ColumnsOffset.x;
+    window->DC.Indent.x += scale * ((indent_w != 0.0f) ? indent_w : g.Style.IndentSpacing);
+    window->DC.CursorPos.x = window->Pos.x + window->DC.Indent.x + scale * window->DC.ColumnsOffset.x;
 }
 
-void ImGui::Unindent(float indent_w)
+void ImGui::Unindent(float indent_w, float scale)
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = GetCurrentWindow();
-    window->DC.Indent.x -= (indent_w != 0.0f) ? indent_w : g.Style.IndentSpacing;
-    window->DC.CursorPos.x = window->Pos.x + window->DC.Indent.x + window->DC.ColumnsOffset.x;
+    window->DC.Indent.x -= scale * ((indent_w != 0.0f) ? indent_w : g.Style.IndentSpacing);
+    window->DC.CursorPos.x = window->Pos.x + window->DC.Indent.x + scale * window->DC.ColumnsOffset.x;
 }
 
 // Affect large frame+labels widgets only.
