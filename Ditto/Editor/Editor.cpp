@@ -32,6 +32,11 @@ Editor::Editor(void* window)
     
     ImGui::StyleColorsDark();
 
+    // 设置全局透明背景 - 针对Docking系统
+    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0, 0, 0, 0);
+    ImGui::GetStyle().Colors[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
+    ImGui::GetStyle().Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0, 0, 0, 0);
+
     ImGui_ImplGlfw_InitForOpenGL((GLFWwindow*)window, true);
     ImGui_ImplOpenGL3_Init("#version 450");
 
@@ -89,7 +94,8 @@ void Editor::SetupDocking()
     
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
                                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                                   ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+                                   ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+                                   ImGuiWindowFlags_NoBackground;
     
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -110,6 +116,19 @@ void Editor::SetupDocking()
     // 只在首次运行时初始化默认布局
     if (!dockingInitialized)
     {
+        // 加载INI后需要先应用Ini设置再构建Dock
+        LayoutManager& lm = LayoutManager::GetInstance();
+        if (lm.GetNeedsReloadDock())
+        {
+            // 加载了新的布局，不需要重建Dock，ImGui已经恢复了状态
+            lm.ClearNeedsReloadDock();
+            
+            // 必须Finish DockSpace
+            ImGui::DockBuilderFinish(dockspace_id);
+            ImGui::End();
+            return;
+        }
+        
         dockingInitialized = true;
         
         // 清除现有的dock布局以重新构建
@@ -130,9 +149,9 @@ void Editor::SetupDocking()
         ImGuiID dock_id_left_top, dock_id_left_bottom;
         ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Up, 0.5f, &dock_id_left_top, &dock_id_left_bottom);
         
-        // 中间面板再分割为上下两个（上70%，下30%）
+        // 中间面板再分割为上下两个（各50%）
         ImGuiID dock_id_center_top, dock_id_center_bottom;
-        ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Down, 0.3f, &dock_id_center_bottom, &dock_id_center_top);
+        ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Down, 0.5f, &dock_id_center_bottom, &dock_id_center_top);
         
         // 将窗口附加到Dock节点
         ImGui::DockBuilderDockWindow("Scene", dock_id_left_top);
@@ -274,8 +293,14 @@ void Editor::SaveCurrentLayout()
 
 void Editor::LoadLayout(const std::string& layoutName)
 {
-    // 重置Docking以允许新布局生效
-    dockingInitialized = false;
+    // 加载布局 - 使用ImGui内置INI机制
+    if (LayoutManager::GetInstance().LoadLayout(layoutName))
+    {
+        // 清除所有Dock节点，让ImGui可以重新应用INI中的布局
+        ImGui::DockContextClearNodes(GImGui, 0, true); // root_id==0 表示清除所有节点，true 清除 settings 引用
+        // 标记需要重建Dock
+        dockingInitialized = false;
+    }
 }
 
 std::vector<std::string> Editor::GetSavedLayouts()
@@ -398,7 +423,7 @@ void Editor::DrawHierarchy()
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
         bool collapsed = ImGui::IsWindowCollapsed();
-        LayoutManager::GetInstance().SaveCurrentWindowState("Hierarchy", pos, size, true, collapsed);
+        //LayoutManager::GetInstance().SaveCurrentWindowState("Hierarchy", pos, size, true, collapsed);
     }
 
     ImGui::End();
@@ -406,8 +431,17 @@ void Editor::DrawHierarchy()
 
 void Editor::DrawScene()
 {
-    ImGui::SetNextWindowBgAlpha(0.0f); // 背景完全透明，不遮挡OpenGL渲染
-    ImGui::Begin("Scene");
+    // 设置透明背景 - 确保在Begin之前设置
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground;
+    
+    if (!ImGui::Begin("Scene", nullptr, flags))
+    {
+        ImGui::End();
+        return;
+    }
     
     // 只有Scene窗口获得焦点时才激活Scene相机控制
     if (ImGui::IsWindowFocused()) isSceneActive = true;
@@ -423,7 +457,7 @@ void Editor::DrawScene()
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
         bool collapsed = ImGui::IsWindowCollapsed();
-        LayoutManager::GetInstance().SaveCurrentWindowState("Scene", pos, size, true, collapsed);
+        //LayoutManager::GetInstance().SaveCurrentWindowState("Scene", pos, size, true, collapsed);
     }
 
     // 避免文字被遮挡，用ForegroundDrawList
@@ -448,12 +482,22 @@ void Editor::DrawScene()
             IM_COL32(0, 255, 0, 255), ("PPF: " + std::to_string((int)ppf)).c_str()
         );
     ImGui::End();
+    ImGui::PopStyleColor();
 }
 
 void Editor::DrawGame()
 {
+    // 设置透明背景 - 确保在Begin之前设置
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     ImGui::SetNextWindowBgAlpha(0.0f);
-    ImGui::Begin("Game");
+    
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground;
+    
+    if (!ImGui::Begin("Game", nullptr, flags))
+    {
+        ImGui::End();
+        return;
+    }
     
     // 获取窗口渲染区域并调用引擎渲染Game视图（游戏运行视角）
     ImRect gameViewportRect = GetCurrentViewportRect();
@@ -466,10 +510,11 @@ void Editor::DrawGame()
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
         bool collapsed = ImGui::IsWindowCollapsed();
-        LayoutManager::GetInstance().SaveCurrentWindowState("Game", pos, size, true, collapsed);
+        //LayoutManager::GetInstance().SaveCurrentWindowState("Game", pos, size, true, collapsed);
     }
 
     ImGui::End();
+    ImGui::PopStyleColor();
 }
 
 void Editor::DrawProject()
@@ -483,7 +528,7 @@ void Editor::DrawProject()
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
         bool collapsed = ImGui::IsWindowCollapsed();
-        LayoutManager::GetInstance().SaveCurrentWindowState("Project", pos, size, true, collapsed);
+        //LayoutManager::GetInstance().SaveCurrentWindowState("Project", pos, size, true, collapsed);
     }
 
     ImGui::End();
@@ -504,7 +549,7 @@ void Editor::DrawInspector()
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
         bool collapsed = ImGui::IsWindowCollapsed();
-        LayoutManager::GetInstance().SaveCurrentWindowState("Inspector", pos, size, true, collapsed);
+        //LayoutManager::GetInstance().SaveCurrentWindowState("Inspector", pos, size, true, collapsed);
     }
 
     ImGui::End();
@@ -578,14 +623,8 @@ void Editor::DrawPopups()
         {
             if (strlen(layoutNameBuffer) > 0)
             {
-                // 收集当前窗口状态并保存
-                LayoutManager& lm = LayoutManager::GetInstance();
-                
-                // 更新当前布局名称
-                lm.GetCurrentLayout().name = layoutNameBuffer;
-                
-                // 保存到文件
-                if (lm.SaveLayout(layoutNameBuffer))
+                // 保存到文件 - 使用ImGui内置INI保存
+                if (LayoutManager::GetInstance().SaveLayout(layoutNameBuffer))
                 {
                     ImGui::CloseCurrentPopup();
                     strcpy_s(layoutNameBuffer, "Default");
