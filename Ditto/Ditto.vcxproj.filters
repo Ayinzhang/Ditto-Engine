@@ -1023,6 +1023,9 @@
     <ClInclude Include="Engine\Physics\ComputePhysics.h">
       <Filter>头文件\Engine\Physics</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\LayoutManager.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
@@ -1544,6 +1547,9 @@
     </ClCompile>
     <ClCompile Include="Engine\Physics\ComputePhysics.cpp">
       <Filter>源文件\Engine\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\LayoutManager.cpp">
+      <Filter>源文件\Editor</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -1,9 +1,15 @@
-﻿#include "Editor.h"
+﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#include "Editor.h"
+#include "LayoutManager.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../3rdParty/ImGui/imgui_impl_opengl3.h"
+#include "../3rdParty/ImGui/imgui_internal.h"
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 static ImRect GetCurrentViewportRect()
 {
@@ -19,19 +25,24 @@ Editor::Editor(void* window)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    
+    // 启用Docking功能
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    
     ImGui::StyleColorsDark();
 
     ImGui_ImplGlfw_InitForOpenGL((GLFWwindow*)window, true);
     ImGui_ImplOpenGL3_Init("#version 450");
 
-    showHierarchy = true;
-    showScene = true;
-    showInspector = true;
-    showGame = true;
-    showProject = true;
     showSavePopup = false;
     showLoadPopup = false;
+    showSaveLayoutPopup = false;
+    dockingInitialized = false;
     frame = deltaTime = 0;
+    
+    // 初始化布局管理器
+    LayoutManager::GetInstance().Initialize("../../Ditto/Ditto/Assets/Settings");
 }
 
 Editor::~Editor()
@@ -46,16 +57,92 @@ void Editor::Draw()
     isSceneActive = false;
     ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
 
+    // 设置全屏DockSpace
+    SetupDocking();
+    
     DrawToolbar();
-    if (showHierarchy) DrawHierarchy();
-    if (showScene) DrawScene();
-    if (showGame) DrawGame();
-    if (showProject) DrawProject();
-    if (showInspector) DrawInspector();
+    DrawHierarchy();
+    DrawScene();
+    DrawGame();
+    DrawProject();
+    DrawInspector();
     DrawPopups();
+    
+    // DockSpace结束
+    ImGui::End();
 
     ImGui::Render(); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     if(isSceneActive) engine->sceneCamera = engine->sceneCamera;
+}
+
+void Editor::SetupDocking()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    
+    // 获取当前窗口大小
+    float menuBarHeight = ImGui::GetFrameHeight();
+    ImVec2 displaySize = io.DisplaySize;
+    
+    // 全屏窗口作为DockSpace宿主 - 动态适应窗口大小变化
+    ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
+    ImGui::SetNextWindowSize(ImVec2(displaySize.x, displaySize.y - menuBarHeight));
+    
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                                   ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+    
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    
+    bool open = true;
+    ImGui::Begin("DockSpace", &open, window_flags);
+    
+    ImGui::PopStyleVar(3);
+    
+    // 创建DockSpace
+    ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
+    dockSpaceID = dockspace_id;
+    
+    // 使用NoSplit标志防止手动分割，或使用Dockspace的默认行为
+    ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+    
+    // 只在首次运行时初始化默认布局
+    if (!dockingInitialized)
+    {
+        dockingInitialized = true;
+        
+        // 清除现有的dock布局以重新构建
+        ImGui::DockBuilderRemoveNode(dockspace_id);
+        ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_None);
+        ImGui::DockBuilderSetNodeSize(dockspace_id, ImVec2(displaySize.x, displaySize.y - menuBarHeight));
+        
+        // 分割DockSpace - 使用相对比例而不是固定大小
+        ImGuiID dock_id_left, dock_id_right, dock_id_center;
+        
+        // 左侧面板占30%
+        ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.3f, &dock_id_left, &dock_id_center);
+        // 右侧面板占30%（从剩余空间计算）
+        ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Right, 0.42f, &dock_id_right, &dock_id_center);
+        // 注意：现在dock_id_center是中间40%的区域
+        
+        // 左侧面板再分割为上下两个（各50%）
+        ImGuiID dock_id_left_top, dock_id_left_bottom;
+        ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Up, 0.5f, &dock_id_left_top, &dock_id_left_bottom);
+        
+        // 中间面板再分割为上下两个（上70%，下30%）
+        ImGuiID dock_id_center_top, dock_id_center_bottom;
+        ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Down, 0.3f, &dock_id_center_bottom, &dock_id_center_top);
+        
+        // 将窗口附加到Dock节点
+        ImGui::DockBuilderDockWindow("Scene", dock_id_left_top);
+        ImGui::DockBuilderDockWindow("Hierarchy", dock_id_left_bottom);
+        ImGui::DockBuilderDockWindow("Game", dock_id_center_top);
+        ImGui::DockBuilderDockWindow("Project", dock_id_center_bottom);
+        ImGui::DockBuilderDockWindow("Inspector", dock_id_right);
+        
+        ImGui::DockBuilderFinish(dockspace_id);
+    }
 }
 
 void Editor::DrawToolbar()
@@ -68,13 +155,39 @@ void Editor::DrawToolbar()
             if (ImGui::MenuItem("Load Scene", "Ctrl+L")) showLoadPopup = true;
             ImGui::EndMenu();
         }
+        // View菜单 - 包含Layout功能
         if (ImGui::BeginMenu("View"))
         {
-            if (ImGui::MenuItem("Toggle Hierarchy", NULL, showHierarchy)) showHierarchy = !showHierarchy;
-            if (ImGui::MenuItem("Toggle Scene", NULL, showScene)) showScene = !showScene;
-            if (ImGui::MenuItem("Toggle Game", NULL, showGame)) showGame = !showGame;
-            if (ImGui::MenuItem("Toggle Project", NULL, showProject)) showProject = !showProject;
-            if (ImGui::MenuItem("Toggle Inspector", NULL, showInspector)) showInspector = !showInspector;
+            // Save Layout
+            if (ImGui::MenuItem("Save Layout..."))
+            {
+                showSaveLayoutPopup = true;
+            }
+            
+            ImGui::Separator();
+            
+            // Load Layout 子菜单
+            if (ImGui::BeginMenu("Load Layout"))
+            {
+                std::vector<std::string> layouts = GetSavedLayouts();
+                
+                if (layouts.empty())
+                {
+                    ImGui::TextDisabled("No saved layouts");
+                }
+                else
+                {
+                    for (const auto& layoutName : layouts)
+                    {
+                        if (ImGui::MenuItem(layoutName.c_str()))
+                        {
+                            LoadLayout(layoutName);
+                        }
+                    }
+                }
+                ImGui::EndMenu();
+            }
+            
             ImGui::EndMenu();
         }
 
@@ -113,6 +226,61 @@ void Editor::DrawToolbar()
 
         ImGui::EndMainMenuBar();
     }
+}
+
+void Editor::DrawLayoutMenu()
+{
+    if (ImGui::BeginMenu("Layout"))
+    {
+        // Save Layout
+        if (ImGui::MenuItem("Save Layout..."))
+        {
+            showSaveLayoutPopup = true;
+        }
+        
+        ImGui::Separator();
+        
+        // Load Layout 子菜单
+        if (ImGui::BeginMenu("Load Layout"))
+        {
+            std::vector<std::string> layouts = GetSavedLayouts();
+            
+            if (layouts.empty())
+            {
+                ImGui::TextDisabled("No saved layouts");
+            }
+            else
+            {
+                for (const auto& layoutName : layouts)
+                {
+                    if (ImGui::MenuItem(layoutName.c_str()))
+                    {
+                        LoadLayout(layoutName);
+                    }
+                }
+            }
+            ImGui::EndMenu();
+        }
+        
+        ImGui::EndMenu();
+    }
+}
+
+void Editor::SaveCurrentLayout()
+{
+    // 将当前窗口状态保存到LayoutManager
+    // 这里我们只需要触发保存，实际内容在Draw函数中已经更新
+}
+
+void Editor::LoadLayout(const std::string& layoutName)
+{
+    // 重置Docking以允许新布局生效
+    dockingInitialized = false;
+}
+
+std::vector<std::string> Editor::GetSavedLayouts()
+{
+    return LayoutManager::GetInstance().GetAllLayoutNames();
 }
 
 void Editor::DrawGameObjectNode(GameObject* obj)
@@ -181,14 +349,6 @@ void Editor::DrawGameObjectNode(GameObject* obj)
 
 void Editor::DrawHierarchy()
 {
-    float menuBarHeight = ImGui::GetFrameHeight();
-    float windowWidth = ImGui::GetIO().DisplaySize.x;
-    float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float columnWidth = windowWidth / 3.0f;
-    float halfHeight = windowHeight / 2.0f;
-
-    ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight + halfHeight)); // 左下
-    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
     ImGui::Begin("Hierarchy");
 
     if (ImGui::BeginPopupContextWindow())
@@ -233,19 +393,19 @@ void Editor::DrawHierarchy()
 
     for (GameObject* obj : engine->scene->gameObjects) DrawGameObjectNode(obj);
 
+    // 保存窗口状态
+    {
+        ImVec2 pos = ImGui::GetWindowPos();
+        ImVec2 size = ImGui::GetWindowSize();
+        bool collapsed = ImGui::IsWindowCollapsed();
+        LayoutManager::GetInstance().SaveCurrentWindowState("Hierarchy", pos, size, true, collapsed);
+    }
+
     ImGui::End();
 }
 
 void Editor::DrawScene()
 {
-    float menuBarHeight = ImGui::GetFrameHeight();
-    float windowWidth = ImGui::GetIO().DisplaySize.x;
-    float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float columnWidth = windowWidth / 3.0f;
-    float halfHeight = windowHeight / 2.0f;
-
-    ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight)); // 左上
-    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
     ImGui::SetNextWindowBgAlpha(0.0f); // 背景完全透明，不遮挡OpenGL渲染
     ImGui::Begin("Scene");
     
@@ -257,6 +417,14 @@ void Editor::DrawScene()
     ImGui::GetWindowDrawList()->PushClipRect(sceneViewportRect.Min, sceneViewportRect.Max, true);
     engine->RenderSceneToViewport(sceneViewportRect, false);
     ImGui::GetWindowDrawList()->PopClipRect();
+
+    // 保存窗口状态
+    {
+        ImVec2 pos = ImGui::GetWindowPos();
+        ImVec2 size = ImGui::GetWindowSize();
+        bool collapsed = ImGui::IsWindowCollapsed();
+        LayoutManager::GetInstance().SaveCurrentWindowState("Scene", pos, size, true, collapsed);
+    }
 
     // 避免文字被遮挡，用ForegroundDrawList
     frame++; deltaTime += engine->deltaTime;
@@ -284,14 +452,6 @@ void Editor::DrawScene()
 
 void Editor::DrawGame()
 {
-    float menuBarHeight = ImGui::GetFrameHeight();
-    float windowWidth = ImGui::GetIO().DisplaySize.x;
-    float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float columnWidth = windowWidth / 3.0f;
-    float halfHeight = windowHeight / 2.0f;
-
-    ImGui::SetNextWindowPos(ImVec2(columnWidth, menuBarHeight)); // 中上
-    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
     ImGui::SetNextWindowBgAlpha(0.0f);
     ImGui::Begin("Game");
     
@@ -301,34 +461,36 @@ void Editor::DrawGame()
     engine->RenderSceneToViewport(gameViewportRect, true);
     ImGui::GetWindowDrawList()->PopClipRect();
 
+    // 保存窗口状态
+    {
+        ImVec2 pos = ImGui::GetWindowPos();
+        ImVec2 size = ImGui::GetWindowSize();
+        bool collapsed = ImGui::IsWindowCollapsed();
+        LayoutManager::GetInstance().SaveCurrentWindowState("Game", pos, size, true, collapsed);
+    }
+
     ImGui::End();
 }
 
 void Editor::DrawProject()
 {
-    float menuBarHeight = ImGui::GetFrameHeight();
-    float windowWidth = ImGui::GetIO().DisplaySize.x;
-    float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float columnWidth = windowWidth / 3.0f;
-    float halfHeight = windowHeight / 2.0f;
-
-    ImGui::SetNextWindowPos(ImVec2(columnWidth, menuBarHeight + halfHeight)); // 中下
-    ImGui::SetNextWindowSize(ImVec2(columnWidth, halfHeight));
     ImGui::Begin("Project");
+    
     ImGui::Text("Project View");
+
+    // 保存窗口状态
+    {
+        ImVec2 pos = ImGui::GetWindowPos();
+        ImVec2 size = ImGui::GetWindowSize();
+        bool collapsed = ImGui::IsWindowCollapsed();
+        LayoutManager::GetInstance().SaveCurrentWindowState("Project", pos, size, true, collapsed);
+    }
 
     ImGui::End();
 }
 
 void Editor::DrawInspector()
 {
-    float menuBarHeight = ImGui::GetFrameHeight();
-    float windowWidth = ImGui::GetIO().DisplaySize.x;
-    float windowHeight = ImGui::GetIO().DisplaySize.y - menuBarHeight;
-    float columnWidth = windowWidth / 3.0f;
-
-    ImGui::SetNextWindowPos(ImVec2(2 * columnWidth, menuBarHeight)); // 右侧
-    ImGui::SetNextWindowSize(ImVec2(columnWidth, windowHeight));
     ImGui::Begin("Inspector");
 
     if (!selectedObject) { ImGui::End(); return; }
@@ -336,6 +498,14 @@ void Editor::DrawInspector()
     if (engine->state == Engine::State::Play) ImGui::BeginDisabled();
     selectedObject->OnInspectorGUI();
     if (engine->state == Engine::State::Play) ImGui::EndDisabled();
+    
+    // 保存窗口状态
+    {
+        ImVec2 pos = ImGui::GetWindowPos();
+        ImVec2 size = ImGui::GetWindowSize();
+        bool collapsed = ImGui::IsWindowCollapsed();
+        LayoutManager::GetInstance().SaveCurrentWindowState("Inspector", pos, size, true, collapsed);
+    }
 
     ImGui::End();
 }
@@ -389,6 +559,45 @@ void Editor::DrawPopups()
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(120, 0)))
             ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    
+    // Save Layout Popup
+    if (showSaveLayoutPopup)
+    {
+        ImGui::OpenPopup("Save Layout");
+        showSaveLayoutPopup = false;
+    }
+    
+    if (ImGui::BeginPopupModal("Save Layout", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Layout Name:"); ImGui::SameLine();
+        ImGui::InputText("##LayoutName", layoutNameBuffer, sizeof(layoutNameBuffer));
+        
+        if (ImGui::Button("Save", ImVec2(120, 0)))
+        {
+            if (strlen(layoutNameBuffer) > 0)
+            {
+                // 收集当前窗口状态并保存
+                LayoutManager& lm = LayoutManager::GetInstance();
+                
+                // 更新当前布局名称
+                lm.GetCurrentLayout().name = layoutNameBuffer;
+                
+                // 保存到文件
+                if (lm.SaveLayout(layoutNameBuffer))
+                {
+                    ImGui::CloseCurrentPopup();
+                    strcpy_s(layoutNameBuffer, "Default");
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+            strcpy_s(layoutNameBuffer, "Default");
+        }
         ImGui::EndPopup();
     }
 }

@@ -91,7 +91,6 @@ void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
     glScissor(x, y, w, h);
     glEnable(GL_SCISSOR_TEST);
     
-    // 只清除深度，颜色已在Run()里清成浅灰了
     glClear(GL_DEPTH_BUFFER_BIT);
 
     glDisable(GL_BLEND);

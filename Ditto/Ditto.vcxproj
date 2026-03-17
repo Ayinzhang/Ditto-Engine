@@ -324,6 +324,7 @@
     <ClInclude Include="3rdParty\ImGui\imstb_textedit.h" />
     <ClInclude Include="3rdParty\ImGui\imstb_truetype.h" />
     <ClInclude Include="Editor\Editor.h" />
+    <ClInclude Include="Editor\LayoutManager.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
     <ClInclude Include="Engine\Core\Scene.h" />
@@ -502,6 +503,7 @@
     <ClCompile Include="3rdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp" />
     <ClCompile Include="Editor\Editor.cpp" />
+    <ClCompile Include="Editor\LayoutManager.cpp" />
     <ClCompile Include="Engine\Core\Engine.cpp" />
     <ClCompile Include="Engine\Core\GameObject.cpp" />
     <ClCompile Include="Engine\Core\Scene.cpp" />
