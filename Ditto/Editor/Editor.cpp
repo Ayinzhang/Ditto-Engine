@@ -1,15 +1,16 @@
 ﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#include <fstream>
+#include <iostream>
+#include <filesystem>
 #include "Editor.h"
 #include "LayoutManager.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Engine.h"
-#include <iostream>
 #include "../Engine/Core/GameObject.h"
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../3rdParty/ImGui/imgui_impl_opengl3.h"
 #include "../3rdParty/ImGui/imgui_internal.h"
-#include <filesystem>
 
 namespace fs = std::filesystem;
 
@@ -578,19 +579,31 @@ void Editor::DrawProject()
         
         // Scenes
         bool isSelected_Scenes = (currentFolder == "Assets/Scenes");
-        if (ImGui::Selectable("Scenes", isSelected_Scenes)) currentFolder = "Assets/Scenes";
+        if (ImGui::Selectable("Scenes", isSelected_Scenes)) {
+            currentFolder = "Assets/Scenes";
+            selectedFile.Clear();  // 切换文件夹时清除选中
+        }
         
         // Models
         bool isSelected_Models = (currentFolder == "Assets/Models");
-        if (ImGui::Selectable("Models", isSelected_Models)) currentFolder = "Assets/Models";
+        if (ImGui::Selectable("Models", isSelected_Models)) {
+            currentFolder = "Assets/Models";
+            selectedFile.Clear();
+        }
         
         // Materials
         bool isSelected_Materials = (currentFolder == "Assets/Materials");
-        if (ImGui::Selectable("Materials", isSelected_Materials)) currentFolder = "Assets/Materials";
+        if (ImGui::Selectable("Materials", isSelected_Materials)) {
+            currentFolder = "Assets/Materials";
+            selectedFile.Clear();
+        }
         
         // Prefabs
         bool isSelected_Prefabs = (currentFolder == "Assets/Prefabs");
-        if (ImGui::Selectable("Prefabs", isSelected_Prefabs)) currentFolder = "Assets/Prefabs";
+        if (ImGui::Selectable("Prefabs", isSelected_Prefabs)) {
+            currentFolder = "Assets/Prefabs";
+            selectedFile.Clear();
+        }
         
         ImGui::Unindent(0, 0.5f);
         ImGui::TreePop();
@@ -630,6 +643,19 @@ void Editor::DrawProject()
         folderPath = assetsPath + "/" + currentFolder.substr(pos + 1);
     }
     
+    // 右键菜单 - 未选中文件时
+    if (ImGui::BeginPopupContextWindow("ProjectContext"))
+    {
+        if (!selectedFile.IsValid())
+        {
+            if (ImGui::MenuItem("Create New..."))
+            {
+                // TODO: 创建新资源的逻辑
+            }
+        }
+        ImGui::EndPopup();
+    }
+    
     // 文件网格显示
     float itemWidth = 80;
     float itemHeight = 80;
@@ -657,10 +683,24 @@ void Editor::DrawProject()
                     // 文件项
                     ImGui::BeginGroup();
                     
+                    // 判断是否选中
+                    bool isSelected = selectedFile.IsValid() && (selectedFile.path == entry.path().string());
+                    
                     // 文件图标区域
                     ImVec2 cursorPos = ImGui::GetCursorPos();
                     ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
-                    ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[]");
+                    
+                    // 根据选中状态改变颜色
+                    if (isSelected)
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[]");
+                    else if (ext == ".bin")
+                        ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.5f, 1.0f), "[]");
+                    else if (ext == ".obj" || ext == ".fbx")
+                        ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[]");
+                    else if (ext == ".mat")
+                        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "[]");
+                    else
+                        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "[]");
                     
                     // 文件名
                     std::string displayName = filename;
@@ -668,12 +708,50 @@ void Editor::DrawProject()
                     if (displayName.size() > 10) displayName = displayName.substr(0, 8) + "..";
                     
                     ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - ImGui::CalcTextSize(displayName.c_str()).x) / 2, cursorPos.y + 50));
-                    ImGui::Text(displayName.c_str());
+                    
+                    // 选中时显示不同颜色
+                    if (isSelected)
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), displayName.c_str());
+                    else
+                        ImGui::Text(displayName.c_str());
                     
                     // 点击处理
                     ImGui::SetCursorPos(cursorPos);
                     ImGui::InvisibleButton(("file_" + filename).c_str(), ImVec2(itemWidth, itemHeight));
                     
+                    // 选中文件
+                    if (ImGui::IsItemClicked(0))
+                    {
+                        selectedFile.path = entry.path().string();
+                        selectedFile.name = filename.substr(0, filename.size() - ext.size());
+                        selectedFile.extension = ext;
+                        selectedFile.folder = currentFolder;
+                    }
+                    
+                    // 右键菜单 - 选中文件时
+                    if (ImGui::BeginPopupContextItem())
+                    {
+                        if (ImGui::MenuItem("Delete"))
+                        {
+                            // 删除文件
+                            try {
+                                fs::remove(entry.path());
+                                if (selectedFile.path == entry.path().string())
+                                    selectedFile.Clear();
+                            } catch (const std::exception& e) {
+                                std::cerr << "Delete failed: " << e.what() << std::endl;
+                            }
+                        }
+                        if (ImGui::MenuItem("Show in Explorer"))
+                        {
+                            // 在文件管理器中显示
+                            std::string cmd = "explorer /select,\"" + entry.path().string() + "\"";
+                            system(cmd.c_str());
+                        }
+                        ImGui::EndPopup();
+                    }
+                    
+                    // 双击处理
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     {
                         if (ext == ".bin")
@@ -696,11 +774,99 @@ void Editor::DrawProject()
     ImGui::End();
 }
 
+// 辅助函数：解析OBJ文件获取模型信息
+struct ModelInfo {
+    int vertexCount = 0;
+    int faceCount = 0;
+    bool loaded = false;
+};
+
+static ModelInfo LoadModelInfo(const std::string& path)
+{
+    ModelInfo info;
+    std::ifstream file(path);
+    if (!file.is_open()) return info;
+    
+    std::string line;
+    int vertexCount = 0;
+    while (std::getline(file, line))
+    {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        
+        std::istringstream ss(line);
+        std::string prefix;
+        ss >> prefix;
+        
+        if (prefix == "v") vertexCount++;
+        else if (prefix == "f") info.faceCount++;
+    }
+    
+    info.vertexCount = vertexCount;
+    info.loaded = true;
+    return info;
+}
+
 void Editor::DrawInspector()
 {
     ImGui::Begin("Inspector");
 
-    if (!selectedObject) { ImGui::End(); return; }
+    // 优先显示文件信息（如果选中了文件）
+    if (selectedFile.IsValid())
+    {
+        // 文件基本信息
+        ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "File");
+        ImGui::Separator();
+        
+        ImGui::Text("Name: "); ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), selectedFile.name.c_str());
+        
+        ImGui::Text("Path: "); ImGui::SameLine();
+        ImGui::TextDisabled(selectedFile.path.c_str());
+        
+        // 如果是模型文件，显示模型信息
+        if (selectedFile.extension == ".obj" || selectedFile.extension == ".fbx")
+        {
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "Model");
+            ImGui::Separator();
+            
+            ModelInfo modelInfo = LoadModelInfo(selectedFile.path);
+            if (modelInfo.loaded)
+            {
+                ImGui::Text("Vertices: "); ImGui::SameLine();
+                ImGui::Text(std::to_string(modelInfo.vertexCount).c_str());
+                
+                ImGui::Text("Faces: "); ImGui::SameLine();
+                ImGui::Text(std::to_string(modelInfo.faceCount).c_str());
+            }
+            
+            // 预览图占位（可后续接入缩略图）
+            float previewWidth = ImGui::GetContentRegionAvail().x;
+            if (previewWidth > 0)
+            {
+                ImGui::Separator();
+                ImGui::Text("Preview");
+                ImVec2 cursor = ImGui::GetCursorPos();
+                float btnWidth = std::min(previewWidth - 20, 150.0f);
+                float btnHeight = btnWidth * 0.75f;
+                ImGui::SetCursorPos(ImVec2(cursor.x + (previewWidth - btnWidth) / 2, cursor.y));
+                ImGui::Button("##preview", ImVec2(btnWidth, btnHeight));
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Preview not available");
+            }
+        }
+        
+        ImGui::End();
+        return;
+    }
+
+    // 没有选中文件时，显示 GameObject 信息
+    if (!selectedObject) {
+        ImGui::TextDisabled("Select an object to view its properties");
+        ImGui::End();
+        return;
+    }
 
     if (engine->state == Engine::State::Play) ImGui::BeginDisabled();
     selectedObject->OnInspectorGUI();
@@ -839,6 +1005,40 @@ void Editor::DeleteSelectedObject()
         selectedObject = engine->scene->gameObjects.back();
     else
         selectedObject = nullptr;
+}
+
+void Editor::DeleteSelectedFile()
+{
+    if (!selectedFile.IsValid()) return;
+    
+    try {
+        fs::remove(selectedFile.path);
+        selectedFile.Clear();
+    } catch (const std::exception& e) {
+        std::cerr << "Delete file failed: " << e.what() << std::endl;
+    }
+}
+
+void Editor::DuplicateSelectedFile()
+{
+    if (!selectedFile.IsValid()) return;
+    
+    // 构建新文件名：name_copy.ext
+    std::string newName = selectedFile.name + "_copy" + selectedFile.extension;
+    std::string newPath = selectedFile.path;
+    size_t pos = newPath.rfind(selectedFile.name + selectedFile.extension);
+    if (pos != std::string::npos) {
+        newPath.replace(pos, selectedFile.name.size() + selectedFile.extension.size(), newName);
+    }
+    
+    try {
+        fs::copy_file(selectedFile.path, newPath, fs::copy_options::overwrite_existing);
+        // 选中新复制的文件
+        selectedFile.path = newPath;
+        selectedFile.name = selectedFile.name + "_copy";
+    } catch (const std::exception& e) {
+        std::cerr << "Duplicate file failed: " << e.what() << std::endl;
+    }
 }
 
 // 项目选择界面

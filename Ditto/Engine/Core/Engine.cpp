@@ -126,15 +126,27 @@ void Engine::ProcessInput()
     if (altPressedNow && !altPressedLastFrame) enableMouse = !enableMouse;
     altPressedLastFrame = altPressedNow;
 
+    // Delete 键：优先处理文件删除，其次处理 GameObject 删除
     static bool deletePressedLastFrame = false;
     bool deletePressedNow = glfwGetKey(window, GLFW_KEY_DELETE) == GLFW_PRESS;
-    if (deletePressedNow && !deletePressedLastFrame) editor->DeleteSelectedObject();
+    if (deletePressedNow && !deletePressedLastFrame) {
+        if (editor->selectedFile.IsValid())
+            editor->DeleteSelectedFile();
+        else
+            editor->DeleteSelectedObject();
+    }
     deletePressedLastFrame = deletePressedNow;
 
-    static bool ctrlCPressedLastFrame = false;
-    bool ctrlCPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
-    if (ctrlCPressedNow && !ctrlCPressedLastFrame) editor->CopySelectedObject();
-    ctrlCPressedLastFrame = ctrlCPressedNow;
+    // Ctrl+D：优先处理文件复制，其次处理 GameObject 复制
+    static bool ctrlDPressedLastFrame = false;
+    bool ctrlDPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+    if (ctrlDPressedNow && !ctrlDPressedLastFrame) {
+        if (editor->selectedFile.IsValid())
+            editor->DuplicateSelectedFile();
+        else
+            editor->CopySelectedObject();
+    }
+    ctrlDPressedLastFrame = ctrlDPressedNow;
 }
 
 void Engine::SetEngineState(State newState)

@@ -7,10 +7,22 @@ struct Engine;
 struct GameObject;
 struct Project;
 
+// 选中的文件信息
+struct SelectedFile {
+    std::string path;        // 完整路径
+    std::string name;        // 文件名（不含扩展名）
+    std::string extension;   // 扩展名
+    std::string folder;      // 所属文件夹 (Assets/Scenes 等)
+    
+    bool IsValid() const { return !path.empty(); }
+    void Clear() { path.clear(); name.clear(); extension.clear(); folder.clear(); }
+};
+
 struct Editor
 {
     Engine* engine = nullptr;
     GameObject* selectedObject = nullptr;
+    SelectedFile selectedFile;   // 选中的文件
     char sceneNameBuffer[16] = "Default";
     char layoutNameBuffer[32] = "Default";
     char projectNameBuffer[32] = "MyProject";
@@ -50,4 +62,6 @@ struct Editor
     void DrawGameObjectNode(GameObject* obj);
     void CopySelectedObject();
     void DeleteSelectedObject();
+    void DeleteSelectedFile();
+    void DuplicateSelectedFile();
 };
