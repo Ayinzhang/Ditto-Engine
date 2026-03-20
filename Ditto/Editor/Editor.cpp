@@ -2,15 +2,18 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <shlobj.h>
 #include "Editor.h"
 #include "LayoutManager.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
-#include "../3rdParty/GLM/glm.hpp"
+#include "../3rdParty/GLFW/glfw3.h"
+#include "../3rdParty/GLAD/glad.h"
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../3rdParty/ImGui/imgui_impl_opengl3.h"
 #include "../3rdParty/ImGui/imgui_internal.h"
+#include "../3rdParty/GLM/ext/matrix_transform.hpp"
 
 namespace fs = std::filesystem;
 
@@ -56,10 +59,14 @@ Editor::Editor(void* window)
     
     // 初始化项目管理器
     ProjectManager::GetInstance().Initialize("../../Ditto/Ditto/Projects");
+    
+    // 初始化 3D 模型预览
+    InitModelPreview();
 }
 
 Editor::~Editor()
 {
+    CleanupModelPreview();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -726,6 +733,12 @@ void Editor::DrawProject()
                         selectedFile.name = filename.substr(0, filename.size() - ext.size());
                         selectedFile.extension = ext;
                         selectedFile.folder = currentFolder;
+                        
+                        // 加载模型预览
+                        if (ext == ".obj" || ext == ".fbx") {
+                            LoadPreviewModel(selectedFile.path);
+                            
+                        }
                     }
                     
                     // 右键菜单 - 选中文件时
@@ -744,9 +757,12 @@ void Editor::DrawProject()
                         }
                         if (ImGui::MenuItem("Show in Explorer"))
                         {
-                            // 在文件管理器中显示
-                            std::string cmd = "explorer /select,\"" + entry.path().string() + "\"";
-                            system(cmd.c_str());
+                            std::wstring fullPathW = std::filesystem::absolute(entry.path()).wstring();
+
+                            HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+                            PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(fullPathW.c_str());
+                            SHOpenFolderAndSelectItems(pidl, 0, NULL, 0); ILFree(pidl);
+                            CoUninitialize();
                         }
                         ImGui::EndPopup();
                     }
@@ -847,13 +863,51 @@ void Editor::DrawInspector()
             {
                 ImGui::Separator();
                 ImGui::Text("Preview");
+                // 3D 模型预览 - 始终渲染
+                if (!previewInitialized) InitModelPreview();
+                
+                // 渲染预览（点击时已加载）
+                RenderModelPreview();
+                
+                float btnWidth = std::min(previewWidth - 20, 200.0f);
+                float btnHeight = btnWidth; // 正方形
                 ImVec2 cursor = ImGui::GetCursorPos();
-                float btnWidth = std::min(previewWidth - 20, 150.0f);
-                float btnHeight = btnWidth * 0.75f;
                 ImGui::SetCursorPos(ImVec2(cursor.x + (previewWidth - btnWidth) / 2, cursor.y));
-                ImGui::Button("##preview", ImVec2(btnWidth, btnHeight));
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Preview not available");
+                
+                ImGui::Image((void*)(intptr_t)previewTexture, ImVec2(btnWidth, btnHeight), 
+                    ImVec2(0, 1), ImVec2(1, 0));
+                
+                // 鼠标拖拽旋转 - 围绕模型中心旋转
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDown(0))
+                {
+                    ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
+                    if (previewCamera)
+                    {
+                        float rotSpeed = 0.5f;
+                        // 围绕模型中心旋转相机
+                        glm::vec3 camOffset = previewCamera->position - currentPreviewModel.center;
+                        float distance = glm::length(camOffset);
+                        
+                        previewCamera->yaw -= mouseDelta.x * rotSpeed;
+                        previewCamera->pitch += mouseDelta.y * rotSpeed;
+                        
+                        // 重新计算相机位置（不限制角度）
+                        float yawRad = glm::radians(previewCamera->yaw);
+                        float pitchRad = glm::radians(previewCamera->pitch);
+                        
+                        previewCamera->position = currentPreviewModel.center + glm::vec3(
+                            distance * cos(pitchRad) * sin(yawRad),
+                            distance * sin(pitchRad),
+                            distance * cos(pitchRad) * cos(yawRad)
+                        );
+                        
+                        // 更新前方向量
+                        glm::vec3 forward = glm::normalize(currentPreviewModel.center - previewCamera->position);
+                        previewCamera->forward = forward;
+                        previewCamera->right = normalize(cross(forward, previewCamera->worldUp));
+                        previewCamera->up = -normalize(cross(forward, previewCamera->right));
+                    }
+                }
             }
         }
         
@@ -1224,4 +1278,362 @@ std::vector<std::string> Editor::GetProjectScenes()
     }
     
     return scenes;
+}
+
+void Editor::InitModelPreview()
+{
+    if (previewInitialized) return;
+    
+    std::cout << "[Preview] Initializing..." << std::endl;
+    
+    // 像素对齐设置
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    
+    // 创建 FBO
+    glGenFramebuffers(1, &previewFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
+    
+    // 创建颜色纹理
+    glGenTextures(1, &previewTexture);
+    glBindTexture(GL_TEXTURE_2D, previewTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, previewWidth, previewHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, previewTexture, 0);
+    
+    // 创建深度渲染缓冲
+    glGenRenderbuffers(1, &previewRBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, previewRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, previewWidth, previewHeight);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, previewRBO);
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    // 创建预览相机
+    previewCamera = new Camera(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    
+    // 创建独立的预览着色器（不使用 SSBO）
+    const char* vertSrc = R"(
+        #version 460 core
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec3 aNormal;
+        
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+        
+        out vec3 pos;
+        out vec3 normal;
+        
+        void main() {
+            vec4 worldPos = model * vec4(aPos, 1.0);
+            pos = worldPos.xyz;
+            normal = normalize(mat3(model) * aNormal);
+            gl_Position = projection * view * worldPos;
+        }
+    )";
+    
+    const char* fragSrc = R"(
+        #version 460 core
+        
+        in vec3 pos;
+        in vec3 normal;
+        out vec4 col;
+        
+        uniform vec3 lightDir;
+        
+        void main() {
+            vec3 light = normalize(lightDir);
+            float diff = max(dot(normal, light), 0.0) * 0.7;
+            float ambient = 0.4;
+            vec3 color = vec3(1.0, 1.0, 1.0); // 白色模型
+            col = vec4(color * (ambient + diff), 1.0);
+        }
+    )";
+    
+    // 编译顶点着色器
+    unsigned int vert = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vert, 1, &vertSrc, nullptr);
+    glCompileShader(vert);
+    
+    // 编译片段着色器
+    unsigned int frag = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(frag, 1, &fragSrc, nullptr);
+    glCompileShader(frag);
+    
+    // 链接程序
+    previewProgram = glCreateProgram();
+    glAttachShader(previewProgram, vert);
+    glAttachShader(previewProgram, frag);
+    glLinkProgram(previewProgram);
+    
+    // 清理
+    glDeleteShader(vert);
+    glDeleteShader(frag);
+    
+    std::cout << "[Preview] Program: " << previewProgram << std::endl;
+    
+    previewInitialized = true;
+}
+
+void Editor::LoadPreviewModel(const std::string& modelPath)
+{
+    // 如果路径为空，不加载
+    if (modelPath.empty()) return;
+    
+    // 如果是同一个模型，不需要重新加载
+    if (currentPreviewPath == modelPath && currentPreviewModel.VAO != 0)  return;
+    
+    std::cout << "[Preview] Loading: " << modelPath << std::endl;
+    
+    // 清理之前的模型
+    if (currentPreviewModel.VAO) {
+        glDeleteVertexArrays(1, &currentPreviewModel.VAO);
+        glDeleteBuffers(1, &currentPreviewModel.VBO);
+        if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
+        currentPreviewModel.VAO = 0;
+    }
+    
+    currentPreviewPath = modelPath;
+    
+    // 清理之前的模型
+    if (currentPreviewModel.VAO) {
+        glDeleteVertexArrays(1, &currentPreviewModel.VAO);
+        glDeleteBuffers(1, &currentPreviewModel.VBO);
+        if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
+        currentPreviewModel.VAO = 0;
+    }
+    
+    currentPreviewPath = modelPath;
+    
+    // 读取 OBJ 文件
+    std::ifstream file(modelPath);
+    if (!file.is_open()) {
+        std::cerr << "[Preview] Failed to open model: " << modelPath << std::endl;
+        return;
+    }
+    
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec3> normals;
+    std::vector<unsigned int> indices;
+    
+    std::string line;
+    while (std::getline(file, line))
+    {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        
+        std::istringstream ss(line);
+        std::string prefix;
+        ss >> prefix;
+        
+        if (prefix == "v") {
+            glm::vec3 pos;
+            ss >> pos.x >> pos.y >> pos.z;
+            positions.push_back(pos);
+        }
+        else if (prefix == "vn") {
+            glm::vec3 norm;
+            ss >> norm.x >> norm.y >> norm.z;
+            normals.push_back(glm::normalize(norm));
+        }
+        else if (prefix == "f") {
+            std::vector<std::string> faceTokens;
+            std::string token;
+            while (ss >> token) faceTokens.push_back(token);
+            
+            // 三角化（支持四边形）
+            for (size_t i = 1; i + 1 < faceTokens.size(); i++) {
+                for (size_t j = 0; j < 3; j++) {
+                    const std::string& ft = (j == 0) ? faceTokens[0] : (j == 1) ? faceTokens[i] : faceTokens[i + 1];
+                    std::istringstream ft_ss(ft);
+                    std::string idx;
+                    std::getline(ft_ss, idx, '/');
+                    int posIdx = std::stoi(idx) - 1;
+                    indices.push_back(posIdx);
+                }
+            }
+        }
+    }
+    
+    if (positions.empty()) {
+        std::cerr << "[Preview] No vertices found in model" << std::endl;
+        return;
+    }
+    
+    std::cout << "[Preview] Loaded " << positions.size() << " vertices, " << indices.size() / 3 << " faces" << std::endl;
+    
+    // 计算中心点和边界球
+    glm::vec3 minPos(positions[0]), maxPos(positions[0]);
+    for (const auto& pos : positions) {
+        minPos = glm::min(minPos, pos);
+        maxPos = glm::max(maxPos, pos);
+    }
+    currentPreviewModel.center = (minPos + maxPos) * 0.5f;
+    currentPreviewModel.radius = glm::length(maxPos - minPos) * 0.5f;
+    
+    // 构建顶点数据（位置 + 法线）
+    std::vector<float> vertexData;
+    for (size_t i = 0; i < indices.size(); i++) {
+        int idx = indices[i];
+        if (idx >= 0 && idx < positions.size()) {
+            vertexData.push_back(positions[idx].x);
+            vertexData.push_back(positions[idx].y);
+            vertexData.push_back(positions[idx].z);
+        }
+        if (idx >= 0 && idx < normals.size()) {
+            vertexData.push_back(normals[idx].x);
+            vertexData.push_back(normals[idx].y);
+            vertexData.push_back(normals[idx].z);
+        } else {
+            vertexData.push_back(0); vertexData.push_back(1); vertexData.push_back(0);
+        }
+    }
+    
+    currentPreviewModel.vertexCount = vertexData.size() / 6;
+    currentPreviewModel.indexCount = indices.size();
+    
+    // 创建 VAO/VBO
+    glGenVertexArrays(1, &currentPreviewModel.VAO);
+    glGenBuffers(1, &currentPreviewModel.VBO);
+    
+    glBindVertexArray(currentPreviewModel.VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, currentPreviewModel.VBO);
+    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
+    
+    // 位置属性
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    // 法线属性
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    
+    glBindVertexArray(0);
+    
+    // 设置相机位置对准模型中心
+    if (previewCamera) {
+        float distance = currentPreviewModel.radius * 2.5f;
+        previewCamera->position = currentPreviewModel.center + glm::vec3(0, distance * 0.3f, distance);
+        previewCamera->yaw = -90.0f;
+        previewCamera->pitch = -15.0f;
+        previewCamera->UpdateCameraVectors();
+    }
+}
+
+void Editor::RenderModelPreview()
+{
+    if (!previewInitialized) {
+        std::cout << "[Preview] Not initialized" << std::endl;
+        return;
+    }
+    if (!previewCamera) {
+        std::cout << "[Preview] No camera" << std::endl;
+        return;
+    }
+    if (!engine || !engine->shader) {
+        std::cout << "[Preview] No shader" << std::endl;
+        return;
+    }
+    
+    // 如果有模型才渲染
+    if (!currentPreviewModel.VAO) 
+    {
+        // 没有模型时，仍然渲染空白背景
+        GLint previousFBO;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
+        GLint previousViewport[4];
+        glGetIntegerv(GL_VIEWPORT, previousViewport);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
+        glViewport(0, 0, previewWidth, previewHeight);
+        glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
+        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+        return;
+    }
+    
+    // 保存当前 OpenGL 状态
+    GLint previousFBO;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
+    GLint previousViewport[4];
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    GLboolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
+    GLint cullFaceMode;
+    glGetIntegerv(GL_CULL_FACE_MODE, &cullFaceMode);
+    
+    // 绑定预览 FBO
+    glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
+    glViewport(0, 0, previewWidth, previewHeight);
+    
+    // 清空背景和深度
+    glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    
+    // 可选：线框模式调试（目前用实心）
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    
+    // 设置相机
+    glm::mat4 view = previewCamera->GetViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)previewWidth / (float)previewHeight, 0.1f, 100.0f);
+    glm::vec3 viewPos = previewCamera->position;
+    
+    // 使用独立的预览着色器（不使用 SSBO）
+    glUseProgram(previewProgram);
+    
+    // 绑定模型矩阵（居中，无缩放）
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), -currentPreviewModel.center);
+    
+    // 设置 uniform
+    GLint modelLoc = glGetUniformLocation(previewProgram, "model");
+    GLint viewLoc = glGetUniformLocation(previewProgram, "view");
+    GLint projLoc = glGetUniformLocation(previewProgram, "projection");
+    GLint lightLoc = glGetUniformLocation(previewProgram, "lightDir");
+    
+    if (modelLoc >= 0) glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
+    if (viewLoc >= 0) glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &view[0][0]);
+    if (projLoc >= 0) glUniformMatrix4fv(projLoc, 1, GL_FALSE, &projection[0][0]);
+    if (lightLoc >= 0) glUniform3f(lightLoc, 0.5f, 0.8f, 0.5f);
+    
+    // 渲染预览模型
+    glBindVertexArray(currentPreviewModel.VAO);
+    glDrawArrays(GL_TRIANGLES, 0, currentPreviewModel.vertexCount);
+    
+    // 恢复之前的 OpenGL 状态
+    glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+    if (cullFaceEnabled) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    glCullFace(cullFaceMode);
+    
+    // 恢复填充模式（修复 Scene/Game 联动问题）
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+}
+
+void Editor::CleanupModelPreview()
+{
+    if (!previewInitialized) return;
+    
+    if (previewFBO) glDeleteFramebuffers(1, &previewFBO);
+    if (previewRBO) glDeleteRenderbuffers(1, &previewRBO);
+    if (previewTexture) glDeleteTextures(1, &previewTexture);
+    if (previewCamera) delete previewCamera;
+    
+    if (currentPreviewModel.VAO) {
+        glDeleteVertexArrays(1, &currentPreviewModel.VAO);
+        glDeleteBuffers(1, &currentPreviewModel.VBO);
+        if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
+    }
+    
+    previewFBO = 0;
+    previewRBO = 0;
+    previewTexture = 0;
+    previewCamera = nullptr;
+    currentPreviewModel.VAO = 0;
+    previewInitialized = false;
 }

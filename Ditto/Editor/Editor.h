@@ -1,11 +1,17 @@
 #pragma once
-#include "../3rdParty/ImGui/imgui.h"
 #include <string>
 #include <vector>
+#include "../3rdParty/GLM/glm.hpp"
+#include "../3rdParty/ImGui/imgui.h"
 
+// 前向声明
 struct Engine;
 struct GameObject;
 struct Project;
+struct Camera;
+struct Shader;
+
+namespace ImGui { class ImTextureID; }
 
 // 选中的文件信息
 struct SelectedFile {
@@ -58,6 +64,35 @@ struct Editor
     void OpenProject(const std::string& projectPath);
     void LoadSceneFromProject(const std::string& scenePath);
     std::vector<std::string> GetProjectScenes();
+
+    // 3D模型预览相关
+    unsigned int previewFBO = 0;
+    unsigned int previewRBO = 0;
+    unsigned int previewTexture = 0;
+    int previewSize = 256; // 正方形
+    int previewWidth = 256;
+    int previewHeight = 256;
+    bool previewInitialized = false;
+    Camera* previewCamera = nullptr;
+    
+    // 独立的预览着色器（不用 SSBO）
+    unsigned int previewProgram = 0;
+    
+    // 预览的模型数据
+    struct PreviewModel {
+        unsigned int VAO = 0, VBO = 0, EBO = 0;
+        int vertexCount = 0;
+        int indexCount = 0;
+        glm::vec3 center = glm::vec3(0);
+        float radius = 1.0f;
+    };
+    PreviewModel currentPreviewModel;
+    std::string currentPreviewPath;
+    
+    void InitModelPreview();
+    void LoadPreviewModel(const std::string& modelPath);
+    void RenderModelPreview();
+    void CleanupModelPreview();
 
     void DrawGameObjectNode(GameObject* obj);
     void CopySelectedObject();

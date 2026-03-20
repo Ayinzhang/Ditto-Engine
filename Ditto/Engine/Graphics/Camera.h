@@ -8,4 +8,6 @@ struct Camera
 	glm::mat4 GetViewMatrix();
 	void ProcessMouseMovement(float daltax, float daltay);
 	void UpdateCameraVectors();
+	// 围绕原点旋转相机
+	void RotateAroundOrigin(float deltaYaw, float deltaPitch);
 };
