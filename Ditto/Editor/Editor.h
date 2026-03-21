@@ -72,7 +72,7 @@ struct Editor
     int previewSize = 256; // 正方形
     int previewWidth = 256;
     int previewHeight = 256;
-    bool previewInitialized = false;
+    bool previewInitialized = false, modelInitialized = false;
     Camera* previewCamera = nullptr;
     
     // 独立的预览着色器（不用 SSBO）

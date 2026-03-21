@@ -1564,7 +1564,7 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="Assets\Icon\ditto.ico">
+    <Image Include="Assets\Icon\Ditto.ico">
       <Filter>三方库</Filter>
     </Image>
   </ItemGroup>

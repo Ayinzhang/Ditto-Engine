@@ -734,10 +734,9 @@ void Editor::DrawProject()
                         selectedFile.extension = ext;
                         selectedFile.folder = currentFolder;
                         
-                        // 加载模型预览
+                        // 加载模型预览并立即渲染
                         if (ext == ".obj" || ext == ".fbx") {
                             LoadPreviewModel(selectedFile.path);
-                            
                         }
                     }
                     
@@ -878,9 +877,9 @@ void Editor::DrawInspector()
                     ImVec2(0, 1), ImVec2(1, 0));
                 
                 // 鼠标拖拽旋转 - 围绕模型中心旋转
-                if (ImGui::IsItemHovered() && ImGui::IsMouseDown(0))
+                if (!modelInitialized || (ImGui::IsItemHovered() && ImGui::IsMouseDown(0)))
                 {
-                    ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
+                    modelInitialized = true; ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
                     if (previewCamera)
                     {
                         float rotSpeed = 0.5f;
@@ -1313,42 +1312,26 @@ void Editor::InitModelPreview()
     // 创建预览相机
     previewCamera = new Camera(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     
-    // 创建独立的预览着色器（不使用 SSBO）
+    // 简化的线框着色器
     const char* vertSrc = R"(
         #version 460 core
         layout(location = 0) in vec3 aPos;
-        layout(location = 1) in vec3 aNormal;
         
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 projection;
         
-        out vec3 pos;
-        out vec3 normal;
-        
         void main() {
-            vec4 worldPos = model * vec4(aPos, 1.0);
-            pos = worldPos.xyz;
-            normal = normalize(mat3(model) * aNormal);
-            gl_Position = projection * view * worldPos;
+            gl_Position = projection * view * model * vec4(aPos, 1.0);
         }
     )";
     
     const char* fragSrc = R"(
         #version 460 core
-        
-        in vec3 pos;
-        in vec3 normal;
         out vec4 col;
         
-        uniform vec3 lightDir;
-        
         void main() {
-            vec3 light = normalize(lightDir);
-            float diff = max(dot(normal, light), 0.0) * 0.7;
-            float ambient = 0.4;
-            vec3 color = vec3(1.0, 1.0, 1.0); // 白色模型
-            col = vec4(color * (ambient + diff), 1.0);
+            col = vec4(1.0f, 1.0f, 1.0f, 1.0f);
         }
     )";
     
@@ -1380,12 +1363,16 @@ void Editor::InitModelPreview()
 void Editor::LoadPreviewModel(const std::string& modelPath)
 {
     // 如果路径为空，不加载
-    if (modelPath.empty()) return;
-    
-    // 如果是同一个模型，不需要重新加载
-    if (currentPreviewPath == modelPath && currentPreviewModel.VAO != 0)  return;
+    if (modelPath.empty()) return; 
     
     std::cout << "[Preview] Loading: " << modelPath << std::endl;
+    std::cout << "[Preview] Current: " << currentPreviewPath << std::endl;
+    
+    // 如果是同一个模型，不需要重新加载
+    if (currentPreviewPath == modelPath && currentPreviewModel.VAO != 0) {
+        std::cout << "[Preview] Same model, skipping" << std::endl;
+        return;
+    }
     
     // 清理之前的模型
     if (currentPreviewModel.VAO) {
@@ -1395,15 +1382,21 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
         currentPreviewModel.VAO = 0;
     }
     
-    currentPreviewPath = modelPath;
-    
-    // 清理之前的模型
-    if (currentPreviewModel.VAO) {
-        glDeleteVertexArrays(1, &currentPreviewModel.VAO);
-        glDeleteBuffers(1, &currentPreviewModel.VBO);
-        if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
-        currentPreviewModel.VAO = 0;
+    // 重新创建纹理（确保能显示新模型）
+    if (previewTexture) {
+        glDeleteTextures(1, &previewTexture);
+        previewTexture = 0;
     }
+    glGenTextures(1, &previewTexture);
+    glBindTexture(GL_TEXTURE_2D, previewTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, previewWidth, previewHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    // 重新绑定到 FBO
+    glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, previewTexture, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
     currentPreviewPath = modelPath;
     
@@ -1473,7 +1466,7 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
     currentPreviewModel.center = (minPos + maxPos) * 0.5f;
     currentPreviewModel.radius = glm::length(maxPos - minPos) * 0.5f;
     
-    // 构建顶点数据（位置 + 法线）
+    // 线框模式只需要顶点位置
     std::vector<float> vertexData;
     for (size_t i = 0; i < indices.size(); i++) {
         int idx = indices[i];
@@ -1482,17 +1475,10 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
             vertexData.push_back(positions[idx].y);
             vertexData.push_back(positions[idx].z);
         }
-        if (idx >= 0 && idx < normals.size()) {
-            vertexData.push_back(normals[idx].x);
-            vertexData.push_back(normals[idx].y);
-            vertexData.push_back(normals[idx].z);
-        } else {
-            vertexData.push_back(0); vertexData.push_back(1); vertexData.push_back(0);
-        }
     }
     
-    currentPreviewModel.vertexCount = vertexData.size() / 6;
-    currentPreviewModel.indexCount = indices.size();
+    currentPreviewModel.vertexCount = vertexData.size() / 3;
+    currentPreviewModel.indexCount = 0; // 线框用 glDrawArrays
     
     // 创建 VAO/VBO
     glGenVertexArrays(1, &currentPreviewModel.VAO);
@@ -1502,12 +1488,9 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
     glBindBuffer(GL_ARRAY_BUFFER, currentPreviewModel.VBO);
     glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
     
-    // 位置属性
+    // 只需要位置属性
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    // 法线属性
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     
     glBindVertexArray(0);
     
@@ -1519,6 +1502,8 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
         previewCamera->pitch = -15.0f;
         previewCamera->UpdateCameraVectors();
     }
+    
+    modelInitialized = false;
 }
 
 void Editor::RenderModelPreview()
@@ -1531,8 +1516,8 @@ void Editor::RenderModelPreview()
         std::cout << "[Preview] No camera" << std::endl;
         return;
     }
-    if (!engine || !engine->shader) {
-        std::cout << "[Preview] No shader" << std::endl;
+    if (!previewProgram) {
+        std::cout << "[Preview] No preview program" << std::endl;
         return;
     }
     

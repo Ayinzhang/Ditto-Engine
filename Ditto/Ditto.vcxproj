@@ -525,7 +525,7 @@
     <ResourceCompile Include="Ditto.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="Assets\Icon\ditto.ico" />
+    <Image Include="Assets\Icon\Ditto.ico" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
