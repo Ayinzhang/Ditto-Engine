@@ -323,6 +323,7 @@
     <ClInclude Include="3rdParty\ImGui\imstb_rectpack.h" />
     <ClInclude Include="3rdParty\ImGui\imstb_textedit.h" />
     <ClInclude Include="3rdParty\ImGui\imstb_truetype.h" />
+    <ClInclude Include="3rdParty\stb_image.h" />
     <ClInclude Include="Editor\Editor.h" />
     <ClInclude Include="Editor\LayoutManager.h" />
     <ClInclude Include="Engine\Core\Engine.h" />

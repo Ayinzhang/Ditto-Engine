@@ -8,12 +8,15 @@
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
+#define GLFW_INCLUDE_NONE
 #include "../3rdParty/GLFW/glfw3.h"
 #include "../3rdParty/GLAD/glad.h"
 #include "../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../3rdParty/ImGui/imgui_impl_opengl3.h"
 #include "../3rdParty/ImGui/imgui_internal.h"
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
+#define STB_IMAGE_IMPLEMENTATION
+#include "../3rdParty/stb_image.h"
 
 namespace fs = std::filesystem;
 
@@ -31,11 +34,11 @@ Editor::Editor(void* window)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    
+
     // 启用Docking功能
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    
+
     ImGui::StyleColorsDark();
 
     // 设置全局透明背景 - 针对Docking系统
@@ -53,20 +56,24 @@ Editor::Editor(void* window)
     projectLoaded = false;
     dockingInitialized = false;
     frame = deltaTime = 0;
-    
+
     // 初始化布局管理器
     LayoutManager::GetInstance().Initialize("../../Ditto/Ditto/Assets/Settings");
-    
+
     // 初始化项目管理器
     ProjectManager::GetInstance().Initialize("../../Ditto/Ditto/Projects");
-    
+
     // 初始化 3D 模型预览
     InitModelPreview();
+    
+    // 初始化文件图标
+    InitFileIcons();
 }
 
 Editor::~Editor()
 {
     CleanupModelPreview();
+    CleanupFileIcons();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -88,7 +95,7 @@ void Editor::Draw()
 
     // 设置全屏DockSpace
     SetupDocking();
-    
+
     DrawToolbar();
     DrawHierarchy();
     DrawScene();
@@ -96,47 +103,47 @@ void Editor::Draw()
     DrawProject();
     DrawInspector();
     DrawPopups();
-    
+
     // DockSpace结束
     ImGui::End();
 
     ImGui::Render(); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    if(isSceneActive) engine->sceneCamera = engine->sceneCamera;
+    if (isSceneActive) engine->sceneCamera = engine->sceneCamera;
 }
 
 void Editor::SetupDocking()
 {
     ImGuiIO& io = ImGui::GetIO();
-    
+
     // 获取当前窗口大小
     float menuBarHeight = ImGui::GetFrameHeight();
     ImVec2 displaySize = io.DisplaySize;
-    
+
     // 全屏窗口作为DockSpace宿主 - 动态适应窗口大小变化
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(displaySize.x, displaySize.y - menuBarHeight));
-    
+
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-                                   ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                                   ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
-                                   ImGuiWindowFlags_NoBackground;
-    
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+        ImGuiWindowFlags_NoBackground;
+
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    
+
     bool open = true;
     ImGui::Begin("DockSpace", &open, window_flags);
-    
+
     ImGui::PopStyleVar(3);
-    
+
     // 创建DockSpace
     ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
     dockSpaceID = dockspace_id;
-    
+
     // 使用NoSplit标志防止手动分割，或使用Dockspace的默认行为
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
-    
+
     // 只在首次运行时初始化默认布局
     if (!dockingInitialized)
     {
@@ -146,44 +153,44 @@ void Editor::SetupDocking()
         {
             // 加载了新的布局，不需要重建Dock，ImGui已经恢复了状态
             lm.ClearNeedsReloadDock();
-            
+
             // 必须Finish DockSpace
             ImGui::DockBuilderFinish(dockspace_id);
             ImGui::End();
             return;
         }
-        
+
         dockingInitialized = true;
-        
+
         // 清除现有的dock布局以重新构建
         ImGui::DockBuilderRemoveNode(dockspace_id);
         ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_None);
         ImGui::DockBuilderSetNodeSize(dockspace_id, ImVec2(displaySize.x, displaySize.y - menuBarHeight));
-        
+
         // 分割DockSpace - 使用相对比例而不是固定大小
         ImGuiID dock_id_left, dock_id_right, dock_id_center;
-        
+
         // 左侧面板占30%
         ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.3f, &dock_id_left, &dock_id_center);
         // 右侧面板占30%（从剩余空间计算）
         ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Right, 0.42f, &dock_id_right, &dock_id_center);
         // 注意：现在dock_id_center是中间40%的区域
-        
+
         // 左侧面板再分割为上下两个（各50%）
         ImGuiID dock_id_left_top, dock_id_left_bottom;
         ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Up, 0.5f, &dock_id_left_top, &dock_id_left_bottom);
-        
+
         // 中间面板再分割为上下两个（各50%）
         ImGuiID dock_id_center_top, dock_id_center_bottom;
         ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Down, 0.5f, &dock_id_center_bottom, &dock_id_center_top);
-        
+
         // 将窗口附加到Dock节点
         ImGui::DockBuilderDockWindow("Scene", dock_id_left_top);
         ImGui::DockBuilderDockWindow("Hierarchy", dock_id_left_bottom);
         ImGui::DockBuilderDockWindow("Game", dock_id_center_top);
         ImGui::DockBuilderDockWindow("Project", dock_id_center_bottom);
         ImGui::DockBuilderDockWindow("Inspector", dock_id_right);
-        
+
         ImGui::DockBuilderFinish(dockspace_id);
     }
 }
@@ -206,14 +213,14 @@ void Editor::DrawToolbar()
             {
                 showSaveLayoutPopup = true;
             }
-            
+
             ImGui::Separator();
-            
+
             // Load Layout 子菜单
             if (ImGui::BeginMenu("Load Layout"))
             {
                 std::vector<std::string> layouts = GetSavedLayouts();
-                
+
                 if (layouts.empty())
                 {
                     ImGui::TextDisabled("No saved layouts");
@@ -230,7 +237,7 @@ void Editor::DrawToolbar()
                 }
                 ImGui::EndMenu();
             }
-            
+
             ImGui::EndMenu();
         }
 
@@ -280,14 +287,14 @@ void Editor::DrawLayoutMenu()
         {
             showSaveLayoutPopup = true;
         }
-        
+
         ImGui::Separator();
-        
+
         // Load Layout 子菜单
         if (ImGui::BeginMenu("Load Layout"))
         {
             std::vector<std::string> layouts = GetSavedLayouts();
-            
+
             if (layouts.empty())
             {
                 ImGui::TextDisabled("No saved layouts");
@@ -304,7 +311,7 @@ void Editor::DrawLayoutMenu()
             }
             ImGui::EndMenu();
         }
-        
+
         ImGui::EndMenu();
     }
 }
@@ -458,18 +465,18 @@ void Editor::DrawScene()
     // 设置透明背景 - 确保在Begin之前设置
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     ImGui::SetNextWindowBgAlpha(0.0f);
-    
+
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground;
-    
+
     if (!ImGui::Begin("Scene", nullptr, flags))
     {
         ImGui::End();
         return;
     }
-    
+
     // 只有Scene窗口获得焦点时才激活Scene相机控制
     if (ImGui::IsWindowFocused()) isSceneActive = true;
-    
+
     // 获取窗口渲染区域并调用引擎渲染Scene视图（编辑器视角）
     ImRect sceneViewportRect = GetCurrentViewportRect();
     ImGui::GetWindowDrawList()->PushClipRect(sceneViewportRect.Min, sceneViewportRect.Max, true);
@@ -514,15 +521,15 @@ void Editor::DrawGame()
     // 设置透明背景 - 确保在Begin之前设置
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     ImGui::SetNextWindowBgAlpha(0.0f);
-    
+
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground;
-    
+
     if (!ImGui::Begin("Game", nullptr, flags))
     {
         ImGui::End();
         return;
     }
-    
+
     // 获取窗口渲染区域并调用引擎渲染Game视图（游戏运行视角）
     ImRect gameViewportRect = GetCurrentViewportRect();
     ImGui::GetWindowDrawList()->PushClipRect(gameViewportRect.Min, gameViewportRect.Max, true);
@@ -545,7 +552,7 @@ void Editor::DrawProject()
 {
     ProjectManager& pm = ProjectManager::GetInstance();
     Project* proj = pm.GetCurrentProject();
-    
+
     if (!proj)
     {
         ImGui::Begin("Project");
@@ -553,82 +560,120 @@ void Editor::DrawProject()
         ImGui::End();
         return;
     }
-    
+
     std::string assetsPath = pm.GetProjectAssetsPath();
     static std::string currentFolder = "Assets/Scenes";
     static float splitterPos = 150.0f;
-    
+
     ImGui::Begin("Project");
-    
+
     // 顶部路径栏
     ImGui::Text("Project");
     ImGui::SameLine();
+    
+    // 添加后退按钮（如果不是根目录）
+    if (currentFolder != "Assets") {
+        if (ImGui::Button("<")) {
+            // 返回上一级
+            size_t lastSlash = currentFolder.find_last_of('/');
+            if (lastSlash != std::string::npos) {
+                currentFolder = currentFolder.substr(0, lastSlash);
+                selectedFile.Clear();
+            }
+        }
+        ImGui::SameLine();
+    }
+    
     ImGui::Text(" > ");
     ImGui::SameLine();
     ImGui::Text(currentFolder.c_str());
     ImGui::Separator();
-    
+
     float panelWidth = ImGui::GetContentRegionAvail().x;
     float panelHeight = ImGui::GetContentRegionAvail().y;
-    
+
     // 确保splitterPos在合理范围内
     if (splitterPos < 100) splitterPos = 100;
     if (splitterPos > panelWidth - 100) splitterPos = panelWidth - 100;
-    
+
     // 左边 - 文件夹树（无边框）
     ImGui::BeginChild("Folders", ImVec2(splitterPos, panelHeight), false);
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+
+    // 递归显示文件夹树
+    std::function<void(const std::string&, const std::string&)> DrawFolderTree = 
+        [&](const std::string& folderPath, const std::string& displayPath) {
+            try {
+                if (!fs::exists(folderPath)) return;
+                
+                for (const auto& entry : fs::directory_iterator(folderPath)) {
+                    if (entry.is_directory()) {
+                        std::string folderName = entry.path().filename().string();
+                        std::string fullPath = displayPath + "/" + folderName;
+                        std::string fullFsPath = entry.path().string();
+                        
+                        bool isSelected = (currentFolder == fullPath);
+                        
+                        // 检查是否有子文件夹
+                        bool hasSubfolders = false;
+                        for (const auto& sub : fs::directory_iterator(fullFsPath)) {
+                            if (sub.is_directory()) {
+                                hasSubfolders = true;
+                                break;
+                            }
+                        }
+                        
+                        if (hasSubfolders) {
+                            // 有子文件夹，用 TreeNode
+                            if (ImGui::TreeNode(folderName.c_str())) {
+                                // 点击时也更新右侧视图
+                                if (ImGui::IsItemClicked(0)) {
+                                    currentFolder = fullPath;
+                                    selectedFile.Clear();
+                                }
+                                DrawFolderTree(fullFsPath, fullPath);
+                                ImGui::TreePop();
+                            }
+                        } else {
+                            // 没有子文件夹，用 Selectable
+                            if (ImGui::Selectable(folderName.c_str(), isSelected)) {
+                                currentFolder = fullPath;
+                                selectedFile.Clear();
+                            }
+                        }
+                    }
+                }
+            } catch (const std::exception&) {}
+        };
     
-    // Assets
+    // Assets 根节点
     if (ImGui::TreeNode("Assets"))
     {
-        ImGui::Indent(0, 0.5f);   // 缩进一半
-        
-        // Scenes
-        bool isSelected_Scenes = (currentFolder == "Assets/Scenes");
-        if (ImGui::Selectable("Scenes", isSelected_Scenes)) {
-            currentFolder = "Assets/Scenes";
-            selectedFile.Clear();  // 切换文件夹时清除选中
-        }
-        
-        // Models
-        bool isSelected_Models = (currentFolder == "Assets/Models");
-        if (ImGui::Selectable("Models", isSelected_Models)) {
-            currentFolder = "Assets/Models";
+        // 点击 Assets 也显示内容
+        if (ImGui::IsItemClicked(0)) {
+            currentFolder = "Assets";
             selectedFile.Clear();
         }
         
-        // Materials
-        bool isSelected_Materials = (currentFolder == "Assets/Materials");
-        if (ImGui::Selectable("Materials", isSelected_Materials)) {
-            currentFolder = "Assets/Materials";
-            selectedFile.Clear();
-        }
-        
-        // Prefabs
-        bool isSelected_Prefabs = (currentFolder == "Assets/Prefabs");
-        if (ImGui::Selectable("Prefabs", isSelected_Prefabs)) {
-            currentFolder = "Assets/Prefabs";
-            selectedFile.Clear();
-        }
-        
+        ImGui::Indent(0, 0.5f);
+        DrawFolderTree(assetsPath, "Assets");
         ImGui::Unindent(0, 0.5f);
         ImGui::TreePop();
     }
     ImGui::PopStyleColor();
     ImGui::EndChild();
-    
+
     // 分隔条 - 细线
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 0.5f));
     ImGui::Button("##splitter", ImVec2(1, panelHeight));
     ImGui::PopStyleColor();
-    
+
     if (ImGui::IsItemHovered())
     {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     }
-    
+
     // 拖动分隔条
     if (ImGui::IsItemActive())
     {
@@ -636,12 +681,12 @@ void Editor::DrawProject()
         if (splitterPos < 100) splitterPos = 100;
         if (splitterPos > panelWidth - 100) splitterPos = panelWidth - 100;
     }
-    
+
     ImGui::SameLine();
-    
+
     // 右边 - 文件视图（无边框）
     ImGui::BeginChild("View", ImVec2(0, panelHeight), false);
-    
+
     // 获取当前文件夹路径
     std::string folderPath = assetsPath;
     size_t pos = currentFolder.find('/');
@@ -649,7 +694,7 @@ void Editor::DrawProject()
     {
         folderPath = assetsPath + "/" + currentFolder.substr(pos + 1);
     }
-    
+
     // 右键菜单 - 未选中文件时
     if (ImGui::BeginPopupContextWindow("ProjectContext"))
     {
@@ -662,70 +707,133 @@ void Editor::DrawProject()
         }
         ImGui::EndPopup();
     }
-    
+
     // 文件网格显示
     float itemWidth = 80;
     float itemHeight = 80;
     float currentX = 0;
     float availWidth = ImGui::GetContentRegionAvail().x;
-    
+
     try
     {
         if (fs::exists(folderPath))
         {
+            // 先显示文件夹
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
-                if (entry.is_regular_file())
+                if (entry.is_directory())
                 {
-                    std::string filename = entry.path().filename().string();
-                    std::string ext = entry.path().extension().string();
-                    
+                    std::string folderName = entry.path().filename().string();
+
                     // 换行
                     if (currentX + itemWidth > availWidth)
                     {
                         ImGui::NewLine();
                         currentX = 0;
                     }
-                    
+
+                    // 文件夹项
+                    ImGui::BeginGroup();
+
+                    // 判断是否选中
+                    bool isSelected = false; // 文件夹暂时不支持选中
+
+                    // 文件夹图标区域
+                    ImVec2 cursorPos = ImGui::GetCursorPos();
+                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
+
+                    // 获取文件夹图标
+                    unsigned int folderIcon = GetFolderIcon();
+                    if (folderIcon) {
+                        ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(40, 40), ImVec2(0, 1), ImVec2(1, 0));
+                    } else {
+                        ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.2f, 1.0f), "[]");
+                    }
+
+                    // 文件夹名
+                    std::string displayName = folderName;
+                    if (displayName.size() > 10) displayName = displayName.substr(0, 8) + "..";
+
+                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - ImGui::CalcTextSize(displayName.c_str()).x) / 2, cursorPos.y + 50));
+                    ImGui::Text(displayName.c_str());
+
+                    // 点击处理
+                    ImGui::SetCursorPos(cursorPos);
+                    ImGui::InvisibleButton(("folder_" + folderName).c_str(), ImVec2(itemWidth, itemHeight));
+
+                    // 点击文件夹进入
+                    if (ImGui::IsItemClicked(0))
+                    {
+                        currentFolder = currentFolder + "/" + folderName;
+                        selectedFile.Clear();
+                    }
+
+                    ImGui::EndGroup();
+                    ImGui::SameLine();
+                    currentX += itemWidth;
+                }
+            }
+
+            // 再显示文件
+            for (const auto& entry : fs::directory_iterator(folderPath))
+            {
+                if (entry.is_regular_file())
+                {
+                    std::string filename = entry.path().filename().string();
+                    std::string ext = entry.path().extension().string();
+
+                    // 换行
+                    if (currentX + itemWidth > availWidth)
+                    {
+                        ImGui::NewLine();
+                        currentX = 0;
+                    }
+
                     // 文件项
                     ImGui::BeginGroup();
-                    
+
                     // 判断是否选中
                     bool isSelected = selectedFile.IsValid() && (selectedFile.path == entry.path().string());
-                    
+
                     // 文件图标区域
                     ImVec2 cursorPos = ImGui::GetCursorPos();
                     ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
-                    
-                    // 根据选中状态改变颜色
-                    if (isSelected)
-                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[]");
-                    else if (ext == ".bin")
-                        ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.5f, 1.0f), "[]");
-                    else if (ext == ".obj" || ext == ".fbx")
-                        ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[]");
-                    else if (ext == ".mat")
-                        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "[]");
-                    else
-                        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "[]");
-                    
+
+                    // 获取图标纹理
+                    unsigned int iconTexture = GetIconByExtension(ext);
+                    if (iconTexture) {
+                        ImGui::Image((void*)(intptr_t)iconTexture, ImVec2(40, 40), ImVec2(0, 1), ImVec2(1, 0));
+                    } else {
+                        // 回退到文本图标
+                        if (isSelected)
+                            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[]");
+                        else if (ext == ".bin")
+                            ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.5f, 1.0f), "[]");
+                        else if (ext == ".obj" || ext == ".fbx")
+                            ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[]");
+                        else if (ext == ".mat")
+                            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "[]");
+                        else
+                            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "[]");
+                    }
+
                     // 文件名
                     std::string displayName = filename;
                     if (ext == ".bin") displayName = filename.substr(0, filename.size() - 4);
                     if (displayName.size() > 10) displayName = displayName.substr(0, 8) + "..";
-                    
+
                     ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - ImGui::CalcTextSize(displayName.c_str()).x) / 2, cursorPos.y + 50));
-                    
+
                     // 选中时显示不同颜色
                     if (isSelected)
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), displayName.c_str());
                     else
                         ImGui::Text(displayName.c_str());
-                    
+
                     // 点击处理
                     ImGui::SetCursorPos(cursorPos);
                     ImGui::InvisibleButton(("file_" + filename).c_str(), ImVec2(itemWidth, itemHeight));
-                    
+
                     // 选中文件
                     if (ImGui::IsItemClicked(0))
                     {
@@ -733,13 +841,13 @@ void Editor::DrawProject()
                         selectedFile.name = filename.substr(0, filename.size() - ext.size());
                         selectedFile.extension = ext;
                         selectedFile.folder = currentFolder;
-                        
+
                         // 加载模型预览并立即渲染
                         if (ext == ".obj" || ext == ".fbx") {
                             LoadPreviewModel(selectedFile.path);
                         }
                     }
-                    
+
                     // 右键菜单 - 选中文件时
                     if (ImGui::BeginPopupContextItem())
                     {
@@ -750,7 +858,8 @@ void Editor::DrawProject()
                                 fs::remove(entry.path());
                                 if (selectedFile.path == entry.path().string())
                                     selectedFile.Clear();
-                            } catch (const std::exception& e) {
+                            }
+                            catch (const std::exception& e) {
                                 std::cerr << "Delete failed: " << e.what() << std::endl;
                             }
                         }
@@ -765,7 +874,7 @@ void Editor::DrawProject()
                         }
                         ImGui::EndPopup();
                     }
-                    
+
                     // 双击处理
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     {
@@ -774,7 +883,7 @@ void Editor::DrawProject()
                             LoadSceneFromProject(entry.path().string());
                         }
                     }
-                    
+
                     currentX += itemWidth;
                     ImGui::EndGroup();
                     ImGui::SameLine();
@@ -783,7 +892,7 @@ void Editor::DrawProject()
         }
     }
     catch (const std::exception&) {}
-    
+
     ImGui::EndChild();
 
     ImGui::End();
@@ -801,22 +910,22 @@ static ModelInfo LoadModelInfo(const std::string& path)
     ModelInfo info;
     std::ifstream file(path);
     if (!file.is_open()) return info;
-    
+
     std::string line;
     int vertexCount = 0;
     while (std::getline(file, line))
     {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty() || line[0] == '#') continue;
-        
+
         std::istringstream ss(line);
         std::string prefix;
         ss >> prefix;
-        
+
         if (prefix == "v") vertexCount++;
         else if (prefix == "f") info.faceCount++;
     }
-    
+
     info.vertexCount = vertexCount;
     info.loaded = true;
     return info;
@@ -832,30 +941,30 @@ void Editor::DrawInspector()
         // 文件基本信息
         ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "File");
         ImGui::Separator();
-        
+
         ImGui::Text("Name: "); ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), selectedFile.name.c_str());
-        
+
         ImGui::Text("Path: "); ImGui::SameLine();
         ImGui::TextDisabled(selectedFile.path.c_str());
-        
+
         // 如果是模型文件，显示模型信息
         if (selectedFile.extension == ".obj" || selectedFile.extension == ".fbx")
         {
             ImGui::Separator();
             ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "Model");
             ImGui::Separator();
-            
+
             ModelInfo modelInfo = LoadModelInfo(selectedFile.path);
             if (modelInfo.loaded)
             {
                 ImGui::Text("Vertices: "); ImGui::SameLine();
                 ImGui::Text(std::to_string(modelInfo.vertexCount).c_str());
-                
+
                 ImGui::Text("Faces: "); ImGui::SameLine();
                 ImGui::Text(std::to_string(modelInfo.faceCount).c_str());
             }
-            
+
             // 预览图占位（可后续接入缩略图）
             float previewWidth = ImGui::GetContentRegionAvail().x;
             if (previewWidth > 0)
@@ -864,18 +973,18 @@ void Editor::DrawInspector()
                 ImGui::Text("Preview");
                 // 3D 模型预览 - 始终渲染
                 if (!previewInitialized) InitModelPreview();
-                
+
                 // 渲染预览（点击时已加载）
                 RenderModelPreview();
-                
+
                 float btnWidth = std::min(previewWidth - 20, 200.0f);
                 float btnHeight = btnWidth; // 正方形
                 ImVec2 cursor = ImGui::GetCursorPos();
                 ImGui::SetCursorPos(ImVec2(cursor.x + (previewWidth - btnWidth) / 2, cursor.y));
-                
-                ImGui::Image((void*)(intptr_t)previewTexture, ImVec2(btnWidth, btnHeight), 
+
+                ImGui::Image((void*)(intptr_t)previewTexture, ImVec2(btnWidth, btnHeight),
                     ImVec2(0, 1), ImVec2(1, 0));
-                
+
                 // 鼠标拖拽旋转 - 围绕模型中心旋转
                 if (!modelInitialized || (ImGui::IsItemHovered() && ImGui::IsMouseDown(0)))
                 {
@@ -886,20 +995,20 @@ void Editor::DrawInspector()
                         // 围绕模型中心旋转相机
                         glm::vec3 camOffset = previewCamera->position - currentPreviewModel.center;
                         float distance = glm::length(camOffset);
-                        
+
                         previewCamera->yaw -= mouseDelta.x * rotSpeed;
                         previewCamera->pitch += mouseDelta.y * rotSpeed;
-                        
+
                         // 重新计算相机位置（不限制角度）
                         float yawRad = glm::radians(previewCamera->yaw);
                         float pitchRad = glm::radians(previewCamera->pitch);
-                        
+
                         previewCamera->position = currentPreviewModel.center + glm::vec3(
                             distance * cos(pitchRad) * sin(yawRad),
                             distance * sin(pitchRad),
                             distance * cos(pitchRad) * cos(yawRad)
                         );
-                        
+
                         // 更新前方向量
                         glm::vec3 forward = glm::normalize(currentPreviewModel.center - previewCamera->position);
                         previewCamera->forward = forward;
@@ -909,7 +1018,7 @@ void Editor::DrawInspector()
                 }
             }
         }
-        
+
         ImGui::End();
         return;
     }
@@ -924,7 +1033,7 @@ void Editor::DrawInspector()
     if (engine->state == Engine::State::Play) ImGui::BeginDisabled();
     selectedObject->OnInspectorGUI();
     if (engine->state == Engine::State::Play) ImGui::EndDisabled();
-    
+
     // 保存窗口状态
     {
         ImVec2 pos = ImGui::GetWindowPos();
@@ -987,19 +1096,19 @@ void Editor::DrawPopups()
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
-    
+
     // Save Layout Popup
     if (showSaveLayoutPopup)
     {
         ImGui::OpenPopup("Save Layout");
         showSaveLayoutPopup = false;
     }
-    
+
     if (ImGui::BeginPopupModal("Save Layout", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         ImGui::Text("Layout Name:"); ImGui::SameLine();
         ImGui::InputText("##LayoutName", layoutNameBuffer, sizeof(layoutNameBuffer));
-        
+
         if (ImGui::Button("Save", ImVec2(120, 0)))
         {
             if (strlen(layoutNameBuffer) > 0)
@@ -1063,11 +1172,12 @@ void Editor::DeleteSelectedObject()
 void Editor::DeleteSelectedFile()
 {
     if (!selectedFile.IsValid()) return;
-    
+
     try {
         fs::remove(selectedFile.path);
         selectedFile.Clear();
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
         std::cerr << "Delete file failed: " << e.what() << std::endl;
     }
 }
@@ -1075,7 +1185,7 @@ void Editor::DeleteSelectedFile()
 void Editor::DuplicateSelectedFile()
 {
     if (!selectedFile.IsValid()) return;
-    
+
     // 构建新文件名：name_copy.ext
     std::string newName = selectedFile.name + "_copy" + selectedFile.extension;
     std::string newPath = selectedFile.path;
@@ -1083,13 +1193,14 @@ void Editor::DuplicateSelectedFile()
     if (pos != std::string::npos) {
         newPath.replace(pos, selectedFile.name.size() + selectedFile.extension.size(), newName);
     }
-    
+
     try {
         fs::copy_file(selectedFile.path, newPath, fs::copy_options::overwrite_existing);
         // 选中新复制的文件
         selectedFile.path = newPath;
         selectedFile.name = selectedFile.name + "_copy";
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
         std::cerr << "Duplicate file failed: " << e.what() << std::endl;
     }
 }
@@ -1100,11 +1211,11 @@ void Editor::DrawProjectSelector()
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y));
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-                            ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                            ImGuiWindowFlags_NoBackground;
-    
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBackground;
+
     ImGui::Begin("ProjectSelector", nullptr, flags);
-    
+
     // 标题
     float windowWidth = ImGui::GetWindowWidth();
     ImGui::SetCursorPosX((windowWidth - 200) * 0.5f);
@@ -1112,18 +1223,18 @@ void Editor::DrawProjectSelector()
     ImGui::SetWindowFontScale(2.0f);
     ImGui::Text("Ditto Engine");
     ImGui::SetWindowFontScale(1.0f);
-    
+
     // 项目列表
     ProjectManager& pm = ProjectManager::GetInstance();
     auto projects = pm.GetAllProjects();
     static int selectedProject = -1;
-    
+
     ImGui::SetCursorPosY(180);
     float listWidth = 400;
     float listHeight = 250;
     ImGui::SetCursorPosX((windowWidth - listWidth) * 0.5f);
     ImGui::BeginChild("ProjectList", ImVec2(listWidth, listHeight), true);
-    
+
     if (projects.empty())
     {
         ImGui::TextDisabled("No projects yet.");
@@ -1139,19 +1250,19 @@ void Editor::DrawProjectSelector()
         }
     }
     ImGui::EndChild();
-    
+
     // 按钮 - 居中，与列表框对齐
     float buttonWidth = 150;
     float buttonSpacing = 20;
     float buttonsWidth = buttonWidth * 2 + buttonSpacing;
     float buttonsStartX = (windowWidth - buttonsWidth) * 0.5f;
-    
+
     ImGui::SetCursorPosX(buttonsStartX);
     if (ImGui::Button("Create", ImVec2(buttonWidth, 40)))
     {
         showNewProjectPopup = true;
     }
-    
+
     ImGui::SameLine();
     ImGui::SetCursorPosX(buttonsStartX + buttonWidth + buttonSpacing);
     if (ImGui::Button("Open", ImVec2(buttonWidth, 40)))
@@ -1161,28 +1272,28 @@ void Editor::DrawProjectSelector()
             OpenProject(projects[selectedProject].path);
         }
     }
-    
+
     // 保存选中的项目索引
     static int lastSelectedProject = -1;
     if (lastSelectedProject != selectedProject)
     {
         lastSelectedProject = selectedProject;
     }
-    
+
     ImGui::End();
-    
+
     // 新建项目弹窗
     if (showNewProjectPopup)
     {
         ImGui::OpenPopup("Create Project");
         showNewProjectPopup = false;
     }
-    
+
     if (ImGui::BeginPopupModal("Create Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         ImGui::Text("Project Name:"); ImGui::SameLine();
         ImGui::InputText("##ProjectName", projectNameBuffer, sizeof(projectNameBuffer));
-        
+
         if (ImGui::Button("Create", ImVec2(120, 0)))
         {
             if (strlen(projectNameBuffer) > 0)
@@ -1214,7 +1325,7 @@ void Editor::OpenProject(const std::string& projectPath)
     {
         projectLoaded = true;
         showProjectSelector = false;
-        
+
         // 加载上次场景（如果有）
         Project* proj = pm.GetCurrentProject();
         if (proj && !proj->lastScene.empty())
@@ -1233,7 +1344,7 @@ void Editor::LoadSceneFromProject(const std::string& scenePath)
     if (engine && engine->scene)
     {
         engine->scene->LoadScene(scenePath.c_str());
-        
+
         // 保存到项目配置
         Project* proj = ProjectManager::GetInstance().GetCurrentProject();
         if (proj)
@@ -1243,7 +1354,7 @@ void Editor::LoadSceneFromProject(const std::string& scenePath)
             if (pos != std::string::npos)
             {
                 proj->lastScene = scenePath.substr(pos + 1);
-                
+
                 // 保存到project.json
                 std::string projectFile = proj->path + "/project.json";
                 // TODO: 更新project.json中的lastScene
@@ -1257,7 +1368,7 @@ std::vector<std::string> Editor::GetProjectScenes()
     std::vector<std::string> scenes;
     ProjectManager& pm = ProjectManager::GetInstance();
     std::string scenesPath = pm.GetProjectScenesPath();
-    
+
     try
     {
         if (fs::exists(scenesPath))
@@ -1275,24 +1386,24 @@ std::vector<std::string> Editor::GetProjectScenes()
     {
         std::cerr << "Error reading scenes: " << e.what() << std::endl;
     }
-    
+
     return scenes;
 }
 
 void Editor::InitModelPreview()
 {
     if (previewInitialized) return;
-    
+
     std::cout << "[Preview] Initializing..." << std::endl;
-    
+
     // 像素对齐设置
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    
+
     // 创建 FBO
     glGenFramebuffers(1, &previewFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
-    
+
     // 创建颜色纹理
     glGenTextures(1, &previewTexture);
     glBindTexture(GL_TEXTURE_2D, previewTexture);
@@ -1300,18 +1411,18 @@ void Editor::InitModelPreview()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, previewTexture, 0);
-    
+
     // 创建深度渲染缓冲
     glGenRenderbuffers(1, &previewRBO);
     glBindRenderbuffer(GL_RENDERBUFFER, previewRBO);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, previewWidth, previewHeight);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, previewRBO);
-    
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    
+
     // 创建预览相机
     previewCamera = new Camera(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    
+
     // 简化的线框着色器
     const char* vertSrc = R"(
         #version 460 core
@@ -1325,7 +1436,7 @@ void Editor::InitModelPreview()
             gl_Position = projection * view * model * vec4(aPos, 1.0);
         }
     )";
-    
+
     const char* fragSrc = R"(
         #version 460 core
         out vec4 col;
@@ -1334,46 +1445,46 @@ void Editor::InitModelPreview()
             col = vec4(1.0f, 1.0f, 1.0f, 1.0f);
         }
     )";
-    
+
     // 编译顶点着色器
     unsigned int vert = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vert, 1, &vertSrc, nullptr);
     glCompileShader(vert);
-    
+
     // 编译片段着色器
     unsigned int frag = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(frag, 1, &fragSrc, nullptr);
     glCompileShader(frag);
-    
+
     // 链接程序
     previewProgram = glCreateProgram();
     glAttachShader(previewProgram, vert);
     glAttachShader(previewProgram, frag);
     glLinkProgram(previewProgram);
-    
+
     // 清理
     glDeleteShader(vert);
     glDeleteShader(frag);
-    
+
     std::cout << "[Preview] Program: " << previewProgram << std::endl;
-    
+
     previewInitialized = true;
 }
 
 void Editor::LoadPreviewModel(const std::string& modelPath)
 {
     // 如果路径为空，不加载
-    if (modelPath.empty()) return; 
-    
+    if (modelPath.empty()) return;
+
     std::cout << "[Preview] Loading: " << modelPath << std::endl;
     std::cout << "[Preview] Current: " << currentPreviewPath << std::endl;
-    
+
     // 如果是同一个模型，不需要重新加载
     if (currentPreviewPath == modelPath && currentPreviewModel.VAO != 0) {
         std::cout << "[Preview] Same model, skipping" << std::endl;
         return;
     }
-    
+
     // 清理之前的模型
     if (currentPreviewModel.VAO) {
         glDeleteVertexArrays(1, &currentPreviewModel.VAO);
@@ -1381,7 +1492,7 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
         if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
         currentPreviewModel.VAO = 0;
     }
-    
+
     // 重新创建纹理（确保能显示新模型）
     if (previewTexture) {
         glDeleteTextures(1, &previewTexture);
@@ -1392,35 +1503,35 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, previewWidth, previewHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    
+
     // 重新绑定到 FBO
     glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, previewTexture, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    
+
     currentPreviewPath = modelPath;
-    
+
     // 读取 OBJ 文件
     std::ifstream file(modelPath);
     if (!file.is_open()) {
         std::cerr << "[Preview] Failed to open model: " << modelPath << std::endl;
         return;
     }
-    
+
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
     std::vector<unsigned int> indices;
-    
+
     std::string line;
     while (std::getline(file, line))
     {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty() || line[0] == '#') continue;
-        
+
         std::istringstream ss(line);
         std::string prefix;
         ss >> prefix;
-        
+
         if (prefix == "v") {
             glm::vec3 pos;
             ss >> pos.x >> pos.y >> pos.z;
@@ -1435,7 +1546,7 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
             std::vector<std::string> faceTokens;
             std::string token;
             while (ss >> token) faceTokens.push_back(token);
-            
+
             // 三角化（支持四边形）
             for (size_t i = 1; i + 1 < faceTokens.size(); i++) {
                 for (size_t j = 0; j < 3; j++) {
@@ -1449,14 +1560,14 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
             }
         }
     }
-    
+
     if (positions.empty()) {
         std::cerr << "[Preview] No vertices found in model" << std::endl;
         return;
     }
-    
+
     std::cout << "[Preview] Loaded " << positions.size() << " vertices, " << indices.size() / 3 << " faces" << std::endl;
-    
+
     // 计算中心点和边界球
     glm::vec3 minPos(positions[0]), maxPos(positions[0]);
     for (const auto& pos : positions) {
@@ -1465,7 +1576,7 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
     }
     currentPreviewModel.center = (minPos + maxPos) * 0.5f;
     currentPreviewModel.radius = glm::length(maxPos - minPos) * 0.5f;
-    
+
     // 线框模式只需要顶点位置
     std::vector<float> vertexData;
     for (size_t i = 0; i < indices.size(); i++) {
@@ -1476,24 +1587,24 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
             vertexData.push_back(positions[idx].z);
         }
     }
-    
+
     currentPreviewModel.vertexCount = vertexData.size() / 3;
     currentPreviewModel.indexCount = 0; // 线框用 glDrawArrays
-    
+
     // 创建 VAO/VBO
     glGenVertexArrays(1, &currentPreviewModel.VAO);
     glGenBuffers(1, &currentPreviewModel.VBO);
-    
+
     glBindVertexArray(currentPreviewModel.VAO);
     glBindBuffer(GL_ARRAY_BUFFER, currentPreviewModel.VBO);
     glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
-    
+
     // 只需要位置属性
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    
+
     glBindVertexArray(0);
-    
+
     // 设置相机位置对准模型中心
     if (previewCamera) {
         float distance = currentPreviewModel.radius * 2.5f;
@@ -1502,7 +1613,7 @@ void Editor::LoadPreviewModel(const std::string& modelPath)
         previewCamera->pitch = -15.0f;
         previewCamera->UpdateCameraVectors();
     }
-    
+
     modelInitialized = false;
 }
 
@@ -1520,26 +1631,26 @@ void Editor::RenderModelPreview()
         std::cout << "[Preview] No preview program" << std::endl;
         return;
     }
-    
+
     // 如果有模型才渲染
-    if (!currentPreviewModel.VAO) 
+    if (!currentPreviewModel.VAO)
     {
         // 没有模型时，仍然渲染空白背景
         GLint previousFBO;
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
         GLint previousViewport[4];
         glGetIntegerv(GL_VIEWPORT, previousViewport);
-        
+
         glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
         glViewport(0, 0, previewWidth, previewHeight);
         glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
+
         glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
         glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
         return;
     }
-    
+
     // 保存当前 OpenGL 状态
     GLint previousFBO;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
@@ -1548,54 +1659,54 @@ void Editor::RenderModelPreview()
     GLboolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
     GLint cullFaceMode;
     glGetIntegerv(GL_CULL_FACE_MODE, &cullFaceMode);
-    
+
     // 绑定预览 FBO
     glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
     glViewport(0, 0, previewWidth, previewHeight);
-    
+
     // 清空背景和深度
     glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
-    
+
     // 可选：线框模式调试（目前用实心）
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    
+
     // 设置相机
     glm::mat4 view = previewCamera->GetViewMatrix();
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)previewWidth / (float)previewHeight, 0.1f, 100.0f);
     glm::vec3 viewPos = previewCamera->position;
-    
+
     // 使用独立的预览着色器（不使用 SSBO）
     glUseProgram(previewProgram);
-    
+
     // 绑定模型矩阵（居中，无缩放）
     glm::mat4 model = glm::translate(glm::mat4(1.0f), -currentPreviewModel.center);
-    
+
     // 设置 uniform
     GLint modelLoc = glGetUniformLocation(previewProgram, "model");
     GLint viewLoc = glGetUniformLocation(previewProgram, "view");
     GLint projLoc = glGetUniformLocation(previewProgram, "projection");
     GLint lightLoc = glGetUniformLocation(previewProgram, "lightDir");
-    
+
     if (modelLoc >= 0) glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
     if (viewLoc >= 0) glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &view[0][0]);
     if (projLoc >= 0) glUniformMatrix4fv(projLoc, 1, GL_FALSE, &projection[0][0]);
     if (lightLoc >= 0) glUniform3f(lightLoc, 0.5f, 0.8f, 0.5f);
-    
+
     // 渲染预览模型
     glBindVertexArray(currentPreviewModel.VAO);
     glDrawArrays(GL_TRIANGLES, 0, currentPreviewModel.vertexCount);
-    
+
     // 恢复之前的 OpenGL 状态
     glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
     glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
     if (cullFaceEnabled) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     glCullFace(cullFaceMode);
-    
+
     // 恢复填充模式（修复 Scene/Game 联动问题）
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
@@ -1603,22 +1714,134 @@ void Editor::RenderModelPreview()
 void Editor::CleanupModelPreview()
 {
     if (!previewInitialized) return;
-    
+
     if (previewFBO) glDeleteFramebuffers(1, &previewFBO);
     if (previewRBO) glDeleteRenderbuffers(1, &previewRBO);
     if (previewTexture) glDeleteTextures(1, &previewTexture);
     if (previewCamera) delete previewCamera;
-    
+
     if (currentPreviewModel.VAO) {
         glDeleteVertexArrays(1, &currentPreviewModel.VAO);
         glDeleteBuffers(1, &currentPreviewModel.VBO);
         if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
     }
-    
+
     previewFBO = 0;
     previewRBO = 0;
     previewTexture = 0;
     previewCamera = nullptr;
     currentPreviewModel.VAO = 0;
     previewInitialized = false;
+}
+
+// ============================================================================
+// 文件图标相关函数
+// ============================================================================
+
+// 图标文件列表
+static const char* s_iconFiles[] = {
+    "Default.png", "Cpp.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Folder.png"
+};
+
+void Editor::InitFileIcons()
+{
+    if (m_fileIconsInitialized) return;
+    
+    // 获取图标目录路径
+    m_assetsPath = "../../Ditto/Ditto/Assets/Icon";
+    std::cout << "[FileIcon] Initializing from: " << m_assetsPath << std::endl;
+    
+    // 加载文件图标
+    for (int i = 0; i < 7; i++) {
+        std::string path = m_assetsPath + "/" + s_iconFiles[i];
+        m_icons[i] = LoadIcon(path);
+    }
+    
+    // 加载文件夹图标
+    m_folderIcon = LoadIcon(m_assetsPath + "/Folder.png");
+    m_folderEmptyIcon = LoadIcon(m_assetsPath + "/FolderEmpty.png");
+    
+    m_fileIconsInitialized = true;
+    std::cout << "[FileIcon] Initialized successfully" << std::endl;
+}
+
+unsigned int Editor::LoadIcon(const std::string& iconPath)
+{
+    namespace fs = std::filesystem;
+    
+    if (!fs::exists(iconPath)) {
+        std::cerr << "[FileIcon] File not found: " << iconPath << std::endl;
+        return 0;
+    }
+    
+    int width, height, channels;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(iconPath.c_str(), &width, &height, &channels, 4);
+    
+    if (!data) {
+        std::cerr << "[FileIcon] Failed to load: " << iconPath << std::endl;
+        return 0;
+    }
+    
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    
+    stbi_image_free(data);
+    
+    std::cout << "[FileIcon] Loaded: " << iconPath << " (" << width << "x" << height << ")" << std::endl;
+    return textureID;
+}
+
+int Editor::GetIconIndex(const std::string& ext)
+{
+    if (ext == ".cpp") return 1;  // Cpp.png
+    if (ext == ".obj") return 2;  // Prefab.png (模型)
+    if (ext == ".prefab") return 3;  // Text.png (材质)
+    if (ext == ".shader") return 4;  // Shader.png
+    if (ext == ".bin") return 5;  // Scene.png
+    if (ext == ".tga") return 6;  // Folder.png (纹理)
+    return 0;  // 默认 Default.png
+}
+
+unsigned int Editor::GetIconByExtension(const std::string& extension)
+{
+    if (!m_fileIconsInitialized) {
+        std::cerr << "[FileIcon] Not initialized!" << std::endl;
+        return 0;
+    }
+    
+    int idx = GetIconIndex(extension);
+    return m_icons[idx];  // GetIconIndex 已经返回 0-6 范围
+}
+
+void Editor::CleanupFileIcons()
+{
+    if (!m_fileIconsInitialized) return;
+    
+    for (int i = 0; i < 7; i++) {
+        if (m_icons[i]) {
+            glDeleteTextures(1, &m_icons[i]);
+            m_icons[i] = 0;
+        }
+    }
+    
+    if (m_folderIcon) {
+        glDeleteTextures(1, &m_folderIcon);
+        m_folderIcon = 0;
+    }
+    
+    if (m_folderEmptyIcon) {
+        glDeleteTextures(1, &m_folderEmptyIcon);
+        m_folderEmptyIcon = 0;
+    }
+    
+    m_fileIconsInitialized = false;
+    std::cout << "[FileIcon] Cleaned up" << std::endl;
 }

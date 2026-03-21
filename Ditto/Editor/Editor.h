@@ -19,7 +19,7 @@ struct SelectedFile {
     std::string name;        // 文件名（不含扩展名）
     std::string extension;   // 扩展名
     std::string folder;      // 所属文件夹 (Assets/Scenes 等)
-    
+
     bool IsValid() const { return !path.empty(); }
     void Clear() { path.clear(); name.clear(); extension.clear(); folder.clear(); }
 };
@@ -41,7 +41,7 @@ struct Editor
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
     int frame; float fps, ppf, deltaTime;
-    
+
     Editor(void* window);
     ~Editor();
     void Draw();
@@ -55,12 +55,12 @@ struct Editor
     void DrawInspector();
     void DrawPopups();
     void DrawLayoutMenu();
-    
+
     void SetupDocking();
     void SaveCurrentLayout();
     void LoadLayout(const std::string& layoutName);
     std::vector<std::string> GetSavedLayouts();
-    
+
     void OpenProject(const std::string& projectPath);
     void LoadSceneFromProject(const std::string& scenePath);
     std::vector<std::string> GetProjectScenes();
@@ -74,10 +74,10 @@ struct Editor
     int previewHeight = 256;
     bool previewInitialized = false, modelInitialized = false;
     Camera* previewCamera = nullptr;
-    
+
     // 独立的预览着色器（不用 SSBO）
     unsigned int previewProgram = 0;
-    
+
     // 预览的模型数据
     struct PreviewModel {
         unsigned int VAO = 0, VBO = 0, EBO = 0;
@@ -88,7 +88,7 @@ struct Editor
     };
     PreviewModel currentPreviewModel;
     std::string currentPreviewPath;
-    
+
     void InitModelPreview();
     void LoadPreviewModel(const std::string& modelPath);
     void RenderModelPreview();
@@ -99,4 +99,23 @@ struct Editor
     void DeleteSelectedObject();
     void DeleteSelectedFile();
     void DuplicateSelectedFile();
+
+    // 文件图标相关
+    void InitFileIcons();
+    void CleanupFileIcons();
+    unsigned int GetIconByExtension(const std::string& extension);
+    unsigned int GetFolderIcon() { return m_folderIcon; }
+    unsigned int GetFolderEmptyIcon() { return m_folderEmptyIcon; }
+
+private:
+    // 文件图标
+    unsigned int m_icons[7] = {0};  // 0:Default, 1:Cpp, 2:Prefab, 3:Text, 4:Shader, 5:Scene, 6:Folder
+    unsigned int m_folderIcon = 0;
+    unsigned int m_folderEmptyIcon = 0;
+    bool m_fileIconsInitialized = false;
+    std::string m_assetsPath;
+    
+    // 加载单个图标
+    unsigned int LoadIcon(const std::string& iconPath);
+    int GetIconIndex(const std::string& ext);
 };

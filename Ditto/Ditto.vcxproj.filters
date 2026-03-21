@@ -1029,6 +1029,9 @@
     <ClInclude Include="Engine\Core\ProjectManager.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
+    <ClInclude Include="3rdParty\stb_image.h">
+      <Filter>三方库</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
