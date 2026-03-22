@@ -4,9 +4,13 @@
 #include <iostream>
 #include <fstream>
 
+// 全局当前场景指针
+Scene* g_currentScene = nullptr;
+
 Scene::Scene()
 {
     name = "Default";
+    g_currentScene = this;  // 设置全局指针
 
     GameObject* lightObj = new GameObject("DirLight");
     lightObj->AddComponent<LightComponent>();
@@ -247,7 +251,7 @@ float Scene::GetLightIntensity() const
     return 1.0f;
 }
 
-// --- ���л�ͷ ---
+// --- ���л�ͷ ---
 struct SceneHeader
 {
     char magic[4];

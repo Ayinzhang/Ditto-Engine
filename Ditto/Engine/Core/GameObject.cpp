@@ -1,4 +1,6 @@
+#include "Scene.h"
 #include "GameObject.h"
+#include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include <fstream>
@@ -22,15 +24,16 @@ static std::string ReadString(std::ifstream& file)
 
 GameObject::GameObject(const std::string _name)
 {
-	name = _name;
+    name = _name;
     AddComponent<TransformComponent>();
 }
 
 GameObject::GameObject(GameObject* other)
 {
-	enabled = other->enabled;
-	name = other->name;
-	compMask = other->compMask;
+    enabled = other->enabled;
+    locked = other->locked;
+    name = other->name;
+    compMask = other->compMask;
     for (Component* comp : other->components)
     {
         if (auto t = dynamic_cast<TransformComponent*>(comp))
@@ -123,8 +126,36 @@ void GameObject::OnInspectorGUI()
     char nameBuffer[256];
     strcpy_s(nameBuffer, name.c_str());
     ImGui::Text("Name"); ImGui::SameLine();
-    if (ImGui::InputText("##Name", nameBuffer, sizeof(nameBuffer)))
+    ImGui::PushID("NameInput");
+    if (ImGui::InputText("", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
+    {
         name = nameBuffer;
+        if (g_currentScene) g_currentScene->MarkDirty();
+    }
+    ImGui::PopID();
+    
+    // 锁定按钮（在名称后面）
+    ImGui::SameLine();
+    extern Editor* g_editor;
+    if (g_editor)
+    {
+        unsigned int lockIcon = locked ? g_editor->GetLockIcon() : g_editor->GetUnlockIcon();
+        if (lockIcon)
+        {
+            float btnSize = 16.0f;
+            ImGui::SameLine(ImGui::GetWindowWidth() - btnSize - 20);
+            if (ImGui::ImageButton("##lock", (void*)(intptr_t)lockIcon, ImVec2(btnSize, btnSize), 
+                ImVec2(0, 1), ImVec2(1, 0)))
+            {
+                locked = !locked;
+                g_editor->lockingSelection = locked;
+                // 锁定时也更新 activeSelection，保持 Hierarchy 高亮
+                if (locked) g_editor->activeSelection = this;
+                if (g_currentScene) g_currentScene->MarkDirty();
+            }
+        }
+    }
+    
     ImGui::Separator();
 
     for (auto comp : components)
@@ -149,6 +180,7 @@ void GameObject::OnInspectorGUI()
 void GameObject::Serialize(std::ofstream& file) const
 {
     file.write(reinterpret_cast<const char*>(&enabled), sizeof(enabled));
+    file.write(reinterpret_cast<const char*>(&locked), sizeof(locked));
     WriteString(file, name);
     file.write(reinterpret_cast<const char*>(&compMask), sizeof(compMask));
 
@@ -172,6 +204,16 @@ void GameObject::Deserialize(std::ifstream& file)
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
     name = ReadString(file);
     file.read(reinterpret_cast<char*>(&compMask), sizeof(compMask));
+    
+    // 兼容旧版本：如果没有 locked 字段，默认 false
+    if (file.peek() != EOF)
+    {
+        file.read(reinterpret_cast<char*>(&locked), sizeof(locked));
+    }
+    else
+    {
+        locked = false;
+    }
 
     for (Component* comp : components) delete comp;
     components.clear();
@@ -309,6 +351,9 @@ void TransformComponent::OnInspectorGUI()
         lastRotation = rotation;
         lastScale = scale;
         UpdateTransform();
+        
+        // 标记场景已修改
+        if (g_currentScene) g_currentScene->MarkDirty();
     }
 }
 

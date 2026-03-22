@@ -3,11 +3,15 @@
 #include <iostream>
 #include <filesystem>
 #include <shlobj.h>
+#include <windows.h>
 #include "Editor.h"
 #include "LayoutManager.h"
+#include "ProjectWindow.h"
+#include "InspectorWindow.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
+#include "../Engine/Core/CSharpScript.h"
 #define GLFW_INCLUDE_NONE
 #include "../3rdParty/GLFW/glfw3.h"
 #include "../3rdParty/GLAD/glad.h"
@@ -19,6 +23,9 @@
 #include "../3rdParty/stb_image.h"
 
 namespace fs = std::filesystem;
+
+// 全局 Editor 指针定义
+Editor* g_editor = nullptr;
 
 static ImRect GetCurrentViewportRect()
 {
@@ -32,6 +39,12 @@ static ImRect GetCurrentViewportRect()
 
 Editor::Editor(void* window)
 {
+    // 设置全局 Editor 指针
+    g_editor = this;
+    
+    // 初始化选择状态
+    activeSelection = nullptr;
+    
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -68,12 +81,29 @@ Editor::Editor(void* window)
     
     // 初始化文件图标
     InitFileIcons();
+
+    // 初始化窗口组件
+    m_projectWindow = new ProjectWindow(this);
+    m_inspectorWindow = new InspectorWindow(this);
+
+    // 设置场景修改回调（自动标记 dirty）
+    if (engine && engine->scene)
+    {
+        engine->scene->onModified = [this]() {
+            this->sceneDirty = true;
+        };
+    }
 }
 
 Editor::~Editor()
 {
     CleanupModelPreview();
     CleanupFileIcons();
+
+    // 清理窗口组件
+    delete m_projectWindow;
+    delete m_inspectorWindow;
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -100,8 +130,8 @@ void Editor::Draw()
     DrawHierarchy();
     DrawScene();
     DrawGame();
-    DrawProject();
-    DrawInspector();
+    if (m_projectWindow) m_projectWindow->Draw();
+    if (m_inspectorWindow) m_inspectorWindow->Draw();
     DrawPopups();
 
     // DockSpace结束
@@ -201,8 +231,27 @@ void Editor::DrawToolbar()
     {
         if (ImGui::BeginMenu("File"))
         {
-            if (ImGui::MenuItem("Save Scene", "Ctrl+S")) showSavePopup = true;
+            // Ctrl+S 保存当前场景（直接保存，不弹窗）
+            if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+            {
+                SaveCurrentScene();
+            }
             if (ImGui::MenuItem("Load Scene", "Ctrl+L")) showLoadPopup = true;
+            
+            ImGui::Separator();
+            
+            // 打包发布
+            if (ImGui::MenuItem("Build..."))
+            {
+                showBuildPopup = true;
+            }
+            
+            // 编译脚本为 DLL
+            if (ImGui::MenuItem("Build Scripts"))
+            {
+                BuildScripts();
+            }
+            
             ImGui::EndMenu();
         }
         // View菜单 - 包含Layout功能
@@ -271,8 +320,21 @@ void Editor::DrawToolbar()
 
         ImGui::PushItemWidth(150.0f);
         if (ImGui::InputText("##SceneName", sceneNameBuffer, sizeof(sceneNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
-            if (engine && engine->scene) engine->scene->name = sceneNameBuffer;
+        {
+            if (engine && engine->scene) 
+            {
+                engine->scene->name = sceneNameBuffer;
+                sceneDirty = true;  // 标记有修改
+            }
+        }
         ImGui::PopItemWidth();
+        
+        // 显示修改标记
+        if (sceneDirty)
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "*");
+        }
 
         ImGui::EndMainMenuBar();
     }
@@ -345,7 +407,7 @@ void Editor::DrawGameObjectNode(GameObject* obj)
 
     bool hasChildren = !obj->children.empty();
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (selectedObject == obj) flags |= ImGuiTreeNodeFlags_Selected;
+    if (activeSelection == obj) flags |= ImGuiTreeNodeFlags_Selected;
     if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
     bool nodeOpen = ImGui::TreeNodeEx(obj->name.c_str(), flags);
@@ -372,13 +434,24 @@ void Editor::DrawGameObjectNode(GameObject* obj)
                     if (it != rootList.end()) rootList.erase(it);
                 }
                 obj->AddChild(droppedObj);
+                engine->scene->MarkDirty();  // 标记场景已修改
             }
         }
         ImGui::EndDragDropTarget();
     }
 
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
-        selectedObject = obj;
+    {
+        // 更新"活跃选择"（用于 Hierarchy 高亮）
+        activeSelection = obj;
+        
+        // 如果没有锁定 Inspector，才更新显示的物体
+        if (!lockingSelection)
+        {
+            selectedObject = obj;
+            selectedFile.Clear();  // 清除文件选中，显示 GameObject Inspector
+        }
+    }
 
     if (ImGui::BeginPopupContextItem())
     {
@@ -387,6 +460,8 @@ void Editor::DrawGameObjectNode(GameObject* obj)
             GameObject* newObj = new GameObject("New GameObject");
             obj->AddChild(newObj);
             selectedObject = newObj;
+            selectedFile.Clear();  // 清除文件选中
+            engine->scene->MarkDirty();  // 标记场景已修改
         }
         if (ImGui::MenuItem("Copy")) CopySelectedObject();
         if (ImGui::MenuItem("Delete")) DeleteSelectedObject();
@@ -415,6 +490,8 @@ void Editor::DrawHierarchy()
             cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
             engine->scene->gameObjects.push_back(cube);
             selectedObject = cube;
+            selectedFile.Clear();  // 清除文件选中
+            engine->scene->MarkDirty();  // 标记场景已修改
         }
         if (ImGui::MenuItem("Create Sphere"))
         {
@@ -422,6 +499,8 @@ void Editor::DrawHierarchy()
             sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
             engine->scene->gameObjects.push_back(sphere);
             selectedObject = sphere;
+            selectedFile.Clear();  // 清除文件选中
+            engine->scene->MarkDirty();  // 标记场景已修改
         }
         ImGui::EndPopup();
     }
@@ -442,6 +521,7 @@ void Editor::DrawHierarchy()
                 }
                 engine->scene->gameObjects.push_back(droppedObj);
                 droppedObj->parent = nullptr;
+                engine->scene->MarkDirty();  // 标记场景已修改
             }
         }
         ImGui::EndDragDropTarget();
@@ -548,502 +628,8 @@ void Editor::DrawGame()
     ImGui::PopStyleColor();
 }
 
-void Editor::DrawProject()
-{
-    ProjectManager& pm = ProjectManager::GetInstance();
-    Project* proj = pm.GetCurrentProject();
-
-    if (!proj)
-    {
-        ImGui::Begin("Project");
-        ImGui::TextDisabled("No project loaded");
-        ImGui::End();
-        return;
-    }
-
-    std::string assetsPath = pm.GetProjectAssetsPath();
-    static std::string currentFolder = "Assets/Scenes";
-    static float splitterPos = 150.0f;
-
-    ImGui::Begin("Project");
-
-    // 顶部路径栏
-    ImGui::Text("Project");
-    ImGui::SameLine();
-    
-    // 添加后退按钮（如果不是根目录）
-    if (currentFolder != "Assets") {
-        if (ImGui::Button("<")) {
-            // 返回上一级
-            size_t lastSlash = currentFolder.find_last_of('/');
-            if (lastSlash != std::string::npos) {
-                currentFolder = currentFolder.substr(0, lastSlash);
-                selectedFile.Clear();
-            }
-        }
-        ImGui::SameLine();
-    }
-    
-    ImGui::Text(" > ");
-    ImGui::SameLine();
-    ImGui::Text(currentFolder.c_str());
-    ImGui::Separator();
-
-    float panelWidth = ImGui::GetContentRegionAvail().x;
-    float panelHeight = ImGui::GetContentRegionAvail().y;
-
-    // 确保splitterPos在合理范围内
-    if (splitterPos < 100) splitterPos = 100;
-    if (splitterPos > panelWidth - 100) splitterPos = panelWidth - 100;
-
-    // 左边 - 文件夹树（无边框）
-    ImGui::BeginChild("Folders", ImVec2(splitterPos, panelHeight), false);
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-
-    // 递归显示文件夹树
-    std::function<void(const std::string&, const std::string&)> DrawFolderTree = 
-        [&](const std::string& folderPath, const std::string& displayPath) {
-            try {
-                if (!fs::exists(folderPath)) return;
-                
-                for (const auto& entry : fs::directory_iterator(folderPath)) {
-                    if (entry.is_directory()) {
-                        std::string folderName = entry.path().filename().string();
-                        std::string fullPath = displayPath + "/" + folderName;
-                        std::string fullFsPath = entry.path().string();
-                        
-                        bool isSelected = (currentFolder == fullPath);
-                        
-                        // 检查是否有子文件夹
-                        bool hasSubfolders = false;
-                        for (const auto& sub : fs::directory_iterator(fullFsPath)) {
-                            if (sub.is_directory()) {
-                                hasSubfolders = true;
-                                break;
-                            }
-                        }
-                        
-                        if (hasSubfolders) {
-                            // 有子文件夹，用 TreeNode
-                            if (ImGui::TreeNode(folderName.c_str())) {
-                                // 点击时也更新右侧视图
-                                if (ImGui::IsItemClicked(0)) {
-                                    currentFolder = fullPath;
-                                    selectedFile.Clear();
-                                }
-                                DrawFolderTree(fullFsPath, fullPath);
-                                ImGui::TreePop();
-                            }
-                        } else {
-                            // 没有子文件夹，用 Selectable
-                            if (ImGui::Selectable(folderName.c_str(), isSelected)) {
-                                currentFolder = fullPath;
-                                selectedFile.Clear();
-                            }
-                        }
-                    }
-                }
-            } catch (const std::exception&) {}
-        };
-    
-    // Assets 根节点
-    if (ImGui::TreeNode("Assets"))
-    {
-        // 点击 Assets 也显示内容
-        if (ImGui::IsItemClicked(0)) {
-            currentFolder = "Assets";
-            selectedFile.Clear();
-        }
-        
-        ImGui::Indent(0, 0.5f);
-        DrawFolderTree(assetsPath, "Assets");
-        ImGui::Unindent(0, 0.5f);
-        ImGui::TreePop();
-    }
-    ImGui::PopStyleColor();
-    ImGui::EndChild();
-
-    // 分隔条 - 细线
-    ImGui::SameLine();
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 0.5f));
-    ImGui::Button("##splitter", ImVec2(1, panelHeight));
-    ImGui::PopStyleColor();
-
-    if (ImGui::IsItemHovered())
-    {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-    }
-
-    // 拖动分隔条
-    if (ImGui::IsItemActive())
-    {
-        splitterPos += ImGui::GetIO().MouseDelta.x;
-        if (splitterPos < 100) splitterPos = 100;
-        if (splitterPos > panelWidth - 100) splitterPos = panelWidth - 100;
-    }
-
-    ImGui::SameLine();
-
-    // 右边 - 文件视图（无边框）
-    ImGui::BeginChild("View", ImVec2(0, panelHeight), false);
-
-    // 获取当前文件夹路径
-    std::string folderPath = assetsPath;
-    size_t pos = currentFolder.find('/');
-    if (pos != std::string::npos)
-    {
-        folderPath = assetsPath + "/" + currentFolder.substr(pos + 1);
-    }
-
-    // 右键菜单 - 未选中文件时
-    if (ImGui::BeginPopupContextWindow("ProjectContext"))
-    {
-        if (!selectedFile.IsValid())
-        {
-            if (ImGui::MenuItem("Create New..."))
-            {
-                // TODO: 创建新资源的逻辑
-            }
-        }
-        ImGui::EndPopup();
-    }
-
-    // 文件网格显示
-    float itemWidth = 80;
-    float itemHeight = 80;
-    float currentX = 0;
-    float availWidth = ImGui::GetContentRegionAvail().x;
-
-    try
-    {
-        if (fs::exists(folderPath))
-        {
-            // 先显示文件夹
-            for (const auto& entry : fs::directory_iterator(folderPath))
-            {
-                if (entry.is_directory())
-                {
-                    std::string folderName = entry.path().filename().string();
-
-                    // 换行
-                    if (currentX + itemWidth > availWidth)
-                    {
-                        ImGui::NewLine();
-                        currentX = 0;
-                    }
-
-                    // 文件夹项
-                    ImGui::BeginGroup();
-
-                    // 判断是否选中
-                    bool isSelected = false; // 文件夹暂时不支持选中
-
-                    // 文件夹图标区域
-                    ImVec2 cursorPos = ImGui::GetCursorPos();
-                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
-
-                    // 获取文件夹图标
-                    unsigned int folderIcon = GetFolderIcon();
-                    if (folderIcon) {
-                        ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(40, 40), ImVec2(0, 1), ImVec2(1, 0));
-                    } else {
-                        ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.2f, 1.0f), "[]");
-                    }
-
-                    // 文件夹名
-                    std::string displayName = folderName;
-                    if (displayName.size() > 10) displayName = displayName.substr(0, 8) + "..";
-
-                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - ImGui::CalcTextSize(displayName.c_str()).x) / 2, cursorPos.y + 50));
-                    ImGui::Text(displayName.c_str());
-
-                    // 点击处理
-                    ImGui::SetCursorPos(cursorPos);
-                    ImGui::InvisibleButton(("folder_" + folderName).c_str(), ImVec2(itemWidth, itemHeight));
-
-                    // 点击文件夹进入
-                    if (ImGui::IsItemClicked(0))
-                    {
-                        currentFolder = currentFolder + "/" + folderName;
-                        selectedFile.Clear();
-                    }
-
-                    ImGui::EndGroup();
-                    ImGui::SameLine();
-                    currentX += itemWidth;
-                }
-            }
-
-            // 再显示文件
-            for (const auto& entry : fs::directory_iterator(folderPath))
-            {
-                if (entry.is_regular_file())
-                {
-                    std::string filename = entry.path().filename().string();
-                    std::string ext = entry.path().extension().string();
-
-                    // 换行
-                    if (currentX + itemWidth > availWidth)
-                    {
-                        ImGui::NewLine();
-                        currentX = 0;
-                    }
-
-                    // 文件项
-                    ImGui::BeginGroup();
-
-                    // 判断是否选中
-                    bool isSelected = selectedFile.IsValid() && (selectedFile.path == entry.path().string());
-
-                    // 文件图标区域
-                    ImVec2 cursorPos = ImGui::GetCursorPos();
-                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
-
-                    // 获取图标纹理
-                    unsigned int iconTexture = GetIconByExtension(ext);
-                    if (iconTexture) {
-                        ImGui::Image((void*)(intptr_t)iconTexture, ImVec2(40, 40), ImVec2(0, 1), ImVec2(1, 0));
-                    } else {
-                        // 回退到文本图标
-                        if (isSelected)
-                            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[]");
-                        else if (ext == ".bin")
-                            ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.5f, 1.0f), "[]");
-                        else if (ext == ".obj" || ext == ".fbx")
-                            ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[]");
-                        else if (ext == ".mat")
-                            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "[]");
-                        else
-                            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "[]");
-                    }
-
-                    // 文件名
-                    std::string displayName = filename;
-                    if (ext == ".bin") displayName = filename.substr(0, filename.size() - 4);
-                    if (displayName.size() > 10) displayName = displayName.substr(0, 8) + "..";
-
-                    ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - ImGui::CalcTextSize(displayName.c_str()).x) / 2, cursorPos.y + 50));
-
-                    // 选中时显示不同颜色
-                    if (isSelected)
-                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), displayName.c_str());
-                    else
-                        ImGui::Text(displayName.c_str());
-
-                    // 点击处理
-                    ImGui::SetCursorPos(cursorPos);
-                    ImGui::InvisibleButton(("file_" + filename).c_str(), ImVec2(itemWidth, itemHeight));
-
-                    // 选中文件
-                    if (ImGui::IsItemClicked(0))
-                    {
-                        selectedFile.path = entry.path().string();
-                        selectedFile.name = filename.substr(0, filename.size() - ext.size());
-                        selectedFile.extension = ext;
-                        selectedFile.folder = currentFolder;
-
-                        // 加载模型预览并立即渲染
-                        if (ext == ".obj" || ext == ".fbx") {
-                            LoadPreviewModel(selectedFile.path);
-                        }
-                    }
-
-                    // 右键菜单 - 选中文件时
-                    if (ImGui::BeginPopupContextItem())
-                    {
-                        if (ImGui::MenuItem("Delete"))
-                        {
-                            // 删除文件
-                            try {
-                                fs::remove(entry.path());
-                                if (selectedFile.path == entry.path().string())
-                                    selectedFile.Clear();
-                            }
-                            catch (const std::exception& e) {
-                                std::cerr << "Delete failed: " << e.what() << std::endl;
-                            }
-                        }
-                        if (ImGui::MenuItem("Show in Explorer"))
-                        {
-                            std::wstring fullPathW = std::filesystem::absolute(entry.path()).wstring();
-
-                            HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-                            PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(fullPathW.c_str());
-                            SHOpenFolderAndSelectItems(pidl, 0, NULL, 0); ILFree(pidl);
-                            CoUninitialize();
-                        }
-                        ImGui::EndPopup();
-                    }
-
-                    // 双击处理
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
-                    {
-                        if (ext == ".bin")
-                        {
-                            LoadSceneFromProject(entry.path().string());
-                        }
-                    }
-
-                    currentX += itemWidth;
-                    ImGui::EndGroup();
-                    ImGui::SameLine();
-                }
-            }
-        }
-    }
-    catch (const std::exception&) {}
-
-    ImGui::EndChild();
-
-    ImGui::End();
-}
-
-// 辅助函数：解析OBJ文件获取模型信息
-struct ModelInfo {
-    int vertexCount = 0;
-    int faceCount = 0;
-    bool loaded = false;
-};
-
-static ModelInfo LoadModelInfo(const std::string& path)
-{
-    ModelInfo info;
-    std::ifstream file(path);
-    if (!file.is_open()) return info;
-
-    std::string line;
-    int vertexCount = 0;
-    while (std::getline(file, line))
-    {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty() || line[0] == '#') continue;
-
-        std::istringstream ss(line);
-        std::string prefix;
-        ss >> prefix;
-
-        if (prefix == "v") vertexCount++;
-        else if (prefix == "f") info.faceCount++;
-    }
-
-    info.vertexCount = vertexCount;
-    info.loaded = true;
-    return info;
-}
-
-void Editor::DrawInspector()
-{
-    ImGui::Begin("Inspector");
-
-    // 优先显示文件信息（如果选中了文件）
-    if (selectedFile.IsValid())
-    {
-        // 文件基本信息
-        ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "File");
-        ImGui::Separator();
-
-        ImGui::Text("Name: "); ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), selectedFile.name.c_str());
-
-        ImGui::Text("Path: "); ImGui::SameLine();
-        ImGui::TextDisabled(selectedFile.path.c_str());
-
-        // 如果是模型文件，显示模型信息
-        if (selectedFile.extension == ".obj" || selectedFile.extension == ".fbx")
-        {
-            ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "Model");
-            ImGui::Separator();
-
-            ModelInfo modelInfo = LoadModelInfo(selectedFile.path);
-            if (modelInfo.loaded)
-            {
-                ImGui::Text("Vertices: "); ImGui::SameLine();
-                ImGui::Text(std::to_string(modelInfo.vertexCount).c_str());
-
-                ImGui::Text("Faces: "); ImGui::SameLine();
-                ImGui::Text(std::to_string(modelInfo.faceCount).c_str());
-            }
-
-            // 预览图占位（可后续接入缩略图）
-            float previewWidth = ImGui::GetContentRegionAvail().x;
-            if (previewWidth > 0)
-            {
-                ImGui::Separator();
-                ImGui::Text("Preview");
-                // 3D 模型预览 - 始终渲染
-                if (!previewInitialized) InitModelPreview();
-
-                // 渲染预览（点击时已加载）
-                RenderModelPreview();
-
-                float btnWidth = std::min(previewWidth - 20, 200.0f);
-                float btnHeight = btnWidth; // 正方形
-                ImVec2 cursor = ImGui::GetCursorPos();
-                ImGui::SetCursorPos(ImVec2(cursor.x + (previewWidth - btnWidth) / 2, cursor.y));
-
-                ImGui::Image((void*)(intptr_t)previewTexture, ImVec2(btnWidth, btnHeight),
-                    ImVec2(0, 1), ImVec2(1, 0));
-
-                // 鼠标拖拽旋转 - 围绕模型中心旋转
-                if (!modelInitialized || (ImGui::IsItemHovered() && ImGui::IsMouseDown(0)))
-                {
-                    modelInitialized = true; ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
-                    if (previewCamera)
-                    {
-                        float rotSpeed = 0.5f;
-                        // 围绕模型中心旋转相机
-                        glm::vec3 camOffset = previewCamera->position - currentPreviewModel.center;
-                        float distance = glm::length(camOffset);
-
-                        previewCamera->yaw -= mouseDelta.x * rotSpeed;
-                        previewCamera->pitch += mouseDelta.y * rotSpeed;
-
-                        // 重新计算相机位置（不限制角度）
-                        float yawRad = glm::radians(previewCamera->yaw);
-                        float pitchRad = glm::radians(previewCamera->pitch);
-
-                        previewCamera->position = currentPreviewModel.center + glm::vec3(
-                            distance * cos(pitchRad) * sin(yawRad),
-                            distance * sin(pitchRad),
-                            distance * cos(pitchRad) * cos(yawRad)
-                        );
-
-                        // 更新前方向量
-                        glm::vec3 forward = glm::normalize(currentPreviewModel.center - previewCamera->position);
-                        previewCamera->forward = forward;
-                        previewCamera->right = normalize(cross(forward, previewCamera->worldUp));
-                        previewCamera->up = -normalize(cross(forward, previewCamera->right));
-                    }
-                }
-            }
-        }
-
-        ImGui::End();
-        return;
-    }
-
-    // 没有选中文件时，显示 GameObject 信息
-    if (!selectedObject) {
-        ImGui::TextDisabled("Select an object to view its properties");
-        ImGui::End();
-        return;
-    }
-
-    if (engine->state == Engine::State::Play) ImGui::BeginDisabled();
-    selectedObject->OnInspectorGUI();
-    if (engine->state == Engine::State::Play) ImGui::EndDisabled();
-
-    // 保存窗口状态
-    {
-        ImVec2 pos = ImGui::GetWindowPos();
-        ImVec2 size = ImGui::GetWindowSize();
-        bool collapsed = ImGui::IsWindowCollapsed();
-        //LayoutManager::GetInstance().SaveCurrentWindowState("Inspector", pos, size, true, collapsed);
-    }
-
-    ImGui::End();
-}
+// DrawProject 和 DrawInspector 已移至 ProjectWindow.cpp 和 InspectorWindow.cpp
+// 保留空实现以保持 API 兼容
 
 void Editor::DrawPopups()
 {
@@ -1079,6 +665,7 @@ void Editor::DrawPopups()
     if (ImGui::BeginPopupModal("Load Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         selectedObject = nullptr;
+        selectedFile.Clear();  // 清除文件选中
         ImGui::Text("Path"); ImGui::SameLine();
         static char loadPathBuffer[256] = "Assets/Scenes/scene.bin";
         ImGui::InputText("##Path", loadPathBuffer, sizeof(loadPathBuffer));
@@ -1088,6 +675,7 @@ void Editor::DrawPopups()
             if (engine && engine->scene && engine->scene->LoadScene(loadPathBuffer))
             {
                 strcpy_s(sceneNameBuffer, engine->scene->name.c_str());
+                sceneDirty = false;  // 新加载的场景没有修改
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -1129,6 +717,56 @@ void Editor::DrawPopups()
         }
         ImGui::EndPopup();
     }
+
+    // Build Popup - 打包发布
+    if (showBuildPopup)
+    {
+        ImGui::OpenPopup("Build Project");
+        showBuildPopup = false;
+    }
+
+    if (ImGui::BeginPopupModal("Build Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Select scene to build:");
+        ImGui::Separator();
+        
+        std::vector<std::string> scenes = GetProjectScenes();
+        static int selectedScene = 0;
+        
+        if (scenes.empty())
+        {
+            ImGui::TextDisabled("No scenes found");
+        }
+        else
+        {
+            for (int i = 0; i < scenes.size(); i++)
+            {
+                fs::path p(scenes[i]);
+                std::string sceneName = p.stem().string();
+                if (ImGui::Selectable(sceneName.c_str(), selectedScene == i))
+                {
+                    selectedScene = i;
+                }
+            }
+        }
+        
+        ImGui::Separator();
+        
+        if (ImGui::Button("Build", ImVec2(120, 0)))
+        {
+            if (!scenes.empty())
+            {
+                BuildProject();
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 void Editor::CopySelectedObject()
@@ -1141,6 +779,7 @@ void Editor::CopySelectedObject()
     else
         engine->scene->gameObjects.push_back(newObj);
     selectedObject = newObj;
+    engine->scene->MarkDirty();  // 标记场景已修改
 }
 
 void Editor::DeleteSelectedObject()
@@ -1167,6 +806,8 @@ void Editor::DeleteSelectedObject()
         selectedObject = engine->scene->gameObjects.back();
     else
         selectedObject = nullptr;
+    
+    engine->scene->MarkDirty();  // 标记场景已修改
 }
 
 void Editor::DeleteSelectedFile()
@@ -1344,6 +985,15 @@ void Editor::LoadSceneFromProject(const std::string& scenePath)
     if (engine && engine->scene)
     {
         engine->scene->LoadScene(scenePath.c_str());
+        
+        // 更新 UI
+        strcpy_s(sceneNameBuffer, engine->scene->name.c_str());
+        sceneDirty = false;  // 新加载的场景没有修改
+        
+        // 重新设置场景修改回调
+        engine->scene->onModified = [this]() {
+            this->sceneDirty = true;
+        };
 
         // 保存到项目配置
         Project* proj = ProjectManager::GetInstance().GetCurrentProject();
@@ -1390,357 +1040,262 @@ std::vector<std::string> Editor::GetProjectScenes()
     return scenes;
 }
 
-void Editor::InitModelPreview()
+void Editor::OnScriptComponentDropped(const std::string& scriptPath)
 {
-    if (previewInitialized) return;
-
-    std::cout << "[Preview] Initializing..." << std::endl;
-
-    // 像素对齐设置
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-
-    // 创建 FBO
-    glGenFramebuffers(1, &previewFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
-
-    // 创建颜色纹理
-    glGenTextures(1, &previewTexture);
-    glBindTexture(GL_TEXTURE_2D, previewTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, previewWidth, previewHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, previewTexture, 0);
-
-    // 创建深度渲染缓冲
-    glGenRenderbuffers(1, &previewRBO);
-    glBindRenderbuffer(GL_RENDERBUFFER, previewRBO);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, previewWidth, previewHeight);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, previewRBO);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // 创建预览相机
-    previewCamera = new Camera(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-
-    // 简化的线框着色器
-    const char* vertSrc = R"(
-        #version 460 core
-        layout(location = 0) in vec3 aPos;
-        
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 projection;
-        
-        void main() {
-            gl_Position = projection * view * model * vec4(aPos, 1.0);
-        }
-    )";
-
-    const char* fragSrc = R"(
-        #version 460 core
-        out vec4 col;
-        
-        void main() {
-            col = vec4(1.0f, 1.0f, 1.0f, 1.0f);
-        }
-    )";
-
-    // 编译顶点着色器
-    unsigned int vert = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vert, 1, &vertSrc, nullptr);
-    glCompileShader(vert);
-
-    // 编译片段着色器
-    unsigned int frag = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(frag, 1, &fragSrc, nullptr);
-    glCompileShader(frag);
-
-    // 链接程序
-    previewProgram = glCreateProgram();
-    glAttachShader(previewProgram, vert);
-    glAttachShader(previewProgram, frag);
-    glLinkProgram(previewProgram);
-
-    // 清理
-    glDeleteShader(vert);
-    glDeleteShader(frag);
-
-    std::cout << "[Preview] Program: " << previewProgram << std::endl;
-
-    previewInitialized = true;
-}
-
-void Editor::LoadPreviewModel(const std::string& modelPath)
-{
-    // 如果路径为空，不加载
-    if (modelPath.empty()) return;
-
-    std::cout << "[Preview] Loading: " << modelPath << std::endl;
-    std::cout << "[Preview] Current: " << currentPreviewPath << std::endl;
-
-    // 如果是同一个模型，不需要重新加载
-    if (currentPreviewPath == modelPath && currentPreviewModel.VAO != 0) {
-        std::cout << "[Preview] Same model, skipping" << std::endl;
-        return;
-    }
-
-    // 清理之前的模型
-    if (currentPreviewModel.VAO) {
-        glDeleteVertexArrays(1, &currentPreviewModel.VAO);
-        glDeleteBuffers(1, &currentPreviewModel.VBO);
-        if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
-        currentPreviewModel.VAO = 0;
-    }
-
-    // 重新创建纹理（确保能显示新模型）
-    if (previewTexture) {
-        glDeleteTextures(1, &previewTexture);
-        previewTexture = 0;
-    }
-    glGenTextures(1, &previewTexture);
-    glBindTexture(GL_TEXTURE_2D, previewTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, previewWidth, previewHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    // 重新绑定到 FBO
-    glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, previewTexture, 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    currentPreviewPath = modelPath;
-
-    // 读取 OBJ 文件
-    std::ifstream file(modelPath);
-    if (!file.is_open()) {
-        std::cerr << "[Preview] Failed to open model: " << modelPath << std::endl;
-        return;
-    }
-
-    std::vector<glm::vec3> positions;
-    std::vector<glm::vec3> normals;
-    std::vector<unsigned int> indices;
-
-    std::string line;
-    while (std::getline(file, line))
+    if (!selectedObject)
     {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty() || line[0] == '#') continue;
-
-        std::istringstream ss(line);
-        std::string prefix;
-        ss >> prefix;
-
-        if (prefix == "v") {
-            glm::vec3 pos;
-            ss >> pos.x >> pos.y >> pos.z;
-            positions.push_back(pos);
-        }
-        else if (prefix == "vn") {
-            glm::vec3 norm;
-            ss >> norm.x >> norm.y >> norm.z;
-            normals.push_back(glm::normalize(norm));
-        }
-        else if (prefix == "f") {
-            std::vector<std::string> faceTokens;
-            std::string token;
-            while (ss >> token) faceTokens.push_back(token);
-
-            // 三角化（支持四边形）
-            for (size_t i = 1; i + 1 < faceTokens.size(); i++) {
-                for (size_t j = 0; j < 3; j++) {
-                    const std::string& ft = (j == 0) ? faceTokens[0] : (j == 1) ? faceTokens[i] : faceTokens[i + 1];
-                    std::istringstream ft_ss(ft);
-                    std::string idx;
-                    std::getline(ft_ss, idx, '/');
-                    int posIdx = std::stoi(idx) - 1;
-                    indices.push_back(posIdx);
-                }
-            }
-        }
-    }
-
-    if (positions.empty()) {
-        std::cerr << "[Preview] No vertices found in model" << std::endl;
+        std::cout << "[Editor] No object selected to add script" << std::endl;
         return;
     }
 
-    std::cout << "[Preview] Loaded " << positions.size() << " vertices, " << indices.size() / 3 << " faces" << std::endl;
-
-    // 计算中心点和边界球
-    glm::vec3 minPos(positions[0]), maxPos(positions[0]);
-    for (const auto& pos : positions) {
-        minPos = glm::min(minPos, pos);
-        maxPos = glm::max(maxPos, pos);
-    }
-    currentPreviewModel.center = (minPos + maxPos) * 0.5f;
-    currentPreviewModel.radius = glm::length(maxPos - minPos) * 0.5f;
-
-    // 线框模式只需要顶点位置
-    std::vector<float> vertexData;
-    for (size_t i = 0; i < indices.size(); i++) {
-        int idx = indices[i];
-        if (idx >= 0 && idx < positions.size()) {
-            vertexData.push_back(positions[idx].x);
-            vertexData.push_back(positions[idx].y);
-            vertexData.push_back(positions[idx].z);
-        }
-    }
-
-    currentPreviewModel.vertexCount = vertexData.size() / 3;
-    currentPreviewModel.indexCount = 0; // 线框用 glDrawArrays
-
-    // 创建 VAO/VBO
-    glGenVertexArrays(1, &currentPreviewModel.VAO);
-    glGenBuffers(1, &currentPreviewModel.VBO);
-
-    glBindVertexArray(currentPreviewModel.VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, currentPreviewModel.VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
-
-    // 只需要位置属性
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-
-    glBindVertexArray(0);
-
-    // 设置相机位置对准模型中心
-    if (previewCamera) {
-        float distance = currentPreviewModel.radius * 2.5f;
-        previewCamera->position = currentPreviewModel.center + glm::vec3(0, distance * 0.3f, distance);
-        previewCamera->yaw = -90.0f;
-        previewCamera->pitch = -15.0f;
-        previewCamera->UpdateCameraVectors();
-    }
-
-    modelInitialized = false;
+    OnScriptComponentDroppedToObject(selectedObject, scriptPath);
 }
 
-void Editor::RenderModelPreview()
+void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string& scriptPath)
 {
-    if (!previewInitialized) {
-        std::cout << "[Preview] Not initialized" << std::endl;
-        return;
-    }
-    if (!previewCamera) {
-        std::cout << "[Preview] No camera" << std::endl;
-        return;
-    }
-    if (!previewProgram) {
-        std::cout << "[Preview] No preview program" << std::endl;
-        return;
-    }
-
-    // 如果有模型才渲染
-    if (!currentPreviewModel.VAO)
+    if (!obj)
     {
-        // 没有模型时，仍然渲染空白背景
-        GLint previousFBO;
-        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
-        GLint previousViewport[4];
-        glGetIntegerv(GL_VIEWPORT, previousViewport);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
-        glViewport(0, 0, previewWidth, previewHeight);
-        glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
-        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+        std::cout << "[Editor] No object to add script" << std::endl;
         return;
     }
 
-    // 保存当前 OpenGL 状态
-    GLint previousFBO;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
-    GLint previousViewport[4];
-    glGetIntegerv(GL_VIEWPORT, previousViewport);
-    GLboolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
-    GLint cullFaceMode;
-    glGetIntegerv(GL_CULL_FACE_MODE, &cullFaceMode);
-
-    // 绑定预览 FBO
-    glBindFramebuffer(GL_FRAMEBUFFER, previewFBO);
-    glViewport(0, 0, previewWidth, previewHeight);
-
-    // 清空背景和深度
-    glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-
-    // 可选：线框模式调试（目前用实心）
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
-    // 设置相机
-    glm::mat4 view = previewCamera->GetViewMatrix();
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)previewWidth / (float)previewHeight, 0.1f, 100.0f);
-    glm::vec3 viewPos = previewCamera->position;
-
-    // 使用独立的预览着色器（不使用 SSBO）
-    glUseProgram(previewProgram);
-
-    // 绑定模型矩阵（居中，无缩放）
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), -currentPreviewModel.center);
-
-    // 设置 uniform
-    GLint modelLoc = glGetUniformLocation(previewProgram, "model");
-    GLint viewLoc = glGetUniformLocation(previewProgram, "view");
-    GLint projLoc = glGetUniformLocation(previewProgram, "projection");
-    GLint lightLoc = glGetUniformLocation(previewProgram, "lightDir");
-
-    if (modelLoc >= 0) glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
-    if (viewLoc >= 0) glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &view[0][0]);
-    if (projLoc >= 0) glUniformMatrix4fv(projLoc, 1, GL_FALSE, &projection[0][0]);
-    if (lightLoc >= 0) glUniform3f(lightLoc, 0.5f, 0.8f, 0.5f);
-
-    // 渲染预览模型
-    glBindVertexArray(currentPreviewModel.VAO);
-    glDrawArrays(GL_TRIANGLES, 0, currentPreviewModel.vertexCount);
-
-    // 恢复之前的 OpenGL 状态
-    glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
-    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
-    if (cullFaceEnabled) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-    glCullFace(cullFaceMode);
-
-    // 恢复填充模式（修复 Scene/Game 联动问题）
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    // 检查文件类型
+    fs::path p(scriptPath);
+    std::string ext = p.extension().string();
+    std::string scriptName = p.stem().string();
+    
+    std::cout << "[Editor] Adding script: " << scriptName << " (" << ext << ") to " << obj->name << std::endl;
+    
+    if (ext == ".cs")
+    {
+        // C# 脚本 - 创建 CSharpScriptComponent
+        CSharpScriptComponent* csScript = new CSharpScriptComponent();
+        if (CSharpScriptSystem::LoadScript(scriptPath, csScript))
+        {
+            obj->components.push_back(csScript);
+            obj->compMask += csScript->index;
+            std::cout << "[Editor] C# script added successfully!" << std::endl;
+        }
+        else
+        {
+            delete csScript;
+            std::cerr << "[Editor] Failed to load C# script" << std::endl;
+        }
+    }
 }
 
-void Editor::CleanupModelPreview()
+void Editor::SaveCurrentScene()
 {
-    if (!previewInitialized) return;
-
-    if (previewFBO) glDeleteFramebuffers(1, &previewFBO);
-    if (previewRBO) glDeleteRenderbuffers(1, &previewRBO);
-    if (previewTexture) glDeleteTextures(1, &previewTexture);
-    if (previewCamera) delete previewCamera;
-
-    if (currentPreviewModel.VAO) {
-        glDeleteVertexArrays(1, &currentPreviewModel.VAO);
-        glDeleteBuffers(1, &currentPreviewModel.VBO);
-        if (currentPreviewModel.EBO) glDeleteBuffers(1, &currentPreviewModel.EBO);
+    if (!engine || !engine->scene)
+    {
+        std::cerr << "[Editor] No scene to save" << std::endl;
+        return;
     }
 
-    previewFBO = 0;
-    previewRBO = 0;
-    previewTexture = 0;
-    previewCamera = nullptr;
-    currentPreviewModel.VAO = 0;
-    previewInitialized = false;
+    // 保存到默认路径（当前场景的路径）
+    std::string savePath = "Assets/Scenes/" + engine->scene->name + ".bin";
+    
+    if (engine->scene->SaveScene(savePath.c_str()))
+    {
+        std::cout << "[Editor] Scene saved: " << savePath << std::endl;
+        sceneDirty = false;  // 清除修改标记
+        
+        // 更新项目配置
+        Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+        if (proj)
+        {
+            proj->lastScene = savePath;
+        }
+    }
+    else
+    {
+        std::cerr << "[Editor] Failed to save scene" << std::endl;
+    }
 }
 
-// ============================================================================
+void Editor::BuildProject()
+{
+    if (!engine || !engine->scene)
+    {
+        std::cerr << "[Editor] No scene to build" << std::endl;
+        return;
+    }
+
+    Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+    if (!proj)
+    {
+        std::cerr << "[Editor] No project loaded" << std::endl;
+        return;
+    }
+
+    // 输出目录：项目目录下的 Build/Windows
+    std::string outputDir = proj->path + "/Build/Windows";
+    
+    try
+    {
+        // 创建输出目录
+        if (!fs::exists(outputDir))
+        {
+            fs::create_directories(outputDir);
+        }
+
+        // 1. 复制 Assets 目录
+        std::string assetsSrc = proj->path + "/Assets";
+        std::string assetsDst = outputDir + "/Assets";
+        
+        if (fs::exists(assetsSrc))
+        {
+            fs::remove_all(assetsDst);
+            fs::copy(assetsSrc, assetsDst, fs::copy_options::recursive);
+            std::cout << "[Editor] Copied Assets to " << assetsDst << std::endl;
+        }
+
+        // 2. 保存当前场景到 Build 目录
+        std::string sceneName = engine->scene->name;
+        std::string sceneSrc = "Assets/Scenes/" + sceneName + ".bin";
+        std::string sceneDst = assetsDst + "/Scenes/" + sceneName + ".bin";
+        
+        // 确保目录存在
+        fs::create_directories(assetsDst + "/Scenes");
+        
+        // 保存并复制场景
+        engine->scene->SaveScene(sceneSrc.c_str());
+        fs::copy(sceneSrc, sceneDst, fs::copy_options::overwrite_existing);
+        std::cout << "[Editor] Copied scene: " << sceneDst << std::endl;
+
+        // 3. 复制 3rdParty DLL（如果有）
+        std::string thirdPartySrc = "../../Ditto/Ditto/3rdParty";
+        if (fs::exists(thirdPartySrc))
+        {
+            std::string thirdPartyDst = outputDir + "/3rdParty";
+            fs::create_directories(thirdPartyDst);
+            // 复制需要的 DLL（glfw, glad, 等）
+            // TODO: 根据需要添加
+        }
+
+        // 4. 创建启动脚本（build.bat）
+        std::string batPath = outputDir + "/Run.bat";
+        std::ofstream batFile(batPath);
+        batFile << "@echo off\n";
+        batFile << "echo Starting " << proj->name << "...\n";
+        // 这里假设用户会自己编译一个独立的可执行文件
+        // 或者可以从其他位置复制
+        batFile << "echo Please copy your executable here and rename it to " << proj->name << ".exe\n";
+        batFile << "pause\n";
+        batFile.close();
+        
+        std::cout << "[Editor] Build completed: " << outputDir << std::endl;
+        std::cout << "[Editor] Please copy the engine executable to the output folder" << std::endl;
+        
+        // 5. 在资源管理器中打开输出目录
+        std::wstring outputDirW = fs::absolute(outputDir).wstring();
+        ShellExecuteW(NULL, L"open", outputDirW.c_str(), NULL, NULL, SW_SHOWNORMAL);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[Editor] Build failed: " << e.what() << std::endl;
+    }
+}
+
+void Editor::BuildScripts()
+{
+    Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+    if (!proj)
+    {
+        std::cerr << "[Editor] No project loaded" << std::endl;
+        return;
+    }
+    
+    // 脚本目录
+    std::string scriptsDir = proj->path + "/Assets/Scripts";
+    std::string outputDll = proj->path + "/Scripts.dll";
+    
+    if (!fs::exists(scriptsDir))
+    {
+        std::cout << "[Editor] Scripts directory does not exist: " << scriptsDir << std::endl;
+        return;
+    }
+    
+    // 收集所有 .cpp 文件
+    std::vector<std::string> cppFiles;
+    for (const auto& entry : fs::directory_iterator(scriptsDir))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".cpp")
+        {
+            cppFiles.push_back(entry.path().string());
+        }
+    }
+    
+    if (cppFiles.empty())
+    {
+        std::cout << "[Editor] No script files found" << std::endl;
+        return;
+    }
+    
+    std::cout << "[Editor] Building " << cppFiles.size() << " script(s)..." << std::endl;
+    
+    // 转换为绝对路径
+    fs::path projPathAbs = fs::absolute(proj->path);
+    // E:\Engine Source\Ditto\Ditto\Projects\MyProject -> ../.. = E:\Engine Source\Ditto\Ditto
+    fs::path enginePathAbs = fs::absolute(proj->path + "/../..");
+    fs::path outputDllAbs = fs::absolute(outputDll);
+    
+    // 直接使用原始脚本文件（用户需要手动修改 include 路径）
+    std::string compileFiles;
+    for (const auto& f : cppFiles)
+    {
+        compileFiles += "\"" + fs::absolute(f).string() + "\" ";
+    }
+    
+    // 创建编译脚本
+    std::string batPath = proj->path + "/build_scripts.bat";
+    std::ofstream batFile(batPath);
+    
+    batFile << "@echo off\n";
+    batFile << "cd /d \"" << projPathAbs.string() << "\"\n";
+    batFile << "call \"D:\\Visual Studio 2022\\VC\\Auxiliary\\Build\\vcvars64.bat\"\n";
+    
+    // 使用绝对路径，添加 C++20 和更多头文件路径
+    std::string clCmd = "cl /LD /EHsc /std:c++latest /I\"" + enginePathAbs.string() + "\\3rdParty\\GLM\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\\include\" /I\"" + enginePathAbs.string() + "\\3rdParty\\ImGui\" /I\"" + enginePathAbs.string() + "\\Engine\\Core\" /I\"" + enginePathAbs.string() + "\\Engine\\Graphics\" /I\"" + enginePathAbs.string() + "\\Engine\\Physics\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\" /I\"" + enginePathAbs.string() + "\" /D\"SCRIPT_DLL\" /O2 /MD " + compileFiles + "/Fe:\"" + outputDllAbs.string() + "\"";
+    
+    batFile << clCmd << "\n";
+    batFile << "pause\n";
+    
+    batFile.close();
+    
+    std::cout << "[Editor] Please run: " << batPath << std::endl;
+    std::cout << "[Editor] Or manually compile your scripts and place DLL at: " << outputDll << std::endl;
+    
+    // 尝试直接执行
+    STARTUPINFOA si = {sizeof(si)};
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOW;
+    PROCESS_INFORMATION pi;
+    
+    std::string cmd = "cmd /c \"" + batPath + "\"";
+    if (CreateProcessA(NULL, (LPSTR)cmd.c_str(), NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi))
+    {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        
+        // 检查 DLL 是否生成
+        if (fs::exists(outputDll))
+        {
+            std::cout << "[Editor] DLL built: " << outputDll << std::endl;
+        }
+        else
+        {
+            std::cout << "[Editor] DLL not found after build. Check the console window for errors." << std::endl;
+        }
+    }
+}
+
+
+// 模型预览已移至 InspectorWindow.cpp
 // 文件图标相关函数
-// ============================================================================
-
-// 图标文件列表
 static const char* s_iconFiles[] = {
-    "Default.png", "Cpp.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Folder.png"
+    "Default.png", "Cs.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Folder.png"
 };
 
 void Editor::InitFileIcons()
@@ -1760,6 +1315,10 @@ void Editor::InitFileIcons()
     // 加载文件夹图标
     m_folderIcon = LoadIcon(m_assetsPath + "/Folder.png");
     m_folderEmptyIcon = LoadIcon(m_assetsPath + "/FolderEmpty.png");
+    
+    // 加载锁定图标
+    m_lockIcon = LoadIcon(m_assetsPath + "/Lock.png");
+    m_unlockIcon = LoadIcon(m_assetsPath + "/UnLock.png");
     
     m_fileIconsInitialized = true;
     std::cout << "[FileIcon] Initialized successfully" << std::endl;
@@ -1801,7 +1360,7 @@ unsigned int Editor::LoadIcon(const std::string& iconPath)
 
 int Editor::GetIconIndex(const std::string& ext)
 {
-    if (ext == ".cpp") return 1;  // Cpp.png
+    if (ext == ".cs") return 1;  // Cs.png
     if (ext == ".obj") return 2;  // Prefab.png (模型)
     if (ext == ".prefab") return 3;  // Text.png (材质)
     if (ext == ".shader") return 4;  // Shader.png

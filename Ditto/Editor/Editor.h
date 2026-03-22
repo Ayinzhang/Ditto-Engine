@@ -13,6 +13,11 @@ struct Shader;
 
 namespace ImGui { class ImTextureID; }
 
+// 窗口类头文件
+#include "ProjectWindow.h"
+#include "InspectorWindow.h"
+#include "../Engine/Core/CSharpScript.h"
+
 // 选中的文件信息
 struct SelectedFile {
     std::string path;        // 完整路径
@@ -27,17 +32,21 @@ struct SelectedFile {
 struct Editor
 {
     Engine* engine = nullptr;
-    GameObject* selectedObject = nullptr;
+    GameObject* selectedObject = nullptr;  // Inspector 显示的物体（锁定后不变）
+    GameObject* activeSelection = nullptr;  // 当前选中的物体（用于 Hierarchy 高亮）
     SelectedFile selectedFile;   // 选中的文件
     char sceneNameBuffer[16] = "Default";
     char layoutNameBuffer[32] = "Default";
     char projectNameBuffer[32] = "MyProject";
     bool isSceneActive;
     bool showSavePopup, showLoadPopup, showSaveLayoutPopup;
+    bool showBuildPopup = false;  // 打包发布弹窗
     bool showProjectManager = false;  // 项目管理界面
     bool showNewProjectPopup = false;
     bool showProjectSelector = false;
     bool projectLoaded = false;
+    bool sceneDirty = false;  // 场景是否有修改未保存
+    bool lockingSelection = false;  // 是否锁定当前选择（Inspector锁定后不再切换）
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
     int frame; float fps, ppf, deltaTime;
@@ -65,34 +74,23 @@ struct Editor
     void LoadSceneFromProject(const std::string& scenePath);
     std::vector<std::string> GetProjectScenes();
 
-    // 3D模型预览相关
-    unsigned int previewFBO = 0;
-    unsigned int previewRBO = 0;
-    unsigned int previewTexture = 0;
-    int previewSize = 256; // 正方形
-    int previewWidth = 256;
-    int previewHeight = 256;
-    bool previewInitialized = false, modelInitialized = false;
-    Camera* previewCamera = nullptr;
+    // 保存当前场景（带修改检查）
+    void SaveCurrentScene();
+    
+    // 打包发布
+    void BuildProject();
+    
+    // 编译脚本为 DLL
+    void BuildScripts();
 
-    // 独立的预览着色器（不用 SSBO）
-    unsigned int previewProgram = 0;
+    // 脚本拖拽处理
+    void OnScriptComponentDropped(const std::string& scriptPath);
+    void OnScriptComponentDroppedToObject(GameObject* obj, const std::string& scriptPath);
 
-    // 预览的模型数据
-    struct PreviewModel {
-        unsigned int VAO = 0, VBO = 0, EBO = 0;
-        int vertexCount = 0;
-        int indexCount = 0;
-        glm::vec3 center = glm::vec3(0);
-        float radius = 1.0f;
-    };
-    PreviewModel currentPreviewModel;
-    std::string currentPreviewPath;
-
-    void InitModelPreview();
-    void LoadPreviewModel(const std::string& modelPath);
-    void RenderModelPreview();
-    void CleanupModelPreview();
+    // 3D模型预览相关（委托给 InspectorWindow）
+    void InitModelPreview() { if (m_inspectorWindow) m_inspectorWindow->InitModelPreview(); }
+    void LoadPreviewModel(const std::string& modelPath) { if (m_inspectorWindow) m_inspectorWindow->LoadPreviewModel(modelPath); }
+    void CleanupModelPreview() { if (m_inspectorWindow) m_inspectorWindow->CleanupModelPreview(); }
 
     void DrawGameObjectNode(GameObject* obj);
     void CopySelectedObject();
@@ -106,16 +104,24 @@ struct Editor
     unsigned int GetIconByExtension(const std::string& extension);
     unsigned int GetFolderIcon() { return m_folderIcon; }
     unsigned int GetFolderEmptyIcon() { return m_folderEmptyIcon; }
+    unsigned int GetLockIcon() { return m_lockIcon; }
+    unsigned int GetUnlockIcon() { return m_unlockIcon; }
 
 private:
     // 文件图标
     unsigned int m_icons[7] = {0};  // 0:Default, 1:Cpp, 2:Prefab, 3:Text, 4:Shader, 5:Scene, 6:Folder
     unsigned int m_folderIcon = 0;
     unsigned int m_folderEmptyIcon = 0;
+    unsigned int m_lockIcon = 0;
+    unsigned int m_unlockIcon = 0;
     bool m_fileIconsInitialized = false;
     std::string m_assetsPath;
     
     // 加载单个图标
     unsigned int LoadIcon(const std::string& iconPath);
     int GetIconIndex(const std::string& ext);
+
+    // 窗口组件
+    ProjectWindow* m_projectWindow = nullptr;
+    InspectorWindow* m_inspectorWindow = nullptr;
 };

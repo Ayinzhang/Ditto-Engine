@@ -1032,6 +1032,15 @@
     <ClInclude Include="3rdParty\stb_image.h">
       <Filter>三方库</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\InspectorWindow.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\ProjectWindow.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Core\CSharpScript.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
@@ -1558,6 +1567,15 @@
       <Filter>源文件\Editor</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Core\ProjectManager.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\InspectorWindow.cpp">
+      <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\ProjectWindow.cpp">
+      <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\CSharpScript.cpp">
       <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
   </ItemGroup>

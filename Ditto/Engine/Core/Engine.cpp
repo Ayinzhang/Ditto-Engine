@@ -39,7 +39,7 @@ Engine::Engine()
     sceneCamera = sceneCamera; // 默认激活Scene相机
     shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
     editor = new Editor(window); editor->engine = this;
-	physics = new ParallelPhysics(); physics->engine = this;
+    physics = new ParallelPhysics(); physics->engine = this;
 
     scene->InitializeBaseGeometries(resource);
 }
@@ -158,7 +158,7 @@ void Engine::SetEngineState(State newState)
         {
             physics->GenerateColliders(scene->gameObjects);
             break;
-		}
+        }
     }
     state = newState;
 }
@@ -167,7 +167,7 @@ void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)
 {
     Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
     if (!engine->enableMouse) { engine->lastX = xpos; engine->lastY = ypos; return; }
-	if (engine->editor->isSceneActive)
+    if (engine->editor->isSceneActive)
     engine->sceneCamera->ProcessMouseMovement(engine->mouseSpeed * (xpos - engine->lastX) / engine->window_width,
         engine->mouseSpeed * (ypos - engine->lastY) / engine->window_height);
     engine->lastX = xpos;

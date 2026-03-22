@@ -325,7 +325,10 @@
     <ClInclude Include="3rdParty\ImGui\imstb_truetype.h" />
     <ClInclude Include="3rdParty\stb_image.h" />
     <ClInclude Include="Editor\Editor.h" />
+    <ClInclude Include="Editor\InspectorWindow.h" />
     <ClInclude Include="Editor\LayoutManager.h" />
+    <ClInclude Include="Editor\ProjectWindow.h" />
+    <ClInclude Include="Engine\Core\CSharpScript.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
     <ClInclude Include="Engine\Core\ProjectManager.h" />
@@ -505,7 +508,10 @@
     <ClCompile Include="3rdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp" />
     <ClCompile Include="Editor\Editor.cpp" />
+    <ClCompile Include="Editor\InspectorWindow.cpp" />
     <ClCompile Include="Editor\LayoutManager.cpp" />
+    <ClCompile Include="Editor\ProjectWindow.cpp" />
+    <ClCompile Include="Engine\Core\CSharpScript.cpp" />
     <ClCompile Include="Engine\Core\Engine.cpp" />
     <ClCompile Include="Engine\Core\GameObject.cpp" />
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />

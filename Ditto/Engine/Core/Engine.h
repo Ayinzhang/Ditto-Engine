@@ -20,7 +20,7 @@ struct Engine
     Scene* scene;
     Editor* editor;
     int physicsCnt;
-	float deltaTime, lastTime, curTime, physicsTime;
+    float deltaTime, lastTime, curTime, physicsTime;
     Camera* sceneCamera, *gameCamera;
     bool enableMouse;
     float keySpeed, mouseSpeed;

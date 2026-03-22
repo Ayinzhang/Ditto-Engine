@@ -5,6 +5,12 @@
 #include "../../3rdParty/GLM/glm.hpp"
 
 struct GameObject;
+struct Scene;
+struct Editor;  // 前向声明
+
+// 全局 Editor 指针（用于 GameObject 访问 Editor 功能）
+extern Editor* g_editor;
+
 struct Component
 {
     bool enabled = true;
@@ -23,6 +29,7 @@ concept DerivedFromComponent = std::derived_from<T, Component>;
 struct GameObject
 {
     bool enabled = true;
+    bool locked = false;  // 锁定状态
     int compMask = 0;
     std::string name;
 
@@ -68,6 +75,9 @@ struct GameObject
     void Deserialize(std::ifstream& file);
 };
 
+
+// 全局当前场景指针（用于组件修改时标记 dirty）
+extern Scene* g_currentScene;
 
 struct TransformComponent : Component
 {
