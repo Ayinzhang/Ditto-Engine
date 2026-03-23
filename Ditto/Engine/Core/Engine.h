@@ -27,6 +27,8 @@ struct Engine
     double lastX, lastY;
     Shader* shader;
     Physics* physics;
+    std::string gameProjectPath;
+    bool gameMode = false;
 
     Engine();
     ~Engine();
@@ -37,5 +39,6 @@ struct Engine
     void ProcessInput();
     void RenderSceneToViewport(ImRect viewport, bool isGameView);
     void SetEngineState(State state);
+    void SetProjectPath(const std::string& path);
     static void MouseCallBack(GLFWwindow* window, double xpos, double ypos);
 };

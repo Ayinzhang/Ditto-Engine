@@ -12,17 +12,6 @@ Scene::Scene()
     name = "Default";
     g_currentScene = this;  // 设置全局指针
 
-    GameObject* lightObj = new GameObject("DirLight");
-    lightObj->AddComponent<LightComponent>();
-    lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
-    lightObj->GetComponent<TransformComponent>()->UpdateTransform();
-    gameObjects.push_back(lightObj);
-
-    GameObject* cube = new GameObject("Cube");
-    cube->AddComponent<RendererComponent>();
-    cube->AddComponent<RigidbodyComponent>();
-    gameObjects.push_back(cube);
-
     geometryBatches[RendererComponent::Cube] = new GeometryInstances(RendererComponent::Cube);
     geometryBatches[RendererComponent::Sphere] = new GeometryInstances(RendererComponent::Sphere);
 }
@@ -341,7 +330,7 @@ bool Scene::LoadScene(const std::string& filepath)
 
         for (uint32_t i = 0; i < header.gameObjectCount; i++)
         {
-            GameObject* newObj = new GameObject();
+            GameObject* newObj = new GameObject(false);  // 不自动添加组件
             newObj->Deserialize(file);
             gameObjects.push_back(newObj);
         }

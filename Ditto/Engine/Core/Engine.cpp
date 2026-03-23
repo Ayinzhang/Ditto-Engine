@@ -38,7 +38,7 @@ Engine::Engine()
     gameCamera = new Camera(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     sceneCamera = sceneCamera; // 默认激活Scene相机
     shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
-    editor = new Editor(window); editor->engine = this;
+    editor = new Editor(window, gameMode, gameProjectPath); editor->engine = this;
     physics = new ParallelPhysics(); physics->engine = this;
 
     scene->InitializeBaseGeometries(resource);
@@ -58,6 +58,13 @@ Engine::~Engine()
 
 void Engine::Run()
 {
+    // 如果editor还没有创建，现在创建它（此时gameMode已经确定）
+    if (!editor)
+    {
+        editor = new Editor(window, gameMode, gameProjectPath);
+        editor->engine = this;
+    }
+    
     while (state != Exit && !glfwWindowShouldClose(window))
     {
         curTime = glfwGetTime(); deltaTime = curTime - lastTime; lastTime = curTime;
@@ -111,7 +118,7 @@ void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
 void Engine::ProcessInput()
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) state = Exit;
-    if (editor->isSceneActive)
+    if (editor && editor->isSceneActive)
     {
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) sceneCamera->position += sceneCamera->forward * keySpeed;
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) sceneCamera->position -= sceneCamera->forward * keySpeed;
@@ -129,7 +136,7 @@ void Engine::ProcessInput()
     // Delete 键：优先处理文件删除，其次处理 GameObject 删除
     static bool deletePressedLastFrame = false;
     bool deletePressedNow = glfwGetKey(window, GLFW_KEY_DELETE) == GLFW_PRESS;
-    if (deletePressedNow && !deletePressedLastFrame) {
+    if (deletePressedNow && !deletePressedLastFrame && editor) {
         if (editor->selectedFile.IsValid())
             editor->DeleteSelectedFile();
         else
@@ -140,7 +147,7 @@ void Engine::ProcessInput()
     // Ctrl+D：优先处理文件复制，其次处理 GameObject 复制
     static bool ctrlDPressedLastFrame = false;
     bool ctrlDPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
-    if (ctrlDPressedNow && !ctrlDPressedLastFrame) {
+    if (ctrlDPressedNow && !ctrlDPressedLastFrame && editor) {
         if (editor->selectedFile.IsValid())
             editor->DuplicateSelectedFile();
         else
@@ -159,6 +166,11 @@ void Engine::SetEngineState(State newState)
             physics->GenerateColliders(scene->gameObjects);
             break;
         }
+        case Stop:
+        {
+            // 重置场景或做其他清理工作
+            break;
+        }
     }
     state = newState;
 }
@@ -167,9 +179,15 @@ void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)
 {
     Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
     if (!engine->enableMouse) { engine->lastX = xpos; engine->lastY = ypos; return; }
-    if (engine->editor->isSceneActive)
+    if (engine->editor && engine->editor->isSceneActive)
     engine->sceneCamera->ProcessMouseMovement(engine->mouseSpeed * (xpos - engine->lastX) / engine->window_width,
         engine->mouseSpeed * (ypos - engine->lastY) / engine->window_height);
     engine->lastX = xpos;
     engine->lastY = ypos;
+}
+
+void Engine::SetProjectPath(const std::string& path)
+{
+    gameProjectPath = path;
+    gameMode = true;
 }

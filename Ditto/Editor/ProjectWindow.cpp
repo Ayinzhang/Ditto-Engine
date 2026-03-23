@@ -175,6 +175,16 @@ void ProjectWindow::Draw()
     {
         if (!m_editor || !m_editor->selectedFile.IsValid())
         {
+            if (ImGui::MenuItem("Create Folder..."))
+            {
+                m_showCreateFolderPopup = true;
+                strcpy_s(m_newFolderNameBuffer, "NewFolder");
+            }
+            if (ImGui::MenuItem("Create Scene..."))
+            {
+                m_showCreateScenePopup = true;
+                strcpy_s(m_newSceneNameBuffer, "NewScene");
+            }
             if (ImGui::MenuItem("Create C# Script..."))
             {
                 m_showCreateScriptPopup = true;
@@ -405,16 +415,16 @@ void ProjectWindow::CreateNewScript(const std::string& name)
     std::ofstream file(filePath);
     if (file.is_open())
     {
-        file << "using System;\n";
+        file << "using DittoEngine;\n";
         file << "\n";
-        file << "public class " << name << "\n";
+        file << "public class " << name << " : MonoBehaviour\n";
         file << "{\n";
         file << "    public float speed = 5.0f;\n";
         file << "    public int health = 100;\n";
         file << "\n";
         file << "    void Start()\n";
         file << "    {\n";
-        file << "        Console.WriteLine(\"" << name << ": Start\");\n";
+        file << "        Debug.Log(\"" << name << ": Start\");\n";
         file << "    }\n";
         file << "\n";
         file << "    void Update()\n";
@@ -423,12 +433,63 @@ void ProjectWindow::CreateNewScript(const std::string& name)
         file << "\n";
         file << "    void OnDestroy()\n";
         file << "    {\n";
-        file << "        Console.WriteLine(\"" << name << ": OnDestroy\");\n";
+        file << "        Debug.Log(\"" << name << ": OnDestroy\");\n";
         file << "    }\n";
         file << "}\n";
         file.close();
+        std::cout << "[ProjectWindow] Created script: " << filePath << std::endl;
+    }
+}
+
+void ProjectWindow::CreateNewFolder(const std::string& name)
+{
+    auto& pm = ProjectManager::GetInstance();
+    std::string assetsPath = pm.GetProjectAssetsPath();
+    
+    std::string newFolderPath = assetsPath + "/" + name;
+    try
+    {
+        if (!fs::exists(newFolderPath))
+        {
+            fs::create_directories(newFolderPath);
+            std::cout << "[ProjectWindow] Created folder: " << newFolderPath << std::endl;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ProjectWindow] Failed to create folder: " << e.what() << std::endl;
+    }
+}
+
+void ProjectWindow::CreateNewScene(const std::string& name)
+{
+    auto& pm = ProjectManager::GetInstance();
+    std::string assetsPath = pm.GetProjectAssetsPath();
+    
+    std::string scenePath = assetsPath + "/Scenes/" + name + ".bin";
+    
+    try
+    {
+        fs::create_directories(assetsPath + "/Scenes");
         
-        std::cout << "[ProjectWindow] Created C# script: " << filePath << std::endl;
+        std::ofstream file(scenePath, std::ios::binary);
+        if (file.is_open())
+        {
+            const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
+            file.write(SCENE_MAGIC, 4);
+            uint32_t version = 1;
+            file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+            uint32_t gameObjectCount = 0;
+            file.write(reinterpret_cast<const char*>(&gameObjectCount), sizeof(gameObjectCount));
+            uint64_t fileSize = 0;
+            file.write(reinterpret_cast<const char*>(&fileSize), sizeof(fileSize));
+            file.close();
+            std::cout << "[ProjectWindow] Created scene: " << scenePath << std::endl;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[ProjectWindow] Failed to create scene: " << e.what() << std::endl;
     }
 }
 
@@ -450,6 +511,62 @@ void ProjectWindow::RenameFile(const std::string& oldPath, const std::string& ne
 
 void ProjectWindow::DrawPopups()
 {
+    // 创建文件夹弹窗
+    if (m_showCreateFolderPopup)
+    {
+        ImGui::OpenPopup("Create Folder");
+        m_showCreateFolderPopup = false;
+    }
+    
+    if (ImGui::BeginPopupModal("Create Folder", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Folder Name:"); ImGui::SameLine();
+        ImGui::InputText("##FolderName", m_newFolderNameBuffer, sizeof(m_newFolderNameBuffer));
+        
+        if (ImGui::Button("Create", ImVec2(120, 0)))
+        {
+            if (strlen(m_newFolderNameBuffer) > 0)
+            {
+                CreateNewFolder(m_newFolderNameBuffer);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    
+    // 创建场景弹窗
+    if (m_showCreateScenePopup)
+    {
+        ImGui::OpenPopup("Create Scene");
+        m_showCreateScenePopup = false;
+    }
+    
+    if (ImGui::BeginPopupModal("Create Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Scene Name:"); ImGui::SameLine();
+        ImGui::InputText("##SceneName", m_newSceneNameBuffer, sizeof(m_newSceneNameBuffer));
+        
+        if (ImGui::Button("Create", ImVec2(120, 0)))
+        {
+            if (strlen(m_newSceneNameBuffer) > 0)
+            {
+                CreateNewScene(m_newSceneNameBuffer);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    
     // 创建脚本弹窗
     if (m_showCreateScriptPopup)
     {
@@ -504,5 +621,14 @@ void ProjectWindow::DrawPopups()
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
+    }
+}
+
+void ProjectWindow::AddConsoleMessage(const std::string& message)
+{
+    m_consoleMessages.push_back(message);
+    if (m_consoleMessages.size() > 100)
+    {
+        m_consoleMessages.erase(m_consoleMessages.begin());
     }
 }

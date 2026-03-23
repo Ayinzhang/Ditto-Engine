@@ -1,9 +1,13 @@
-﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <vector>
 #include <shlobj.h>
 #include <windows.h>
+#include "../3rdParty/GLM/glm.hpp"
+#include "../3rdParty/GLM/gtc/matrix_transform.hpp"
+using namespace glm;
 #include "Editor.h"
 #include "LayoutManager.h"
 #include "ProjectWindow.h"
@@ -37,13 +41,15 @@ static ImRect GetCurrentViewportRect()
     return ImRect(min, max);
 }
 
-Editor::Editor(void* window)
+Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
 {
     // 设置全局 Editor 指针
     g_editor = this;
     
     // 初始化选择状态
     activeSelection = nullptr;
+    this->gameMode = gameMode;
+    this->gameProjectPath = projectPath;
     
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -65,16 +71,18 @@ Editor::Editor(void* window)
     showSavePopup = false;
     showLoadPopup = false;
     showSaveLayoutPopup = false;
-    showProjectSelector = true;  // 启动时显示项目选择
     projectLoaded = false;
     dockingInitialized = false;
     frame = deltaTime = 0;
 
-    // 初始化布局管理器
-    LayoutManager::GetInstance().Initialize("../../Ditto/Ditto/Assets/Settings");
-
     // 初始化项目管理器
     ProjectManager::GetInstance().Initialize("../../Ditto/Ditto/Projects");
+    
+    // 初始化布局管理器
+    LayoutManager::GetInstance().Initialize("../../Ditto/Ditto/Assets/Settings");
+    
+    // 显示项目选择界面
+    showProjectSelector = true;
 
     // 初始化 3D 模型预览
     InitModelPreview();
@@ -85,6 +93,9 @@ Editor::Editor(void* window)
     // 初始化窗口组件
     m_projectWindow = new ProjectWindow(this);
     m_inspectorWindow = new InspectorWindow(this);
+    
+    // 设置脚本日志回调
+    CSharpScriptSystem::SetEditor(this);
 
     // 设置场景修改回调（自动标记 dirty）
     if (engine && engine->scene)
@@ -112,12 +123,128 @@ Editor::~Editor()
 void Editor::Draw()
 {
     isSceneActive = false;
+    
+    // 游戏模式：直接渲染场景，不走ImGui窗口
+    if (gameMode)
+    {
+        // 如果项目未加载，尝试加载项目
+        if (!projectLoaded && !gameProjectPath.empty())
+        {
+            std::filesystem::path projectFile = std::filesystem::path(gameProjectPath) / "project.bin";
+            if (std::filesystem::exists(projectFile))
+            {
+                std::cout << "[Editor] Loading project from: " << projectFile.string() << std::endl;
+                OpenProject(gameProjectPath);
+                projectLoaded = true;
+            }
+            else
+            {
+                std::cerr << "[Editor] Project file not found: " << projectFile.string() << std::endl;
+            }
+        }
+        
+        if (engine)
+            engine->state = Engine::Play;
+        isSceneActive = true;
+        
+        // 游戏模式直接渲染，不使用ImGui
+        int w = 0, h = 0;
+        glfwGetFramebufferSize(engine->window, &w, &h);
+        glViewport(0, 0, w, h);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
+        
+        if (engine && engine->scene && engine->shader)
+        {
+            Camera* cam = engine->gameCamera;
+            mat4 view = cam->GetViewMatrix();
+            mat4 projection = perspective(radians(45.0f), (float)w / (float)h, 0.1f, 100.0f);
+            engine->scene->Render(engine->shader, view, projection, cam->position, w, h);
+        }
+        
+        return;
+    }
+    
+    // 编辑器模式
     ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
 
     // 如果项目未加载，显示项目选择界面
     if (showProjectSelector)
     {
         DrawProjectSelector();
+        
+        // 新建项目弹窗
+        if (showNewProjectPopup)
+        {
+            ImGui::OpenPopup("Create Project");
+            showNewProjectPopup = false;
+        }
+        ProjectManager& pm = ProjectManager::GetInstance();
+        if (ImGui::BeginPopupModal("Create Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("Project Name:"); ImGui::SameLine();
+            ImGui::InputText("##ProjectName", projectNameBuffer, sizeof(projectNameBuffer));
+            if (ImGui::Button("Create", ImVec2(120, 0)))
+            {
+                if (strlen(projectNameBuffer) > 0)
+                {
+                    if (pm.CreateProject(projectNameBuffer))
+                    {
+                        std::string newProjectPath = pm.GetAllProjects().back().path;
+                        OpenProject(newProjectPath);
+                        strcpy_s(projectNameBuffer, "MyProject");
+                    }
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0)))
+            {
+                ImGui::CloseCurrentPopup();
+                strcpy_s(projectNameBuffer, "MyProject");
+            }
+            ImGui::EndPopup();
+        }
+        
+        // 重命名项目弹窗
+        if (showRenameProjectPopup)
+        {
+            ImGui::OpenPopup("Rename Project");
+            showRenameProjectPopup = false;
+        }
+        
+        if (ImGui::BeginPopupModal("Rename Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("New Name:"); ImGui::SameLine();
+            ImGui::InputText("##RenameProject", renameProjectBuffer, sizeof(renameProjectBuffer));
+            
+            if (ImGui::Button("Confirm", ImVec2(120, 0)))
+            {
+                if (strlen(renameProjectBuffer) > 0)
+                {
+                    try
+                    {
+                        fs::path oldPath(renameProjectOldPath);
+                        fs::path newPath = oldPath.parent_path() / renameProjectBuffer;
+                        fs::rename(oldPath, newPath);
+                        std::cout << "[Editor] Renamed project: " << renameProjectOldPath << " -> " << newPath.string() << std::endl;
+                    }
+                    catch (const std::exception& e)
+                    {
+                        std::cerr << "Failed to rename project: " << e.what() << std::endl;
+                    }
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0)))
+            {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+        
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         return;
@@ -231,109 +358,104 @@ void Editor::DrawToolbar()
     {
         if (ImGui::BeginMenu("File"))
         {
-            // Ctrl+S 保存当前场景（直接保存，不弹窗）
-            if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
-            {
-                SaveCurrentScene();
-            }
-            if (ImGui::MenuItem("Load Scene", "Ctrl+L")) showLoadPopup = true;
-            
-            ImGui::Separator();
-            
-            // 打包发布
             if (ImGui::MenuItem("Build..."))
             {
                 showBuildPopup = true;
             }
-            
-            // 编译脚本为 DLL
-            if (ImGui::MenuItem("Build Scripts"))
-            {
-                BuildScripts();
-            }
-            
             ImGui::EndMenu();
         }
-        // View菜单 - 包含Layout功能
-        if (ImGui::BeginMenu("View"))
+
+        if (ImGui::BeginMenu("Edit"))
         {
-            // Save Layout
-            if (ImGui::MenuItem("Save Layout..."))
-            {
-                showSaveLayoutPopup = true;
-            }
-
+            if (ImGui::MenuItem("Undo", "Ctrl+Z")) {}
+            if (ImGui::MenuItem("Redo", "Ctrl+Y")) {}
             ImGui::Separator();
+            if (ImGui::MenuItem("Cut", "Ctrl+X")) {}
+            if (ImGui::MenuItem("Copy", "Ctrl+C")) {}
+            if (ImGui::MenuItem("Paste", "Ctrl+V")) {}
+            ImGui::Separator();
+            if (ImGui::MenuItem("Select All", "Ctrl+A")) {}
+            ImGui::EndMenu();
+        }
 
-            // Load Layout 子菜单
-            if (ImGui::BeginMenu("Load Layout"))
+        if (ImGui::BeginMenu("GameObject"))
+        {
+            if (ImGui::MenuItem("Create Empty")) {}
+            if (ImGui::BeginMenu("Create Geometry"))
             {
-                std::vector<std::string> layouts = GetSavedLayouts();
-
-                if (layouts.empty())
-                {
-                    ImGui::TextDisabled("No saved layouts");
-                }
-                else
-                {
-                    for (const auto& layoutName : layouts)
-                    {
-                        if (ImGui::MenuItem(layoutName.c_str()))
-                        {
-                            LoadLayout(layoutName);
-                        }
-                    }
-                }
+                if (ImGui::MenuItem("Cube")) {}
+                if (ImGui::MenuItem("Sphere")) {}
+                if (ImGui::MenuItem("Plane")) {}
                 ImGui::EndMenu();
             }
-
+            if (ImGui::MenuItem("Create Light"))
+            {
+                // TODO: 实现创建光源
+            }
             ImGui::EndMenu();
         }
 
-        ImGui::SameLine(ImGui::GetWindowWidth() * 0.4f);
-        if (engine->state == Engine::State::Edit)
+        if (ImGui::BeginMenu("Component"))
         {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.8f, 0.3f, 1.0f));
-            if (ImGui::Button("Play")) engine->SetEngineState(Engine::State::Play);
+            if (ImGui::MenuItem("Add Component...")) {}
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Help"))
+        {
+            if (ImGui::MenuItem("About Ditto Engine")) {}
+            ImGui::EndMenu();
+        }
+
+        ImGui::Separator();
+
+        float windowWidth = ImGui::GetWindowWidth();
+        float buttonWidth = 60.0f;
+        float spacing = 10.0f;
+        float totalWidth = buttonWidth * 2 + spacing;
+        float startX = (windowWidth - totalWidth) * 0.5f;
+
+        ImGui::SetCursorPosX(startX);
+
+        if (engine->state == Engine::Edit)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.3f, 1.0f));
+            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
+            {
+                engine->SetEngineState(Engine::Play);
+            }
+            ImGui::PopStyleColor(2);
+
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(startX + buttonWidth + spacing);
+
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+            if (ImGui::Button("Pause", ImVec2(buttonWidth, 0)))
+            {
+            }
             ImGui::PopStyleColor(2);
         }
         else
         {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
+            {
+            }
+            ImGui::PopStyleColor(2);
+
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(startX + buttonWidth + spacing);
+
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
-            if (ImGui::Button("Stop")) engine->SetEngineState(Engine::State::Edit);
-            ImGui::PopStyleColor(2);
-        }
-
-        ImGui::SameLine();
-        if (engine->state != Engine::State::Stop)
-        {
-            if (ImGui::Button("Pause")) engine->SetEngineState(Engine::State::Stop);
-        }
-        else if (ImGui::Button("Conti"))
-            engine->SetEngineState(Engine::State::Play);
-
-        float windowWidth = ImGui::GetWindowWidth(), infoWidth = 300.0f;
-        ImGui::SameLine(windowWidth - infoWidth);
-        ImGui::Text("Scene:"); ImGui::SameLine();
-
-        ImGui::PushItemWidth(150.0f);
-        if (ImGui::InputText("##SceneName", sceneNameBuffer, sizeof(sceneNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
-        {
-            if (engine && engine->scene) 
+            if (ImGui::Button("Stop", ImVec2(buttonWidth, 0)))
             {
-                engine->scene->name = sceneNameBuffer;
-                sceneDirty = true;  // 标记有修改
+                engine->SetEngineState(Engine::Stop);
             }
-        }
-        ImGui::PopItemWidth();
-        
-        // 显示修改标记
-        if (sceneDirty)
-        {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "*");
+            ImGui::PopStyleColor(2);
         }
 
         ImGui::EndMainMenuBar();
@@ -484,23 +606,39 @@ void Editor::DrawHierarchy()
 
     if (ImGui::BeginPopupContextWindow())
     {
-        if (ImGui::MenuItem("Create Cube"))
+        if (ImGui::MenuItem("Create Directional Light"))
         {
-            GameObject* cube = new GameObject("Cube");
-            cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
-            engine->scene->gameObjects.push_back(cube);
-            selectedObject = cube;
-            selectedFile.Clear();  // 清除文件选中
-            engine->scene->MarkDirty();  // 标记场景已修改
+            GameObject* lightObj = new GameObject("DirLight");
+            lightObj->AddComponent<LightComponent>();
+            lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
+            lightObj->GetComponent<TransformComponent>()->UpdateTransform();
+            engine->scene->gameObjects.push_back(lightObj);
+            selectedObject = lightObj;
+            selectedFile.Clear();
+            engine->scene->MarkDirty();
         }
-        if (ImGui::MenuItem("Create Sphere"))
+        
+        if (ImGui::BeginMenu("Create Geometry"))
         {
-            GameObject* sphere = new GameObject("Sphere");
-            sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
-            engine->scene->gameObjects.push_back(sphere);
-            selectedObject = sphere;
-            selectedFile.Clear();  // 清除文件选中
-            engine->scene->MarkDirty();  // 标记场景已修改
+            if (ImGui::MenuItem("Create Cube"))
+            {
+                GameObject* cube = new GameObject("Cube");
+                cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
+                engine->scene->gameObjects.push_back(cube);
+                selectedObject = cube;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            if (ImGui::MenuItem("Create Sphere"))
+            {
+                GameObject* sphere = new GameObject("Sphere");
+                sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
+                engine->scene->gameObjects.push_back(sphere);
+                selectedObject = sphere;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            ImGui::EndMenu();
         }
         ImGui::EndPopup();
     }
@@ -857,23 +995,28 @@ void Editor::DrawProjectSelector()
 
     ImGui::Begin("ProjectSelector", nullptr, flags);
 
-    // 标题
-    float windowWidth = ImGui::GetWindowWidth();
+    // 标题 - 居中
+    float windowWidth = ImGui::GetIO().DisplaySize.x;
+    float windowHeight = ImGui::GetIO().DisplaySize.y;
+    
     ImGui::SetCursorPosX((windowWidth - 200) * 0.5f);
-    ImGui::SetCursorPosY(100);
+    ImGui::SetCursorPosY(windowHeight * 0.15f);
     ImGui::SetWindowFontScale(2.0f);
     ImGui::Text("Ditto Engine");
     ImGui::SetWindowFontScale(1.0f);
 
-    // 项目列表
+    // 项目列表 - 居中
     ProjectManager& pm = ProjectManager::GetInstance();
     auto projects = pm.GetAllProjects();
     static int selectedProject = -1;
 
-    ImGui::SetCursorPosY(180);
-    float listWidth = 400;
-    float listHeight = 250;
+    float listWidth = windowWidth * 0.4f;
+    if (listWidth < 300) listWidth = 300;
+    if (listWidth > 600) listWidth = 600;
+    float listHeight = windowHeight * 0.4f;
+    
     ImGui::SetCursorPosX((windowWidth - listWidth) * 0.5f);
+    ImGui::SetCursorPosY(windowHeight * 0.3f);
     ImGui::BeginChild("ProjectList", ImVec2(listWidth, listHeight), true);
 
     if (projects.empty())
@@ -890,23 +1033,55 @@ void Editor::DrawProjectSelector()
             }
         }
     }
+    
     ImGui::EndChild();
 
-    // 按钮 - 居中，与列表框对齐
-    float buttonWidth = 150;
-    float buttonSpacing = 20;
-    float buttonsWidth = buttonWidth * 2 + buttonSpacing;
+    // 按钮 - 居中，一字排列，与列表框对齐
+    float buttonWidth = listWidth / 4 - 10;
+    float buttonSpacing = 10;
+    float buttonsWidth = buttonWidth * 4 + buttonSpacing * 3;
     float buttonsStartX = (windowWidth - buttonsWidth) * 0.5f;
 
     ImGui::SetCursorPosX(buttonsStartX);
-    if (ImGui::Button("Create", ImVec2(buttonWidth, 40)))
+    ImGui::SetCursorPosY(windowHeight * 0.75f);
+    if (ImGui::Button("Create", ImVec2(buttonWidth, 35)))
     {
         showNewProjectPopup = true;
     }
 
     ImGui::SameLine();
     ImGui::SetCursorPosX(buttonsStartX + buttonWidth + buttonSpacing);
-    if (ImGui::Button("Open", ImVec2(buttonWidth, 40)))
+    if (ImGui::Button("Delete", ImVec2(buttonWidth, 35)))
+    {
+        if (selectedProject >= 0 && selectedProject < projects.size())
+        {
+            try
+            {
+                fs::remove_all(projects[selectedProject].path);
+                selectedProject = -1;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "Failed to delete project: " << e.what() << std::endl;
+            }
+        }
+    }
+
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(buttonsStartX + (buttonWidth + buttonSpacing) * 2);
+    if (ImGui::Button("Rename", ImVec2(buttonWidth, 35)))
+    {
+        if (selectedProject >= 0 && selectedProject < projects.size())
+        {
+            renameProjectOldPath = projects[selectedProject].path;
+            strcpy_s(renameProjectBuffer, projects[selectedProject].name.c_str());
+            showRenameProjectPopup = true;
+        }
+    }
+
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(buttonsStartX + (buttonWidth + buttonSpacing) * 3);
+    if (ImGui::Button("Open", ImVec2(buttonWidth, 35)))
     {
         if (selectedProject >= 0 && selectedProject < projects.size())
         {
@@ -922,41 +1097,6 @@ void Editor::DrawProjectSelector()
     }
 
     ImGui::End();
-
-    // 新建项目弹窗
-    if (showNewProjectPopup)
-    {
-        ImGui::OpenPopup("Create Project");
-        showNewProjectPopup = false;
-    }
-
-    if (ImGui::BeginPopupModal("Create Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-    {
-        ImGui::Text("Project Name:"); ImGui::SameLine();
-        ImGui::InputText("##ProjectName", projectNameBuffer, sizeof(projectNameBuffer));
-
-        if (ImGui::Button("Create", ImVec2(120, 0)))
-        {
-            if (strlen(projectNameBuffer) > 0)
-            {
-                if (pm.CreateProject(projectNameBuffer))
-                {
-                    // 打开新创建的项目
-                    std::string newProjectPath = pm.GetAllProjects().back().path;
-                    OpenProject(newProjectPath);
-                    strcpy_s(projectNameBuffer, "MyProject");
-                }
-            }
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0)))
-        {
-            ImGui::CloseCurrentPopup();
-            strcpy_s(projectNameBuffer, "MyProject");
-        }
-        ImGui::EndPopup();
-    }
 }
 
 void Editor::OpenProject(const std::string& projectPath)
@@ -975,6 +1115,15 @@ void Editor::OpenProject(const std::string& projectPath)
             if (engine && engine->scene)
             {
                 engine->scene->LoadScene(fullPath.c_str());
+                
+                // 更新 UI
+                strcpy_s(sceneNameBuffer, engine->scene->name.c_str());
+                sceneDirty = false;  // 新加载的场景没有修改
+                
+                // 重新设置场景修改回调
+                engine->scene->onModified = [this]() {
+                    this->sceneDirty = true;
+                };
             }
         }
     }
@@ -1129,7 +1278,9 @@ void Editor::BuildProject()
     }
 
     // 输出目录：项目目录下的 Build/Windows
-    std::string outputDir = proj->path + "/Build/Windows";
+    std::string projectPath = proj->path;
+    std::replace(projectPath.begin(), projectPath.end(), '\\', '/');
+    std::string outputDir = projectPath + "/Build/Windows";
     
     try
     {
@@ -1139,55 +1290,108 @@ void Editor::BuildProject()
             fs::create_directories(outputDir);
         }
 
-        // 1. 复制 Assets 目录
-        std::string assetsSrc = proj->path + "/Assets";
-        std::string assetsDst = outputDir + "/Assets";
+        // 1. 复制 Assets 目录内容到根目录
+        std::string assetsSrc = projectPath + "/Assets";
         
         if (fs::exists(assetsSrc))
         {
-            fs::remove_all(assetsDst);
-            fs::copy(assetsSrc, assetsDst, fs::copy_options::recursive);
+            // 复制整个 Assets 目录
+            std::string assetsDst = outputDir;
+            fs::remove_all(assetsDst + "/Assets");
+            fs::copy(assetsSrc, assetsDst + "/Assets", fs::copy_options::recursive);
             std::cout << "[Editor] Copied Assets to " << assetsDst << std::endl;
         }
 
-        // 2. 保存当前场景到 Build 目录
+        // 2. 保存当前场景
         std::string sceneName = engine->scene->name;
-        std::string sceneSrc = "Assets/Scenes/" + sceneName + ".bin";
-        std::string sceneDst = assetsDst + "/Scenes/" + sceneName + ".bin";
+        std::string sceneSrc = projectPath + "/Assets/Scenes/" + sceneName + ".bin";
         
         // 确保目录存在
-        fs::create_directories(assetsDst + "/Scenes");
+        fs::create_directories(outputDir + "/Assets/Scenes");
         
         // 保存并复制场景
         engine->scene->SaveScene(sceneSrc.c_str());
-        fs::copy(sceneSrc, sceneDst, fs::copy_options::overwrite_existing);
-        std::cout << "[Editor] Copied scene: " << sceneDst << std::endl;
-
-        // 3. 复制 3rdParty DLL（如果有）
-        std::string thirdPartySrc = "../../Ditto/Ditto/3rdParty";
-        if (fs::exists(thirdPartySrc))
+        if (fs::exists(sceneSrc))
         {
-            std::string thirdPartyDst = outputDir + "/3rdParty";
-            fs::create_directories(thirdPartyDst);
-            // 复制需要的 DLL（glfw, glad, 等）
-            // TODO: 根据需要添加
+            std::string sceneDst = outputDir + "/Assets/Scenes/" + sceneName + ".bin";
+            fs::copy(sceneSrc, sceneDst, fs::copy_options::overwrite_existing);
+            std::cout << "[Editor] Copied scene: " << sceneDst << std::endl;
         }
 
-        // 4. 创建启动脚本（build.bat）
+        // 复制 project.json 到根目录
+        std::string projectJsonSrc = projectPath + "/project.json";
+        if (fs::exists(projectJsonSrc))
+        {
+            fs::copy(projectJsonSrc, outputDir + "/project.json", fs::copy_options::overwrite_existing);
+            std::cout << "[Editor] Copied project.json to " << outputDir << std::endl;
+        }
+
+        // 3. 复制可执行文件
+        std::string exeSrc = projectPath + "/../../x64/Debug/Ditto.exe";
+        std::string exeDst = outputDir + "/" + proj->name + ".exe";
+        if (fs::exists(exeSrc))
+        {
+            fs::copy(exeSrc, exeDst, fs::copy_options::overwrite_existing);
+            std::cout << "[Editor] Copied executable: " << exeDst << std::endl;
+        }
+        else
+        {
+            exeSrc = projectPath + "/../../../x64/Debug/Ditto.exe";
+            if (fs::exists(exeSrc))
+            {
+                fs::copy(exeSrc, exeDst, fs::copy_options::overwrite_existing);
+                std::cout << "[Editor] Copied executable: " << exeDst << std::endl;
+            }
+            else
+            {
+                exeSrc = projectPath + "/../../Ditto/x64/Debug/Ditto.exe";
+                if (fs::exists(exeSrc))
+                {
+                    fs::copy(exeSrc, exeDst, fs::copy_options::overwrite_existing);
+                    std::cout << "[Editor] Copied executable: " << exeDst << std::endl;
+                }
+            }
+        }
+
+        // 4. 复制 3rdParty DLL
+        std::string thirdPartySrc = projectPath + "/../../Ditto/3rdParty/GLFW";
+        if (!fs::exists(thirdPartySrc))
+        {
+            thirdPartySrc = projectPath + "/../../../Ditto/3rdParty/GLFW";
+        }
+        if (!fs::exists(thirdPartySrc))
+        {
+            thirdPartySrc = projectPath + "/../../3rdParty/GLFW";
+        }
+        
+        if (fs::exists(thirdPartySrc))
+        {
+            // 复制 glfw3.dll
+            for (const auto& entry : fs::directory_iterator(thirdPartySrc))
+            {
+                if (entry.is_regular_file() && entry.path().extension() == ".dll")
+                {
+                    std::string dllDst = outputDir + "/" + entry.path().filename().string();
+                    fs::copy(entry.path(), dllDst, fs::copy_options::overwrite_existing);
+                    std::cout << "[Editor] Copied DLL: " << dllDst << std::endl;
+                }
+            }
+        }
+
+        // 5. 创建启动脚本（Run.bat）
         std::string batPath = outputDir + "/Run.bat";
         std::ofstream batFile(batPath);
         batFile << "@echo off\n";
         batFile << "echo Starting " << proj->name << "...\n";
-        // 这里假设用户会自己编译一个独立的可执行文件
-        // 或者可以从其他位置复制
-        batFile << "echo Please copy your executable here and rename it to " << proj->name << ".exe\n";
+        batFile << "cd /d \"%~dp0\"\n";
+        batFile << "\"" << proj->name << ".exe\"\n";
         batFile << "pause\n";
         batFile.close();
+        std::cout << "[Editor] Created startup script: " << batPath << std::endl;
         
         std::cout << "[Editor] Build completed: " << outputDir << std::endl;
-        std::cout << "[Editor] Please copy the engine executable to the output folder" << std::endl;
         
-        // 5. 在资源管理器中打开输出目录
+        // 6. 在资源管理器中打开输出目录
         std::wstring outputDirW = fs::absolute(outputDir).wstring();
         ShellExecuteW(NULL, L"open", outputDirW.c_str(), NULL, NULL, SW_SHOWNORMAL);
     }

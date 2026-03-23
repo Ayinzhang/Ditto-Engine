@@ -87,6 +87,14 @@ bool ProjectManager::CreateProject(const std::string& name)
     EnsureDirectoryExists(projectPath + "/Assets/Materials");
     EnsureDirectoryExists(projectPath + "/Assets/Prefabs");
     
+    // 创建默认场景文件
+    std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";
+    {
+        Scene tempScene;
+        tempScene.name = "Default";
+        tempScene.SaveScene(defaultScenePath);
+    }
+    
     // 创建项目配置文件
     std::string projectFile = projectPath + "/project.json";
     std::ofstream file(projectFile);
@@ -100,7 +108,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     file << "  \"name\": \"" << name << "\",\n";
     file << "  \"version\": \"1.0\",\n";
     file << "  \"engineVersion\": \"1.0\",\n";
-    file << "  \"lastScene\": \"\"\n";
+    file << "  \"lastScene\": \"Assets/Scenes/Default.bin\"\n";
     file << "}\n";
     file.close();
     

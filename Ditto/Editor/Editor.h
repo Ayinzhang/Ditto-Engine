@@ -43,6 +43,9 @@ struct Editor
     bool showBuildPopup = false;  // 打包发布弹窗
     bool showProjectManager = false;  // 项目管理界面
     bool showNewProjectPopup = false;
+    bool showRenameProjectPopup = false;
+    std::string renameProjectOldPath;
+    char renameProjectBuffer[64] = "";
     bool showProjectSelector = false;
     bool projectLoaded = false;
     bool sceneDirty = false;  // 场景是否有修改未保存
@@ -51,10 +54,14 @@ struct Editor
     ImGuiID dockSpaceID = 0;
     int frame; float fps, ppf, deltaTime;
 
-    Editor(void* window);
+    Editor(void* window, bool gameMode = false, const std::string& projectPath = "");
     ~Editor();
     void Draw();
     void DrawProjectSelector();  // 项目选择界面
+    
+    // 游戏模式相关
+    bool gameMode = false;
+    std::string gameProjectPath;
     void DrawProjectManager();   // 项目管理器
     void DrawToolbar();
     void DrawHierarchy();
@@ -91,6 +98,7 @@ struct Editor
     void InitModelPreview() { if (m_inspectorWindow) m_inspectorWindow->InitModelPreview(); }
     void LoadPreviewModel(const std::string& modelPath) { if (m_inspectorWindow) m_inspectorWindow->LoadPreviewModel(modelPath); }
     void CleanupModelPreview() { if (m_inspectorWindow) m_inspectorWindow->CleanupModelPreview(); }
+    void AddConsoleMessage(const std::string& message) { if (m_projectWindow) m_projectWindow->AddConsoleMessage(message); }
 
     void DrawGameObjectNode(GameObject* obj);
     void CopySelectedObject();

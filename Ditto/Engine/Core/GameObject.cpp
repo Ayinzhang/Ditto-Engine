@@ -28,6 +28,15 @@ GameObject::GameObject(const std::string _name)
     AddComponent<TransformComponent>();
 }
 
+GameObject::GameObject(bool createComponents)
+{
+    name = "New GameObject";
+    if (createComponents)
+    {
+        AddComponent<TransformComponent>();
+    }
+}
+
 GameObject::GameObject(GameObject* other)
 {
     enabled = other->enabled;
@@ -151,7 +160,6 @@ void GameObject::OnInspectorGUI()
                 g_editor->lockingSelection = locked;
                 // 锁定时也更新 activeSelection，保持 Hierarchy 高亮
                 if (locked) g_editor->activeSelection = this;
-                if (g_currentScene) g_currentScene->MarkDirty();
             }
         }
     }
@@ -250,7 +258,7 @@ void GameObject::Deserialize(std::ifstream& file)
     file.read(reinterpret_cast<char*>(&childCount), sizeof(childCount));
     for (uint32_t i = 0; i < childCount; i++)
     {
-        GameObject* child = new GameObject();
+        GameObject* child = new GameObject(false);  // 不自动添加组件
         child->Deserialize(file);
         child->parent = this;
         children.push_back(child);

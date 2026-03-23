@@ -40,6 +40,7 @@ struct GameObject
     std::vector<Component*> removeComps;
 
     GameObject(const std::string _name = "New GameObject");
+    explicit GameObject(bool createComponents);  // 用于反序列化，不自动添加组件
     GameObject(GameObject* other);
     ~GameObject();
 
