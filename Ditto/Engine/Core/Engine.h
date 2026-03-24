@@ -12,7 +12,7 @@
 
 struct Engine
 {
-    enum State { Edit, Play, Stop, Exit } state = Edit;
+    enum State { Edit, Play, Pause, Stop, Exit } state = Edit;
 
     GLFWwindow* window;
     int window_width, window_height;

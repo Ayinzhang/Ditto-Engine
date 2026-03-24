@@ -435,9 +435,10 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
     std::filesystem::path dllAbsPath = absScriptPath.parent_path() / (absScriptPath.stem().string() + ".dll");
     std::string dllPath = dllAbsPath.string();
     
-    // 设置 PATH 环境变量
+    std::string dittoEngineDll = "e:\\Engine Source\\Ditto\\Ditto\\3rdParty\\Mono\\DittoEngine.dll";
+    
     std::string pathCmd = "set PATH=D:\\Visual Studio 2022\\MSBuild\\Current\\Bin\\Roslyn;%PATH%&";
-    std::string cmd = pathCmd + "cd /d \"" + dir + "\" && csc /target:library /out:\"" + dllPath + "\" \"" + absScriptPath.filename().string() + "\"";
+    std::string cmd = pathCmd + "cd /d \"" + dir + "\" && csc /target:library /reference:\"" + dittoEngineDll + "\" /out:\"" + dllPath + "\" \"" + absScriptPath.filename().string() + "\"";
     std::cout << "[CSharpScriptSystem] Compile cmd: " << cmd << std::endl;
     int result = system(cmd.c_str());
     

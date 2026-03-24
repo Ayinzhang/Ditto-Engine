@@ -75,7 +75,8 @@ GameObject::~GameObject()
 
 void GameObject::AddChild(GameObject* child)
 {
-    if (!child || child->parent == this) return;
+    if (!child || child == this) return;
+    if (child->IsDescendantOf(this)) return;
     if (child->parent) child->RemoveFromParent();
     child->parent = this;
     children.push_back(child);
@@ -122,7 +123,7 @@ void GameObject::ProcessRemovals()
         {
             delete* it;
             components.erase(it);
-            compMask -= comp->index;
+            compMask &= ~comp->index;  // 使用位清除而不是减法
         }
     }
     removeComps.clear();
@@ -133,7 +134,7 @@ void GameObject::OnInspectorGUI()
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
     char nameBuffer[256];
-    strcpy_s(nameBuffer, name.c_str());
+    strcpy_s(nameBuffer, sizeof(nameBuffer), name.c_str());
     ImGui::Text("Name"); ImGui::SameLine();
     ImGui::PushID("NameInput");
     if (ImGui::InputText("", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
@@ -187,6 +188,8 @@ void GameObject::OnInspectorGUI()
 
 void GameObject::Serialize(std::ofstream& file) const
 {
+    std::cout << "[GameObject::Serialize] Serializing: " << name << ", components: " << components.size() << ", children: " << children.size() << std::endl;
+    
     file.write(reinterpret_cast<const char*>(&enabled), sizeof(enabled));
     file.write(reinterpret_cast<const char*>(&locked), sizeof(locked));
     WriteString(file, name);
@@ -203,6 +206,7 @@ void GameObject::Serialize(std::ofstream& file) const
 
     uint32_t childCount = static_cast<uint32_t>(children.size());
     file.write(reinterpret_cast<const char*>(&childCount), sizeof(childCount));
+    std::cout << "[GameObject::Serialize] Writing childCount: " << childCount << " for " << name << std::endl;
     for (GameObject* child : children)
         child->Serialize(file);
 }
@@ -210,24 +214,18 @@ void GameObject::Serialize(std::ofstream& file) const
 void GameObject::Deserialize(std::ifstream& file)
 {
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
+    file.read(reinterpret_cast<char*>(&locked), sizeof(locked));
     name = ReadString(file);
     file.read(reinterpret_cast<char*>(&compMask), sizeof(compMask));
     
-    // 兼容旧版本：如果没有 locked 字段，默认 false
-    if (file.peek() != EOF)
-    {
-        file.read(reinterpret_cast<char*>(&locked), sizeof(locked));
-    }
-    else
-    {
-        locked = false;
-    }
+    std::cout << "[GameObject::Deserialize] Deserializing: " << name << std::endl;
 
     for (Component* comp : components) delete comp;
     components.clear();
 
     uint32_t componentCount = 0;
     file.read(reinterpret_cast<char*>(&componentCount), sizeof(componentCount));
+    std::cout << "[GameObject::Deserialize] Reading componentCount: " << componentCount << " for " << name << std::endl;
     for (uint32_t i = 0; i < componentCount; i++)
     {
         int index = 0;
@@ -256,6 +254,7 @@ void GameObject::Deserialize(std::ifstream& file)
 
     uint32_t childCount = 0;
     file.read(reinterpret_cast<char*>(&childCount), sizeof(childCount));
+    std::cout << "[GameObject::Deserialize] Reading childCount: " << childCount << " for " << name << std::endl;
     for (uint32_t i = 0; i < childCount; i++)
     {
         GameObject* child = new GameObject(false);  // 不自动添加组件

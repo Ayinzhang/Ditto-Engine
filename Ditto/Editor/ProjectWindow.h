@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <set>
 #include "../3rdParty/GLM/glm.hpp"
 
 // 前向声明
@@ -66,6 +67,11 @@ private:
     std::string m_lastClickedFolderPath;
     double m_lastClickTime = 0.0;
     static constexpr double DOUBLE_CLICK_THRESHOLD = 0.5;  // 500ms
+    
+    // 文件夹展开状态
+    std::set<std::string> m_expandedFolders;
+    bool IsFolderExpanded(const std::string& path) const;
+    void ToggleFolderExpanded(const std::string& path);
     
     // 打开 C# 文件相关
     void OpenCSharpFile(const std::string& filePath);

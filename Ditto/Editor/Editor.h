@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <set>
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/ImGui/imgui.h"
 
@@ -34,6 +35,7 @@ struct Editor
     Engine* engine = nullptr;
     GameObject* selectedObject = nullptr;  // Inspector 显示的物体（锁定后不变）
     GameObject* activeSelection = nullptr;  // 当前选中的物体（用于 Hierarchy 高亮）
+    std::set<GameObject*> m_expandedGameObjects;  // Hierarchy 展开状态
     SelectedFile selectedFile;   // 选中的文件
     char sceneNameBuffer[16] = "Default";
     char layoutNameBuffer[32] = "Default";
@@ -53,6 +55,10 @@ struct Editor
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
     int frame; float fps, ppf, deltaTime;
+    
+    // Play模式相关
+    std::string m_tempScenePath;  // 临时场景文件路径（Play时保存的场景）
+    bool m_isPlaying = false;     // 是否正在Play模式
 
     Editor(void* window, bool gameMode = false, const std::string& projectPath = "");
     ~Editor();
@@ -100,7 +106,7 @@ struct Editor
     void CleanupModelPreview() { if (m_inspectorWindow) m_inspectorWindow->CleanupModelPreview(); }
     void AddConsoleMessage(const std::string& message) { if (m_projectWindow) m_projectWindow->AddConsoleMessage(message); }
 
-    void DrawGameObjectNode(GameObject* obj);
+    void DrawGameObjectNode(GameObject* obj, bool isRoot = false, int depth = 0);
     void CopySelectedObject();
     void DeleteSelectedObject();
     void DeleteSelectedFile();
@@ -112,6 +118,9 @@ struct Editor
     unsigned int GetIconByExtension(const std::string& extension);
     unsigned int GetFolderIcon() { return m_folderIcon; }
     unsigned int GetFolderEmptyIcon() { return m_folderEmptyIcon; }
+    unsigned int GetFolderOpenedIcon() { return m_folderOpenedIcon; }
+    unsigned int GetDittoIcon() { return m_dittoIcon; }
+    unsigned int GetGameObjectIcon() { return m_gameObjectIcon; }
     unsigned int GetLockIcon() { return m_lockIcon; }
     unsigned int GetUnlockIcon() { return m_unlockIcon; }
 
@@ -120,6 +129,9 @@ private:
     unsigned int m_icons[7] = {0};  // 0:Default, 1:Cpp, 2:Prefab, 3:Text, 4:Shader, 5:Scene, 6:Folder
     unsigned int m_folderIcon = 0;
     unsigned int m_folderEmptyIcon = 0;
+    unsigned int m_folderOpenedIcon = 0;
+    unsigned int m_dittoIcon = 0;
+    unsigned int m_gameObjectIcon = 0;
     unsigned int m_lockIcon = 0;
     unsigned int m_unlockIcon = 0;
     bool m_fileIconsInitialized = false;

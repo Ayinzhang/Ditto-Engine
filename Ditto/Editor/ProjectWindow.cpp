@@ -81,11 +81,11 @@ void ProjectWindow::Draw()
     if (m_splitterPos > panelWidth - 100) m_splitterPos = panelWidth - 100;
 
     // 左侧 - 文件夹树
-    ImGui::BeginChild("Folders", ImVec2(m_splitterPos, panelHeight), false);
+    ImGui::BeginChild("Folders", ImVec2(m_splitterPos, panelHeight), true);
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
 
-    std::function<void(const std::string&, const std::string&)> DrawFolderTree =
-        [&](const std::string& folderPath, const std::string& displayPath) {
+    std::function<void(const std::string&, const std::string&, int)> DrawFolderTree =
+        [&](const std::string& folderPath, const std::string& displayPath, int depth) {
             try {
                 if (!fs::exists(folderPath)) return;
 
@@ -98,45 +98,113 @@ void ProjectWindow::Draw()
                         bool isSelected = (m_currentFolder == fullPath);
 
                         bool hasSubfolders = false;
+                        bool hasFiles = false;
                         for (const auto& sub : fs::directory_iterator(fullFsPath)) {
                             if (sub.is_directory()) {
                                 hasSubfolders = true;
-                                break;
+                            } else {
+                                hasFiles = true;
                             }
                         }
 
+                        // 计算缩进：每层 18px
+                        float indent = depth * 18.0f;
+
                         if (hasSubfolders) {
-                            if (ImGui::TreeNode(folderName.c_str())) {
-                                if (ImGui::IsItemClicked(0)) {
-                                    m_currentFolder = fullPath;
-                                    if (m_editor) m_editor->selectedFile.Clear();
-                                }
-                                DrawFolderTree(fullFsPath, fullPath);
-                                ImGui::TreePop();
+                            ImGui::PushID(fullPath.c_str());
+                            
+                            bool isOpen = IsFolderExpanded(fullPath);
+                            
+                            // 箭头按钮（12px）
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
+                            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+                            if (ImGui::ArrowButton(("##arrow_" + fullPath).c_str(), isOpen ? ImGuiDir_Down : ImGuiDir_Right)) {
+                                ToggleFolderExpanded(fullPath);
                             }
-                        } else {
+                            ImGui::PopStyleVar();
+                            
+                            // 图标
+                            unsigned int folderIcon = 0;
+                            if (m_editor) {
+                                folderIcon = isOpen ? m_editor->GetFolderOpenedIcon() : m_editor->GetFolderIcon();
+                            }
+                            
+                            if (folderIcon) {
+                                ImGui::SameLine();
+                                ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
+                            }
+                            
+                            // 名称
+                            ImGui::SameLine();
                             if (ImGui::Selectable(folderName.c_str(), isSelected)) {
                                 m_currentFolder = fullPath;
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
+                            
+                            // 子文件夹
+                            if (isOpen) {
+                                DrawFolderTree(fullFsPath, fullPath, depth + 1);
+                            }
+                            
+                            ImGui::PopID();
+                        } else if (hasFiles) {
+                            ImGui::PushID(fullPath.c_str());
+                            
+                            // 无子文件夹但有文件：留出箭头位置（20px = 12px箭头 + 8px间距）+ 深度缩进
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
+                            
+                            unsigned int folderIcon = 0;
+                            if (m_editor) {
+                                folderIcon = m_editor->GetFolderIcon();
+                            }
+                            
+                            if (folderIcon) {
+                                ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
+                                ImGui::SameLine();
+                            }
+                            
+                            if (ImGui::Selectable(folderName.c_str(), isSelected)) {
+                                m_currentFolder = fullPath;
+                                if (m_editor) m_editor->selectedFile.Clear();
+                            }
+                            
+                            ImGui::PopID();
+                        } else {
+                            ImGui::PushID(fullPath.c_str());
+                            
+                            // 空文件夹：留出箭头位置（20px = 12px箭头 + 8px间距）+ 深度缩进
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
+                            
+                            unsigned int folderIcon = 0;
+                            if (m_editor) {
+                                folderIcon = m_editor->GetFolderEmptyIcon();
+                            }
+                            
+                            if (folderIcon) {
+                                ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
+                                ImGui::SameLine();
+                            }
+                            
+                            if (ImGui::Selectable(folderName.c_str(), isSelected)) {
+                                m_currentFolder = fullPath;
+                                if (m_editor) m_editor->selectedFile.Clear();
+                            }
+                            
+                            ImGui::PopID();
                         }
                     }
                 }
             } catch (const std::exception&) {}
         };
 
-    if (ImGui::TreeNode("Assets"))
-    {
-        if (ImGui::IsItemClicked(0)) {
-            m_currentFolder = "Assets";
-            if (m_editor) m_editor->selectedFile.Clear();
-        }
-
-        ImGui::Indent(0, 0.5f);
-        DrawFolderTree(assetsPath, "Assets");
-        ImGui::Unindent(0, 0.5f);
-        ImGui::TreePop();
-    }
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.1f, 0.1f, 0.1f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.2f, 0.2f, 0.2f, 0.0f));
+    
+    DrawFolderTree(assetsPath, "Assets", 0);
+    ImGui::Dummy(ImVec2(0, 0));
+    
+    ImGui::PopStyleColor();
+    ImGui::PopStyleColor();
     ImGui::PopStyleColor();
     ImGui::EndChild();
 
@@ -161,7 +229,7 @@ void ProjectWindow::Draw()
     ImGui::SameLine();
 
     // 右侧 - 文件视图
-    ImGui::BeginChild("View", ImVec2(0, panelHeight), false);
+    ImGui::BeginChild("View", ImVec2(0, panelHeight), true);
 
     std::string folderPath = assetsPath;
     size_t pos = m_currentFolder.find('/');
@@ -322,7 +390,7 @@ void ProjectWindow::Draw()
                         {
                             m_renameTargetPath = entry.path().string();
                             m_renameTargetOldName = filename.substr(0, filename.size() - ext.size());
-                            strcpy_s(m_renameBuffer, m_renameTargetOldName.c_str());
+                            strcpy_s(m_renameBuffer, sizeof(m_renameBuffer), m_renameTargetOldName.c_str());
                             m_showRenamePopup = true;
                         }
                         ImGui::Separator();
@@ -402,15 +470,19 @@ void ProjectWindow::CreateNewScript(const std::string& name)
     auto& pm = ProjectManager::GetInstance();
     std::string assetsPath = pm.GetProjectAssetsPath();
     
-    // 脚本放在 Assets/Scripts 目录
-    std::string scriptsPath = assetsPath + "/Scripts";
-    if (!fs::exists(scriptsPath))
-    {
-        fs::create_directories(scriptsPath);
+    std::string targetFolder = assetsPath;
+    if (!m_currentFolder.empty() && m_currentFolder != "Assets") {
+        targetFolder = assetsPath + "/" + m_currentFolder.substr(7);
+    } else {
+        targetFolder = assetsPath + "/Scripts";
     }
     
-    // 生成 .cs C# 脚本文件
-    std::string filePath = scriptsPath + "/" + name + ".cs";
+    if (!fs::exists(targetFolder))
+    {
+        fs::create_directories(targetFolder);
+    }
+    
+    std::string filePath = targetFolder + "/" + name + ".cs";
     
     std::ofstream file(filePath);
     if (file.is_open())
@@ -446,7 +518,12 @@ void ProjectWindow::CreateNewFolder(const std::string& name)
     auto& pm = ProjectManager::GetInstance();
     std::string assetsPath = pm.GetProjectAssetsPath();
     
-    std::string newFolderPath = assetsPath + "/" + name;
+    std::string targetFolder = assetsPath;
+    if (!m_currentFolder.empty() && m_currentFolder != "Assets") {
+        targetFolder = assetsPath + "/" + m_currentFolder.substr(7);
+    }
+    
+    std::string newFolderPath = targetFolder + "/" + name;
     try
     {
         if (!fs::exists(newFolderPath))
@@ -466,7 +543,16 @@ void ProjectWindow::CreateNewScene(const std::string& name)
     auto& pm = ProjectManager::GetInstance();
     std::string assetsPath = pm.GetProjectAssetsPath();
     
-    std::string scenePath = assetsPath + "/Scenes/" + name + ".bin";
+    std::string targetFolder = assetsPath + "/Scenes";
+    if (!m_currentFolder.empty() && m_currentFolder != "Assets") {
+        targetFolder = assetsPath + "/" + m_currentFolder.substr(7);
+    }
+    
+    if (!fs::exists(targetFolder)) {
+        fs::create_directories(targetFolder);
+    }
+    
+    std::string scenePath = targetFolder + "/" + name + ".bin";
     
     try
     {
@@ -630,5 +716,19 @@ void ProjectWindow::AddConsoleMessage(const std::string& message)
     if (m_consoleMessages.size() > 100)
     {
         m_consoleMessages.erase(m_consoleMessages.begin());
+    }
+}
+
+bool ProjectWindow::IsFolderExpanded(const std::string& path) const
+{
+    return m_expandedFolders.find(path) != m_expandedFolders.end();
+}
+
+void ProjectWindow::ToggleFolderExpanded(const std::string& path)
+{
+    if (IsFolderExpanded(path)) {
+        m_expandedFolders.erase(path);
+    } else {
+        m_expandedFolders.insert(path);
     }
 }

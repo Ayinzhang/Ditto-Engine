@@ -42,6 +42,17 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
         bvhTree = new BVHTree(colliders);
 }
 
+void Physics::ClearColliders()
+{
+    for (auto collider : colliders) delete collider;
+    colliders.clear();
+    if (bvhTree)
+    {
+        delete bvhTree;
+        bvhTree = nullptr;
+    }
+}
+
 void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic)
 {
     if (!obj->enabled) return;

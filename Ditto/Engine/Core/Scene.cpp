@@ -3,9 +3,20 @@
 #include "../../Engine/Graphics/Shader.h"
 #include <iostream>
 #include <fstream>
+#include <functional>
 
 // 全局当前场景指针
 Scene* g_currentScene = nullptr;
+
+// 辅助函数：从文件读取字符串
+static std::string ReadString(std::ifstream& file)
+{
+    uint32_t length = 0;
+    file.read(reinterpret_cast<char*>(&length), sizeof(length));
+    std::vector<char> buffer(length + 1, '\0');
+    file.read(buffer.data(), length);
+    return std::string(buffer.data());
+}
 
 Scene::Scene()
 {
@@ -38,6 +49,11 @@ void Scene::ClearScene()
 {
     for (GameObject* obj : gameObjects) delete obj;
     gameObjects.clear();
+    if (rootGameObject)
+    {
+        delete rootGameObject;
+        rootGameObject = nullptr;
+    }
     mainLight = nullptr;
 }
 
@@ -58,7 +74,16 @@ void Scene::CollectRenderData()
             if (!mainLight && obj->GetComponent<LightComponent>()) mainLight = obj;
             for (auto child : obj->children) findLight(child);
         };
-    for (auto root : gameObjects) findLight(root);
+    
+    // 从 rootGameObject 或 gameObjects 列表开始遍历
+    if (rootGameObject)
+    {
+        findLight(rootGameObject);
+    }
+    else
+    {
+        for (auto root : gameObjects) findLight(root);
+    }
 
     std::function<void(GameObject*)> collect = [&](GameObject* obj)
         {
@@ -83,8 +108,16 @@ void Scene::CollectRenderData()
             for (auto child : obj->children) collect(child);
         };
 
-    for (auto root : gameObjects)
-        collect(root);
+    // 从 rootGameObject 或 gameObjects 列表开始遍历
+    if (rootGameObject)
+    {
+        collect(rootGameObject);
+    }
+    else
+    {
+        for (auto root : gameObjects)
+            collect(root);
+    }
 }
 
 void Scene::UpdateSSBOs()
@@ -253,10 +286,12 @@ const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
 bool Scene::SaveScene(const std::string& filepath)
 {
+    std::cout << "[Scene::SaveScene] Starting save to: " << filepath << std::endl;
+    
     std::ofstream file(filepath, std::ios::binary | std::ios::trunc);
     if (!file.is_open())
     {
-        std::cerr << "Failed to open file for writing: " << filepath << std::endl;
+        std::cerr << "[Scene::SaveScene] Failed to open file for writing: " << filepath << std::endl;
         return false;
     }
 
@@ -266,17 +301,42 @@ bool Scene::SaveScene(const std::string& filepath)
         memset(&header, 0, sizeof(header));
         memcpy(header.magic, SCENE_MAGIC, 4);
         header.version = SCENE_VERSION;
-        header.gameObjectCount = static_cast<uint32_t>(gameObjects.size());
         header.fileSize = 0;
+
+        // 计算对象数量：如果存在 rootGameObject，只算1个（它会序列化自己和所有children）
+        // 否则使用 gameObjects 列表的数量
+        if (rootGameObject)
+        {
+            header.gameObjectCount = 1;  // 只有 rootGameObject，它会包含所有子孙
+            std::cout << "[Scene::SaveScene] Using rootGameObject, count = 1" << std::endl;
+            std::cout << "[Scene::SaveScene] rootGameObject name: " << rootGameObject->name << std::endl;
+            std::cout << "[Scene::SaveScene] rootGameObject children: " << rootGameObject->children.size() << std::endl;
+        }
+        else
+        {
+            header.gameObjectCount = static_cast<uint32_t>(gameObjects.size());
+            std::cout << "[Scene::SaveScene] Using gameObjects list, count = " << gameObjects.size() << std::endl;
+        }
 
         file.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
         uint32_t nameLength = static_cast<uint32_t>(name.length());
         file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
         file.write(name.c_str(), nameLength);
+        std::cout << "[Scene::SaveScene] Scene name: " << name << std::endl;
 
-        for (GameObject* obj : gameObjects)
-            obj->Serialize(file);
+        // 序列化对象：如果存在 rootGameObject，从它开始，否则使用 gameObjects
+        if (rootGameObject)
+        {
+            std::cout << "[Scene::SaveScene] Serializing rootGameObject..." << std::endl;
+            rootGameObject->Serialize(file);
+        }
+        else
+        {
+            std::cout << "[Scene::SaveScene] Serializing " << gameObjects.size() << " gameObjects..." << std::endl;
+            for (GameObject* obj : gameObjects)
+                obj->Serialize(file);
+        }
 
         std::streampos endPos = file.tellp();
         header.fileSize = static_cast<uint64_t>(endPos);
@@ -284,11 +344,12 @@ bool Scene::SaveScene(const std::string& filepath)
         file.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
         file.close();
+        std::cout << "[Scene::SaveScene] Save completed. File size: " << header.fileSize << " bytes" << std::endl;
         return true;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error saving scene: " << e.what() << std::endl;
+        std::cerr << "[Scene::SaveScene] Error saving scene: " << e.what() << std::endl;
         file.close();
         return false;
     }
@@ -296,10 +357,12 @@ bool Scene::SaveScene(const std::string& filepath)
 
 bool Scene::LoadScene(const std::string& filepath)
 {
+    std::cout << "[Scene::LoadScene] Starting load from: " << filepath << std::endl;
+    
     std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open())
     {
-        std::cerr << "Failed to open file for reading: " << filepath << std::endl;
+        std::cerr << "[Scene::LoadScene] Failed to open file for reading: " << filepath << std::endl;
         return false;
     }
 
@@ -307,14 +370,18 @@ bool Scene::LoadScene(const std::string& filepath)
     {
         SceneHeader header;
         file.read(reinterpret_cast<char*>(&header), sizeof(header));
+        std::cout << "[Scene::LoadScene] Header: magic=" << header.magic[0] << header.magic[1] << header.magic[2] 
+                  << ", version=" << header.version << ", gameObjectCount=" << header.gameObjectCount 
+                  << ", fileSize=" << header.fileSize << std::endl;
+        
         if (memcmp(header.magic, SCENE_MAGIC, 4) != 0)
         {
-            std::cerr << "Invalid scene file: wrong magic number" << std::endl;
+            std::cerr << "[Scene::LoadScene] Invalid scene file: wrong magic number" << std::endl;
             return false;
         }
         if (header.version != SCENE_VERSION)
         {
-            std::cerr << "Unsupported scene version: " << header.version
+            std::cerr << "[Scene::LoadScene] Unsupported scene version: " << header.version
                 << " (expected: " << SCENE_VERSION << ")" << std::endl;
             return false;
         }
@@ -324,25 +391,99 @@ bool Scene::LoadScene(const std::string& filepath)
         std::vector<char> nameBuffer(nameLength + 1, '\0');
         file.read(nameBuffer.data(), nameLength);
         name = std::string(nameBuffer.data());
+        std::cout << "[Scene::LoadScene] Scene name: " << name << std::endl;
 
         ClearScene();
-        gameObjects.reserve(header.gameObjectCount);
 
-        for (uint32_t i = 0; i < header.gameObjectCount; i++)
+        // 检查第一个对象的名称，如果是场景名称，则它是 rootGameObject
+        // 先预读第一个对象的名称
+        std::streampos firstObjPos = file.tellg();
+        bool firstEnabled = false, firstLocked = false;
+        file.read(reinterpret_cast<char*>(&firstEnabled), sizeof(firstEnabled));
+        file.read(reinterpret_cast<char*>(&firstLocked), sizeof(firstLocked));
+        std::string firstObjName = ReadString(file);
+        file.seekg(firstObjPos);  // 回到第一个对象的位置
+
+        std::cout << "[Scene::LoadScene] First object name: " << firstObjName << std::endl;
+
+        // 如果第一个对象的名称与场景名称相同，说明它是 rootGameObject
+        bool hasRootGameObject = (firstObjName == name);
+        std::cout << "[Scene::LoadScene] hasRootGameObject: " << (hasRootGameObject ? "true" : "false") << std::endl;
+
+        if (hasRootGameObject && header.gameObjectCount > 0)
         {
-            GameObject* newObj = new GameObject(false);  // 不自动添加组件
-            newObj->Deserialize(file);
-            gameObjects.push_back(newObj);
+            std::cout << "[Scene::LoadScene] Deserializing rootGameObject..." << std::endl;
+            // 从 rootGameObject 开始反序列化
+            rootGameObject = new GameObject(false);
+            rootGameObject->Deserialize(file);
+            std::cout << "[Scene::LoadScene] rootGameObject deserialized: " << rootGameObject->name 
+                      << ", children: " << rootGameObject->children.size() << std::endl;
+            
+            // 将所有无父物体的对象添加到 gameObjects 列表
+            std::function<void(GameObject*)> collectRootObjects = [&](GameObject* obj) {
+                for (auto child : obj->children)
+                {
+                    if (child->children.empty())
+                    {
+                        // 叶子节点
+                        gameObjects.push_back(child);
+                    }
+                    else
+                    {
+                        // 非叶子节点，继续遍历
+                        collectRootObjects(child);
+                        gameObjects.push_back(child);
+                    }
+                }
+            };
+            collectRootObjects(rootGameObject);
+            std::cout << "[Scene::LoadScene] Collected " << gameObjects.size() << " objects to gameObjects list" << std::endl;
+            
+            // 跳过剩余的已反序列化的对象（因为 rootGameObject 已经包含了所有子孙）
+            // 实际上不需要跳过，因为 rootGameObject->Deserialize 已经读取了所有数据
+        }
+        else
+        {
+            std::cout << "[Scene::LoadScene] Loading " << header.gameObjectCount << " gameObjects (old format)..." << std::endl;
+            // 旧格式：直接读取所有对象到 gameObjects
+            gameObjects.reserve(header.gameObjectCount);
+            for (uint32_t i = 0; i < header.gameObjectCount; i++)
+            {
+                GameObject* newObj = new GameObject(false);
+                newObj->Deserialize(file);
+                gameObjects.push_back(newObj);
+            }
+            
+            // 创建 rootGameObject 并重新组织父子关系
+            rootGameObject = new GameObject(name);
+            for (GameObject* obj : gameObjects)
+            {
+                if (!obj->parent)
+                {
+                    rootGameObject->children.push_back(obj);
+                    obj->parent = rootGameObject;
+                }
+            }
         }
 
+        // 查找主光源
         mainLight = nullptr;
-        for (GameObject* obj : gameObjects)
-        {
-            if (obj->GetComponent<LightComponent>())
-            {
+        std::function<void(GameObject*)> findLight = [&](GameObject* obj) {
+            if (!mainLight && obj->GetComponent<LightComponent>())
                 mainLight = obj;
-                break;
-            }
+            for (auto child : obj->children)
+                findLight(child);
+        };
+        if (rootGameObject)
+            findLight(rootGameObject);
+        else
+        {
+            for (GameObject* obj : gameObjects)
+                if (obj->GetComponent<LightComponent>())
+                {
+                    mainLight = obj;
+                    break;
+                }
         }
 
         return true;

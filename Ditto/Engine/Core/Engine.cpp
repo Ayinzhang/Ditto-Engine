@@ -69,6 +69,7 @@ void Engine::Run()
     {
         curTime = glfwGetTime(); deltaTime = curTime - lastTime; lastTime = curTime;
 
+        // Play 模式下更新物理，Pause 模式下不更新
         if (state == Play) { curTime = glfwGetTime(); physics->UpdatePhysics(deltaTime); physicsCnt++; physicsTime += glfwGetTime() - curTime; }
         ProcessInput(); glfwPollEvents();
 
@@ -159,16 +160,41 @@ void Engine::ProcessInput()
 void Engine::SetEngineState(State newState)
 {
     if (state == newState) return;
+    
+    State oldState = state;
+    
     switch (newState)
     {
         case Play:
         {
-            physics->GenerateColliders(scene->gameObjects);
+            // 从 Edit 模式进入 Play 模式时，生成碰撞体
+            if (oldState == Edit)
+            {
+                // 如果存在 rootGameObject，从它开始收集碰撞体
+                if (scene->rootGameObject)
+                {
+                    std::vector<GameObject*> rootObjects;
+                    rootObjects.push_back(scene->rootGameObject);
+                    physics->GenerateColliders(rootObjects);
+                }
+                else
+                {
+                    physics->GenerateColliders(scene->gameObjects);
+                }
+            }
+            // 从 Pause 模式恢复 Play 模式，不需要额外操作
+            break;
+        }
+        case Pause:
+        {
+            // 暂停模式，不需要额外操作
             break;
         }
         case Stop:
         {
-            // 重置场景或做其他清理工作
+            // 停止 Play 模式，回到 Edit 模式
+            // 清理物理碰撞体
+            physics->ClearColliders();
             break;
         }
     }

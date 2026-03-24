@@ -39,6 +39,7 @@ struct Physics
 
     virtual void GenerateColliders(const std::vector<GameObject*>& gameobjects);
     virtual void CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic = false);
+    virtual void ClearColliders();  // 清除所有碰撞体
     virtual void UpdatePhysics(float dt);
 
     virtual void IntegrateForce(float dt);

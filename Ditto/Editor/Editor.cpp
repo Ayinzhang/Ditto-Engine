@@ -168,6 +168,12 @@ void Editor::Draw()
     
     // 编辑器模式
     ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
+    
+    // 全局 Ctrl+S 快捷键 - 保存当前场景
+    if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_S))
+    {
+        SaveCurrentScene();
+    }
 
     // 如果项目未加载，显示项目选择界面
     if (showProjectSelector)
@@ -417,8 +423,39 @@ void Editor::DrawToolbar()
 
         ImGui::SetCursorPosX(startX);
 
+        // Play/Pause 按钮
         if (engine->state == Engine::Edit)
         {
+            // Edit 模式：显示绿色 Play 按钮
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.3f, 1.0f));
+            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
+            {
+                // 保存当前场景到临时文件
+                m_tempScenePath = "../../Ditto/Ditto/Temp/PlayModeScene.scene";
+                std::filesystem::create_directories("../../Ditto/Ditto/Temp");
+                engine->scene->SaveScene(m_tempScenePath);
+                
+                // 开始 Play 模式
+                m_isPlaying = true;
+                engine->SetEngineState(Engine::Play);
+            }
+            ImGui::PopStyleColor(2);
+        }
+        else if (engine->state == Engine::Play)
+        {
+            // Play 模式：显示蓝色 Pause 按钮
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.9f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.5f, 1.0f, 1.0f));
+            if (ImGui::Button("Pause", ImVec2(buttonWidth, 0)))
+            {
+                engine->SetEngineState(Engine::Pause);
+            }
+            ImGui::PopStyleColor(2);
+        }
+        else if (engine->state == Engine::Pause)
+        {
+            // Pause 模式：显示绿色 Play 按钮（继续）
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.3f, 1.0f));
             if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
@@ -426,34 +463,46 @@ void Editor::DrawToolbar()
                 engine->SetEngineState(Engine::Play);
             }
             ImGui::PopStyleColor(2);
+        }
 
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(startX + buttonWidth + spacing);
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(startX + buttonWidth + spacing);
 
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-            if (ImGui::Button("Pause", ImVec2(buttonWidth, 0)))
-            {
-            }
+        // Stop 按钮（仅在 Play 或 Pause 模式下可用）
+        if (engine->state == Engine::Edit)
+        {
+            // Edit 模式：Stop 按钮灰色不可用
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+            ImGui::Button("Stop", ImVec2(buttonWidth, 0));
             ImGui::PopStyleColor(2);
         }
         else
         {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
-            {
-            }
-            ImGui::PopStyleColor(2);
-
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(startX + buttonWidth + spacing);
-
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
+            // Play/Pause 模式：显示红色 Stop 按钮
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.9f, 0.2f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
             if (ImGui::Button("Stop", ImVec2(buttonWidth, 0)))
             {
+                // 先停止物理模拟
                 engine->SetEngineState(Engine::Stop);
+                
+                // 加载临时场景文件（恢复到 Play 前的状态）
+                if (!m_tempScenePath.empty() && std::filesystem::exists(m_tempScenePath))
+                {
+                    engine->scene->LoadScene(m_tempScenePath);
+                    
+                    // 场景重新加载后，所有旧的 GameObject 指针都失效了
+                    // 重置选择状态
+                    selectedObject = nullptr;
+                    activeSelection = nullptr;
+                    selectedFile.Clear();
+                    m_expandedGameObjects.clear();
+                }
+                
+                // 结束 Play 模式，回到 Edit 状态
+                m_isPlaying = false;
+                engine->state = Engine::Edit;
             }
             ImGui::PopStyleColor(2);
         }
@@ -523,78 +572,182 @@ std::vector<std::string> Editor::GetSavedLayouts()
     return LayoutManager::GetInstance().GetAllLayoutNames();
 }
 
-void Editor::DrawGameObjectNode(GameObject* obj)
+void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
 {
     ImGui::PushID(obj);
 
     bool hasChildren = !obj->children.empty();
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (activeSelection == obj) flags |= ImGuiTreeNodeFlags_Selected;
-    if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-
-    bool nodeOpen = ImGui::TreeNodeEx(obj->name.c_str(), flags);
-
-    if (ImGui::BeginDragDropSource())
-    {
-        ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
-        ImGui::Text("Move '%s'", obj->name.c_str());
-        ImGui::EndDragDropSource();
-    }
-
-    if (ImGui::BeginDragDropTarget())
-    {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
-        {
-            GameObject* droppedObj = *(GameObject**)payload->Data;
-            if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
-            {
-                if (droppedObj->parent) droppedObj->RemoveFromParent();
-                else
-                {
-                    auto& rootList = engine->scene->gameObjects;
-                    auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
-                    if (it != rootList.end()) rootList.erase(it);
-                }
-                obj->AddChild(droppedObj);
-                engine->scene->MarkDirty();  // 标记场景已修改
+    
+    unsigned int icon = isRoot ? GetDittoIcon() : GetGameObjectIcon();
+    
+    // 计算缩进：每层 18px
+    float indent = depth * 18.0f;
+    
+    if (hasChildren) {
+        bool isExpanded = m_expandedGameObjects.find(obj) != m_expandedGameObjects.end();
+        
+        // 箭头按钮（12px）
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+        if (ImGui::ArrowButton(("##arrow_" + std::to_string((uintptr_t)obj)).c_str(), isExpanded ? ImGuiDir_Down : ImGuiDir_Right)) {
+            if (isExpanded) m_expandedGameObjects.erase(obj);
+            else m_expandedGameObjects.insert(obj);
+        }
+        ImGui::PopStyleVar();
+        
+        // 图标
+        if (icon) {
+            ImGui::SameLine();
+            ImGui::Image((void*)(intptr_t)icon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
+        }
+        
+        // 名称
+        ImGui::SameLine();
+        
+        if (isRoot) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
+        }
+        
+        // 构建显示名称：根节点且有修改时添加星号
+        std::string displayName = obj->name;
+        if (isRoot && sceneDirty) {
+            displayName += " *";
+        }
+        
+        if (ImGui::Selectable(displayName.c_str(), activeSelection == obj)) {
+            activeSelection = obj;
+            if (!lockingSelection) {
+                selectedObject = obj;
+                selectedFile.Clear();
             }
         }
-        ImGui::EndDragDropTarget();
-    }
-
-    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
-    {
-        // 更新"活跃选择"（用于 Hierarchy 高亮）
-        activeSelection = obj;
         
-        // 如果没有锁定 Inspector，才更新显示的物体
-        if (!lockingSelection)
+        if (isRoot) {
+            ImGui::PopStyleColor();
+        }
+        
+        // 拖动源（必须在Selectable之后）
+        if (ImGui::BeginDragDropSource())
         {
-            selectedObject = obj;
-            selectedFile.Clear();  // 清除文件选中，显示 GameObject Inspector
+            ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
+            ImGui::Text("Move '%s'", obj->name.c_str());
+            ImGui::EndDragDropSource();
+        }
+
+        // 拖动目标
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
+            {
+                GameObject* droppedObj = *(GameObject**)payload->Data;
+                if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
+                {
+                    if (droppedObj->parent) droppedObj->RemoveFromParent();
+                    else
+                    {
+                        auto& rootList = engine->scene->gameObjects;
+                        auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
+                        if (it != rootList.end()) rootList.erase(it);
+                    }
+                    obj->AddChild(droppedObj);
+                    engine->scene->MarkDirty();
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        
+        // 子物体
+        if (isExpanded) {
+            for (auto child : obj->children)
+                DrawGameObjectNode(child, false, depth + 1);
+        }
+    } else {
+        // 叶子节点：留出箭头位置（20px = 12px箭头 + 8px间距）+ 深度缩进
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
+        
+        if (icon) {
+            ImGui::Image((void*)(intptr_t)icon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::SameLine();
+        }
+        
+        if (isRoot) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
+        }
+        
+        // 构建显示名称：根节点且有修改时添加星号
+        std::string displayName = obj->name;
+        if (isRoot && sceneDirty) {
+            displayName += " *";
+        }
+        
+        if (ImGui::Selectable(displayName.c_str(), activeSelection == obj)) {
+            activeSelection = obj;
+            if (!lockingSelection) {
+                selectedObject = obj;
+                selectedFile.Clear();
+            }
+        }
+        
+        if (isRoot) {
+            ImGui::PopStyleColor();
+        }
+        
+        // 拖动源（必须在Selectable之后）
+        if (ImGui::BeginDragDropSource())
+        {
+            ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
+            ImGui::Text("Move '%s'", obj->name.c_str());
+            ImGui::EndDragDropSource();
+        }
+
+        // 拖动目标
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
+            {
+                GameObject* droppedObj = *(GameObject**)payload->Data;
+                if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
+                {
+                    if (droppedObj->parent) droppedObj->RemoveFromParent();
+                    else
+                    {
+                        auto& rootList = engine->scene->gameObjects;
+                        auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
+                        if (it != rootList.end()) rootList.erase(it);
+                    }
+                    obj->AddChild(droppedObj);
+                    engine->scene->MarkDirty();
+                }
+            }
+            ImGui::EndDragDropTarget();
         }
     }
-
-    if (ImGui::BeginPopupContextItem())
+    
+    // 对象右键菜单 - 根据当前选中的对象显示不同选项
+    if (ImGui::BeginPopupContextItem(("GameObjectContext_" + std::to_string((uintptr_t)obj)).c_str()))
     {
+        // 只有当选中的是场景根物体时才显示保存选项
+        bool isSelectedRoot = (selectedObject == engine->scene->rootGameObject);
+        if (isSelectedRoot)
+        {
+            if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+            {
+                SaveCurrentScene();
+            }
+            ImGui::Separator();
+        }
+        
         if (ImGui::MenuItem("Create Child"))
         {
             GameObject* newObj = new GameObject("New GameObject");
             obj->AddChild(newObj);
             selectedObject = newObj;
-            selectedFile.Clear();  // 清除文件选中
-            engine->scene->MarkDirty();  // 标记场景已修改
+            selectedFile.Clear();
+            engine->scene->MarkDirty();
         }
         if (ImGui::MenuItem("Copy")) CopySelectedObject();
         if (ImGui::MenuItem("Delete")) DeleteSelectedObject();
         ImGui::EndPopup();
-    }
-
-    if (hasChildren && nodeOpen)
-    {
-        for (auto child : obj->children)
-            DrawGameObjectNode(child);
-        ImGui::TreePop();
     }
 
     ImGui::PopID();
@@ -603,8 +756,11 @@ void Editor::DrawGameObjectNode(GameObject* obj)
 void Editor::DrawHierarchy()
 {
     ImGui::Begin("Hierarchy");
+    
+    ImGui::BeginChild("HierarchyContent", ImVec2(0, 0), true);
 
-    if (ImGui::BeginPopupContextWindow())
+    // 空白处右键菜单 - 创建物体
+    if (ImGui::BeginPopupContextWindow("HierarchyContextWindow"))
     {
         if (ImGui::MenuItem("Create Directional Light"))
         {
@@ -612,7 +768,14 @@ void Editor::DrawHierarchy()
             lightObj->AddComponent<LightComponent>();
             lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
             lightObj->GetComponent<TransformComponent>()->UpdateTransform();
-            engine->scene->gameObjects.push_back(lightObj);
+            if (engine->scene->rootGameObject)
+            {
+                engine->scene->rootGameObject->AddChild(lightObj);
+            }
+            else
+            {
+                engine->scene->gameObjects.push_back(lightObj);
+            }
             selectedObject = lightObj;
             selectedFile.Clear();
             engine->scene->MarkDirty();
@@ -624,7 +787,14 @@ void Editor::DrawHierarchy()
             {
                 GameObject* cube = new GameObject("Cube");
                 cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
-                engine->scene->gameObjects.push_back(cube);
+                if (engine->scene->rootGameObject)
+                {
+                    engine->scene->rootGameObject->AddChild(cube);
+                }
+                else
+                {
+                    engine->scene->gameObjects.push_back(cube);
+                }
                 selectedObject = cube;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
@@ -633,7 +803,14 @@ void Editor::DrawHierarchy()
             {
                 GameObject* sphere = new GameObject("Sphere");
                 sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
-                engine->scene->gameObjects.push_back(sphere);
+                if (engine->scene->rootGameObject)
+                {
+                    engine->scene->rootGameObject->AddChild(sphere);
+                }
+                else
+                {
+                    engine->scene->gameObjects.push_back(sphere);
+                }
                 selectedObject = sphere;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
@@ -657,15 +834,29 @@ void Editor::DrawHierarchy()
                     auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
                     if (it != rootList.end()) rootList.erase(it);
                 }
-                engine->scene->gameObjects.push_back(droppedObj);
-                droppedObj->parent = nullptr;
-                engine->scene->MarkDirty();  // 标记场景已修改
+                if (engine->scene->rootGameObject && droppedObj != engine->scene->rootGameObject)
+                {
+                    engine->scene->rootGameObject->AddChild(droppedObj);
+                }
+                else
+                {
+                    engine->scene->gameObjects.push_back(droppedObj);
+                    droppedObj->parent = nullptr;
+                }
+                engine->scene->MarkDirty();
             }
         }
         ImGui::EndDragDropTarget();
     }
 
-    for (GameObject* obj : engine->scene->gameObjects) DrawGameObjectNode(obj);
+    if (engine->scene->rootGameObject)
+    {
+        DrawGameObjectNode(engine->scene->rootGameObject, true);
+    }
+    else
+    {
+        for (GameObject* obj : engine->scene->gameObjects) DrawGameObjectNode(obj, false);
+    }
 
     // 保存窗口状态
     {
@@ -675,6 +866,7 @@ void Editor::DrawHierarchy()
         //LayoutManager::GetInstance().SaveCurrentWindowState("Hierarchy", pos, size, true, collapsed);
     }
 
+    ImGui::EndChild();
     ImGui::End();
 }
 
@@ -689,6 +881,7 @@ void Editor::DrawScene()
     if (!ImGui::Begin("Scene", nullptr, flags))
     {
         ImGui::End();
+        ImGui::PopStyleColor();
         return;
     }
 
@@ -745,6 +938,7 @@ void Editor::DrawGame()
     if (!ImGui::Begin("Game", nullptr, flags))
     {
         ImGui::End();
+        ImGui::PopStyleColor();
         return;
     }
 
@@ -812,7 +1006,7 @@ void Editor::DrawPopups()
         {
             if (engine && engine->scene && engine->scene->LoadScene(loadPathBuffer))
             {
-                strcpy_s(sceneNameBuffer, engine->scene->name.c_str());
+                strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
                 sceneDirty = false;  // 新加载的场景没有修改
                 ImGui::CloseCurrentPopup();
             }
@@ -923,6 +1117,11 @@ void Editor::CopySelectedObject()
 void Editor::DeleteSelectedObject()
 {
     if (!selectedObject || !engine || !engine->scene) return;
+
+    if (selectedObject == engine->scene->rootGameObject)
+    {
+        return;
+    }
 
     GameObject* parent = selectedObject->parent;
     bool wasRoot = (parent == nullptr);
@@ -1074,7 +1273,7 @@ void Editor::DrawProjectSelector()
         if (selectedProject >= 0 && selectedProject < projects.size())
         {
             renameProjectOldPath = projects[selectedProject].path;
-            strcpy_s(renameProjectBuffer, projects[selectedProject].name.c_str());
+            strcpy_s(renameProjectBuffer, sizeof(renameProjectBuffer), projects[selectedProject].name.c_str());
             showRenameProjectPopup = true;
         }
     }
@@ -1112,15 +1311,49 @@ void Editor::OpenProject(const std::string& projectPath)
         if (proj && !proj->lastScene.empty())
         {
             std::string fullPath = proj->path + "/" + proj->lastScene;
+            std::cout << "[Editor] Loading last scene: " << fullPath << std::endl;
+            
             if (engine && engine->scene)
             {
-                engine->scene->LoadScene(fullPath.c_str());
+                if (engine->scene->LoadScene(fullPath.c_str()))
+                {
+                    std::cout << "[Editor] Scene loaded successfully: " << engine->scene->name << std::endl;
+                    std::cout << "[Editor] GameObject count: " << engine->scene->gameObjects.size() << std::endl;
+                    if (engine->scene->rootGameObject)
+                    {
+                        std::cout << "[Editor] RootGameObject children: " << engine->scene->rootGameObject->children.size() << std::endl;
+                    }
+                }
+                else
+                {
+                    std::cerr << "[Editor] Failed to load scene: " << fullPath << std::endl;
+                    // 创建默认场景
+                    engine->scene->ClearScene();
+                    engine->scene->name = "Default";
+                    engine->scene->rootGameObject = new GameObject("Default");
+                }
                 
                 // 更新 UI
-                strcpy_s(sceneNameBuffer, engine->scene->name.c_str());
+                strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
                 sceneDirty = false;  // 新加载的场景没有修改
                 
                 // 重新设置场景修改回调
+                engine->scene->onModified = [this]() {
+                    this->sceneDirty = true;
+                };
+            }
+        }
+        else
+        {
+            std::cout << "[Editor] No last scene to load, creating default scene" << std::endl;
+            // 创建默认场景
+            if (engine && engine->scene)
+            {
+                engine->scene->ClearScene();
+                engine->scene->name = "Default";
+                engine->scene->rootGameObject = new GameObject("Default");
+                strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
+                sceneDirty = false;
                 engine->scene->onModified = [this]() {
                     this->sceneDirty = true;
                 };
@@ -1136,7 +1369,7 @@ void Editor::LoadSceneFromProject(const std::string& scenePath)
         engine->scene->LoadScene(scenePath.c_str());
         
         // 更新 UI
-        strcpy_s(sceneNameBuffer, engine->scene->name.c_str());
+        strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
         sceneDirty = false;  // 新加载的场景没有修改
         
         // 重新设置场景修改回调
@@ -1241,19 +1474,33 @@ void Editor::SaveCurrentScene()
         return;
     }
 
-    // 保存到默认路径（当前场景的路径）
-    std::string savePath = "Assets/Scenes/" + engine->scene->name + ".bin";
+    // 获取当前项目路径
+    Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+    std::string savePath;
+    
+    if (proj)
+    {
+        // 保存到项目目录下的 Assets/Scenes/
+        savePath = proj->path + "/Assets/Scenes/" + engine->scene->name + ".bin";
+    }
+    else
+    {
+        // 没有项目时，使用相对路径
+        savePath = "Assets/Scenes/" + engine->scene->name + ".bin";
+    }
+    
+    std::cout << "[Editor] Saving scene to: " << savePath << std::endl;
     
     if (engine->scene->SaveScene(savePath.c_str()))
     {
-        std::cout << "[Editor] Scene saved: " << savePath << std::endl;
+        std::cout << "[Editor] Scene saved successfully" << std::endl;
         sceneDirty = false;  // 清除修改标记
         
         // 更新项目配置
-        Project* proj = ProjectManager::GetInstance().GetCurrentProject();
         if (proj)
         {
-            proj->lastScene = savePath;
+            // 保存相对路径到项目配置
+            proj->lastScene = "Assets/Scenes/" + engine->scene->name + ".bin";
         }
     }
     else
@@ -1519,6 +1766,11 @@ void Editor::InitFileIcons()
     // 加载文件夹图标
     m_folderIcon = LoadIcon(m_assetsPath + "/Folder.png");
     m_folderEmptyIcon = LoadIcon(m_assetsPath + "/FolderEmpty.png");
+    m_folderOpenedIcon = LoadIcon(m_assetsPath + "/FolderOpened Icon.png");
+    
+    // 加载特殊图标
+    m_dittoIcon = LoadIcon(m_assetsPath + "/Scene.png");
+    m_gameObjectIcon = LoadIcon(m_assetsPath + "/GameObject.png");
     
     // 加载锁定图标
     m_lockIcon = LoadIcon(m_assetsPath + "/Lock.png");
