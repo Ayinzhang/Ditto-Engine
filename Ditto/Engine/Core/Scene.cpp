@@ -47,13 +47,20 @@ GeometryInstances::~GeometryInstances()
 
 void Scene::ClearScene()
 {
-    for (GameObject* obj : gameObjects) delete obj;
-    gameObjects.clear();
+    // 如果有 rootGameObject，先清空它的 children 指针（避免重复删除）
+    // 因为 children 可能也在 gameObjects 列表中
     if (rootGameObject)
     {
+        // 清空 children 指针，不删除对象（它们会在下面被删除）
+        rootGameObject->children.clear();
         delete rootGameObject;
         rootGameObject = nullptr;
     }
+    
+    // 删除 gameObjects 列表中的所有对象
+    for (GameObject* obj : gameObjects) delete obj;
+    gameObjects.clear();
+    
     mainLight = nullptr;
 }
 

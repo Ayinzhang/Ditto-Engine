@@ -86,6 +86,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     EnsureDirectoryExists(projectPath + "/Assets/Models");
     EnsureDirectoryExists(projectPath + "/Assets/Materials");
     EnsureDirectoryExists(projectPath + "/Assets/Prefabs");
+    EnsureDirectoryExists(projectPath + "/Assets/Scripts");
     
     // 创建默认场景文件
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";

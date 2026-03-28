@@ -126,9 +126,16 @@ void CSharpScriptComponent::OnDestroy()
 
 void CSharpScriptComponent::Serialize(std::ofstream& file) const
 {
+    // 保存脚本名称
     uint32_t nameLen = static_cast<uint32_t>(scriptName.length());
     file.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
     file.write(scriptName.c_str(), nameLen);
+    
+    // 保存脚本路径
+    uint32_t pathLen = static_cast<uint32_t>(scriptPath.length());
+    file.write(reinterpret_cast<const char*>(&pathLen), sizeof(pathLen));
+    file.write(scriptPath.c_str(), pathLen);
+    
     file.write(reinterpret_cast<const char*>(&enabled), sizeof(enabled));
     
     // 序列化字段
@@ -196,10 +203,18 @@ void CSharpScriptComponent::Serialize(std::ofstream& file) const
 
 void CSharpScriptComponent::Deserialize(std::ifstream& file)
 {
+    // 读取脚本名称
     uint32_t nameLen;
     file.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
     scriptName.resize(nameLen);
     file.read(&scriptName[0], nameLen);
+    
+    // 读取脚本路径
+    uint32_t pathLen;
+    file.read(reinterpret_cast<char*>(&pathLen), sizeof(pathLen));
+    scriptPath.resize(pathLen);
+    file.read(&scriptPath[0], pathLen);
+    
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
     
     // 反序列化字段
@@ -295,7 +310,11 @@ void CSharpScriptComponent::OnInspectorGUI()
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
     if (ImGui::SmallButton("X")) 
     { 
-        gameObject->RemoveComponent(this); 
+        gameObject->RemoveComponent(this);
+        // 标记场景为已修改
+        void* editor = CSharpScriptSystem::GetEditor();
+        if (editor)
+            static_cast<Editor*>(editor)->MarkSceneDirty();
         return; 
     }
     
@@ -310,6 +329,7 @@ void CSharpScriptComponent::OnInspectorGUI()
     {
         std::string label = field.name;
         std::string id = "##" + field.name;
+        bool modified = false;
         
         switch (field.type)
         {
@@ -318,7 +338,10 @@ void CSharpScriptComponent::OnInspectorGUI()
                 ImGui::Text("%s", (label + " ").c_str()); ImGui::SameLine();
                 float val = std::get<float>(field.value);
                 if (ImGui::DragFloat(id.c_str(), &val, 0.1f))
+                {
                     field.value = val;
+                    modified = true;
+                }
                 break;
             }
             case ScriptFieldType::Int:
@@ -326,7 +349,10 @@ void CSharpScriptComponent::OnInspectorGUI()
                 ImGui::Text("%s", (label + " ").c_str()); ImGui::SameLine();
                 int val = std::get<int>(field.value);
                 if (ImGui::DragInt(id.c_str(), &val))
+                {
                     field.value = val;
+                    modified = true;
+                }
                 break;
             }
             case ScriptFieldType::Bool:
@@ -334,7 +360,10 @@ void CSharpScriptComponent::OnInspectorGUI()
                 ImGui::Text("%s", (label + " ").c_str()); ImGui::SameLine();
                 bool val = std::get<bool>(field.value);
                 if (ImGui::Checkbox(id.c_str(), &val))
+                {
                     field.value = val;
+                    modified = true;
+                }
                 break;
             }
             case ScriptFieldType::String:
@@ -344,7 +373,10 @@ void CSharpScriptComponent::OnInspectorGUI()
                 char buffer[256] = {};
                 strncpy_s(buffer, val.c_str(), sizeof(buffer) - 1);
                 if (ImGui::InputText(id.c_str(), buffer, sizeof(buffer)))
+                {
                     val = buffer;
+                    modified = true;
+                }
                 break;
             }
             case ScriptFieldType::Vector2:
@@ -353,7 +385,10 @@ void CSharpScriptComponent::OnInspectorGUI()
                 glm::vec2& val = std::get<glm::vec2>(field.value);
                 float vec2[2] = { val.x, val.y };
                 if (ImGui::DragFloat2(id.c_str(), vec2, 0.1f))
+                {
                     val = glm::vec2(vec2[0], vec2[1]);
+                    modified = true;
+                }
                 break;
             }
             case ScriptFieldType::Vector3:
@@ -362,7 +397,10 @@ void CSharpScriptComponent::OnInspectorGUI()
                 glm::vec3& val = std::get<glm::vec3>(field.value);
                 float vec3[3] = { val.x, val.y, val.z };
                 if (ImGui::DragFloat3(id.c_str(), vec3, 0.1f))
+                {
                     val = glm::vec3(vec3[0], vec3[1], vec3[2]);
+                    modified = true;
+                }
                 break;
             }
             case ScriptFieldType::Vector4:
@@ -371,9 +409,20 @@ void CSharpScriptComponent::OnInspectorGUI()
                 glm::vec4& val = std::get<glm::vec4>(field.value);
                 float vec4[4] = { val.x, val.y, val.z, val.w };
                 if (ImGui::DragFloat4(id.c_str(), vec4, 0.1f))
+                {
                     val = glm::vec4(vec4[0], vec4[1], vec4[2], vec4[3]);
+                    modified = true;
+                }
                 break;
             }
+        }
+        
+        // 如果有修改，标记场景为脏
+        if (modified)
+        {
+            void* editor = CSharpScriptSystem::GetEditor();
+            if (editor)
+                static_cast<Editor*>(editor)->MarkSceneDirty();
         }
     }
     
@@ -402,13 +451,13 @@ void CSharpScriptSystem::LogToConsole(const std::string& message)
 {
     if (s_logCallback) {
         s_logCallback(message);
-    } else if (s_editor) {
-        Editor* editor = static_cast<Editor*>(s_editor);
-        if (editor) {
-            editor->AddConsoleMessage(message);
-        }
     } else {
-        std::cout << message << std::endl;
+        void* editor = GetEditor();
+        if (editor) {
+            static_cast<Editor*>(editor)->AddConsoleMessage(message);
+        } else {
+            std::cout << message << std::endl;
+        }
     }
 }
 

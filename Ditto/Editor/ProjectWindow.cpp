@@ -6,6 +6,12 @@
 #include <shlobj.h>
 #include <iostream>
 #include <fstream>
+#include <thread>
+#include <vector>
+#include <algorithm>
+#include <chrono>
+#include <windows.h>
+#include <objbase.h>
 
 namespace fs = std::filesystem;
 
@@ -136,9 +142,38 @@ void ProjectWindow::Draw()
                             
                             // 名称
                             ImGui::SameLine();
-                            if (ImGui::Selectable(folderName.c_str(), isSelected)) {
-                                m_currentFolder = fullPath;
-                                if (m_editor) m_editor->selectedFile.Clear();
+                            ImVec2 textSize = ImGui::CalcTextSize(folderName.c_str());
+                            ImGui::Text(folderName.c_str());
+                            
+                            // 检测点击（使用 InvisibleButton 覆盖文本区域）
+                            ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() - textSize.x - 8, 
+                                                        ImGui::GetCursorPosY() - textSize.y - 4));
+                            ImGui::InvisibleButton(("folder_" + fullPath).c_str(), 
+                                                   ImVec2(textSize.x + 8, textSize.y + 8));
+                            
+                            if (ImGui::IsItemClicked(0))
+                            {
+                                double currentTime = ImGui::GetTime();
+                                bool isDoubleClick = (fullPath == m_lastClickedFolderPath) && 
+                                                     (currentTime - m_lastClickTime < 1.0);
+                                
+                                if (isDoubleClick)
+                                {
+                                    // 双击：在资源管理器中打开文件夹
+                                    std::cout << "[ProjectWindow] Double click on folder: " << folderName << std::endl;
+                                    std::wstring fullPathW = std::filesystem::absolute(fullFsPath).wstring();
+                                    ShellExecuteW(NULL, L"open", L"explorer.exe", (L"/select,\"" + fullPathW + L"\"").c_str(), NULL, SW_SHOW);
+                                    m_lastClickedFolderPath = "";
+                                    m_lastClickTime = 0.0;
+                                }
+                                else
+                                {
+                                    // 单击：选中文件夹
+                                    m_currentFolder = fullPath;
+                                    if (m_editor) m_editor->selectedFile.Clear();
+                                    m_lastClickedFolderPath = fullPath;
+                                    m_lastClickTime = currentTime;
+                                }
                             }
                             
                             // 子文件夹
@@ -163,9 +198,37 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            if (ImGui::Selectable(folderName.c_str(), isSelected)) {
-                                m_currentFolder = fullPath;
-                                if (m_editor) m_editor->selectedFile.Clear();
+                            // 文件夹名称和点击处理
+                            ImVec2 textSize = ImGui::CalcTextSize(folderName.c_str());
+                            ImGui::Text(folderName.c_str());
+                            
+                            ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() - textSize.x - 8, 
+                                                        ImGui::GetCursorPosY() - textSize.y - 4));
+                            ImGui::InvisibleButton(("folder_" + fullPath).c_str(), 
+                                                   ImVec2(textSize.x + 8, textSize.y + 8));
+                            
+                            if (ImGui::IsItemClicked(0))
+                            {
+                                double currentTime = ImGui::GetTime();
+                                bool isDoubleClick = (fullPath == m_lastClickedFolderPath) && 
+                                                     (currentTime - m_lastClickTime < 1.0);
+                                
+                                if (isDoubleClick)
+                                {
+                                    // 双击：在资源管理器中打开文件夹
+                                    std::cout << "[ProjectWindow] Double click on folder: " << folderName << std::endl;
+                                    std::wstring fullPathW = std::filesystem::absolute(fullFsPath).wstring();
+                                    ShellExecuteW(NULL, L"open", L"explorer.exe", (L"/select,\"" + fullPathW + L"\"").c_str(), NULL, SW_SHOW);
+                                    m_lastClickedFolderPath = "";
+                                    m_lastClickTime = 0.0;
+                                }
+                                else
+                                {
+                                    m_currentFolder = fullPath;
+                                    if (m_editor) m_editor->selectedFile.Clear();
+                                    m_lastClickedFolderPath = fullPath;
+                                    m_lastClickTime = currentTime;
+                                }
                             }
                             
                             ImGui::PopID();
@@ -185,9 +248,37 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            if (ImGui::Selectable(folderName.c_str(), isSelected)) {
-                                m_currentFolder = fullPath;
-                                if (m_editor) m_editor->selectedFile.Clear();
+                            // 文件夹名称和点击处理
+                            ImVec2 textSize = ImGui::CalcTextSize(folderName.c_str());
+                            ImGui::Text(folderName.c_str());
+                            
+                            ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() - textSize.x - 8, 
+                                                        ImGui::GetCursorPosY() - textSize.y - 4));
+                            ImGui::InvisibleButton(("folder_" + fullPath).c_str(), 
+                                                   ImVec2(textSize.x + 8, textSize.y + 8));
+                            
+                            if (ImGui::IsItemClicked(0))
+                            {
+                                double currentTime = ImGui::GetTime();
+                                bool isDoubleClick = (fullPath == m_lastClickedFolderPath) && 
+                                                     (currentTime - m_lastClickTime < 1.0);
+                                
+                                if (isDoubleClick)
+                                {
+                                    // 双击：在资源管理器中打开文件夹
+                                    std::cout << "[ProjectWindow] Double click on folder: " << folderName << std::endl;
+                                    std::wstring fullPathW = std::filesystem::absolute(fullFsPath).wstring();
+                                    ShellExecuteW(NULL, L"open", L"explorer.exe", (L"/select,\"" + fullPathW + L"\"").c_str(), NULL, SW_SHOW);
+                                    m_lastClickedFolderPath = "";
+                                    m_lastClickTime = 0.0;
+                                }
+                                else
+                                {
+                                    m_currentFolder = fullPath;
+                                    if (m_editor) m_editor->selectedFile.Clear();
+                                    m_lastClickedFolderPath = fullPath;
+                                    m_lastClickTime = currentTime;
+                                }
                             }
                             
                             ImGui::PopID();
@@ -373,12 +464,44 @@ void ProjectWindow::Draw()
 
                     if (ImGui::IsItemClicked(0))
                     {
+                        std::string filePath = entry.path().string();
                         std::string nameOnly = filename.substr(0, filename.size() - ext.size());
-                        OnFileSelected(entry.path().string(), nameOnly, ext, m_currentFolder);
-
-                        // 加载模型预览
-                        if (m_editor && (ext == ".obj" || ext == ".fbx")) {
-                            m_editor->LoadPreviewModel(entry.path().string());
+                        double currentTime = ImGui::GetTime();
+                        
+                        // 检查是否是双击（1秒内点击同一文件）
+                        bool isDoubleClick = (filePath == m_lastClickedFilePath) && 
+                                             (currentTime - m_lastClickTime < 1.0);
+                        
+                        if (isDoubleClick)
+                        {
+                            // 双击：打开文件
+                            std::cout << "[ProjectWindow] Double click on: " << filename << std::endl;
+                            
+                            if (ext == ".bin")
+                            {
+                                OnLoadScene(filePath);
+                            }
+                            else if (ext == ".cs")
+                            {
+                                OpenCSharpFile(filePath);
+                            }
+                            // 重置点击状态
+                            m_lastClickedFilePath = "";
+                            m_lastClickTime = 0.0;
+                        }
+                        else
+                        {
+                            // 单击：选中文件
+                            OnFileSelected(filePath, nameOnly, ext, m_currentFolder);
+                            
+                            // 加载模型预览
+                            if (m_editor && (ext == ".obj" || ext == ".fbx")) {
+                                m_editor->LoadPreviewModel(filePath);
+                            }
+                            
+                            // 记录点击状态
+                            m_lastClickedFilePath = filePath;
+                            m_lastClickTime = currentTime;
                         }
                     }
 
@@ -426,14 +549,7 @@ void ProjectWindow::Draw()
                         ImGui::EndDragDropSource();
                     }
 
-                    // 双击加载场景
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
-                    {
-                        if (ext == ".bin")
-                        {
-                            OnLoadScene(entry.path().string());
-                        }
-                    }
+                    // 双击检测已在上面的 IsItemClicked 中处理
 
                     currentX += itemWidth;
                     ImGui::EndGroup();
@@ -731,4 +847,204 @@ void ProjectWindow::ToggleFolderExpanded(const std::string& path)
     } else {
         m_expandedFolders.insert(path);
     }
+}
+
+void ProjectWindow::OpenCSharpFile(const std::string& filePath)
+{
+    std::cout << "[ProjectWindow] Opening C# file: " << filePath << std::endl;
+    
+    // 获取项目路径
+    Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+    if (!proj)
+    {
+        std::cerr << "[ProjectWindow] No project loaded" << std::endl;
+        return;
+    }
+    
+    std::cout << "[ProjectWindow] Project name: " << proj->name << std::endl;
+    std::cout << "[ProjectWindow] Project path: " << proj->path << std::endl;
+    
+    // 转换为绝对路径并规范化（统一使用反斜杠）
+    std::filesystem::path absPath = std::filesystem::absolute(proj->path);
+    std::string projectPath = absPath.string();
+    std::replace(projectPath.begin(), projectPath.end(), '/', '\\');
+    
+    std::cout << "[ProjectWindow] Absolute project path: " << projectPath << std::endl;
+    
+    std::string projectName = proj->name;
+    std::string solutionPath = projectPath + "\\" + projectName + ".sln";
+    
+    std::cout << "[ProjectWindow] Solution path: " << solutionPath << std::endl;
+    
+    // 检查解决方案是否存在，不存在则创建
+    if (!fs::exists(solutionPath))
+    {
+        std::cout << "[ProjectWindow] Creating Visual Studio solution: " << solutionPath << std::endl;
+        if (!CreateVisualStudioSolution(projectPath, projectName))
+        {
+            std::cerr << "[ProjectWindow] Failed to create solution" << std::endl;
+            return;
+        }
+    }
+    
+    // 使用 Visual Studio 打开解决方案并定位到文件
+    std::string vsPath = GetVisualStudioPath();
+    if (vsPath.empty())
+    {
+        std::cerr << "[ProjectWindow] Visual Studio not found" << std::endl;
+        return;
+    }
+    
+    // 规范化文件路径
+    std::string normalizedFilePath = filePath;
+    std::replace(normalizedFilePath.begin(), normalizedFilePath.end(), '/', '\\');
+    
+    std::cout << "[ProjectWindow] Opening solution: " << solutionPath << std::endl;
+    std::cout << "[ProjectWindow] Target file: " << normalizedFilePath << std::endl;
+    
+    // 使用 devenv 打开解决方案和文件
+    // 格式: devenv "solution.sln" /Edit "filepath"
+    std::string args = "\"" + solutionPath + "\" /Edit \"" + normalizedFilePath + "\"";
+    
+    HINSTANCE result = ShellExecuteA(NULL, "open", vsPath.c_str(), args.c_str(), NULL, SW_SHOW);
+    
+    if ((intptr_t)result <= 32)
+    {
+        std::cerr << "[ProjectWindow] Failed to open Visual Studio, error: " << (intptr_t)result << std::endl;
+        return;
+    }
+    
+    std::cout << "[ProjectWindow] Visual Studio opened successfully" << std::endl;
+}
+
+bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, const std::string& projectName)
+{
+    // 创建 .csproj 文件
+    std::string csprojPath = projectPath + "/" + projectName + ".csproj";
+    std::ofstream csprojFile(csprojPath);
+    if (!csprojFile.is_open())
+    {
+        std::cerr << "[ProjectWindow] Failed to create .csproj file" << std::endl;
+        return false;
+    }
+    
+    csprojFile << "<Project Sdk=\"Microsoft.NET.Sdk\">\n";
+    csprojFile << "  <PropertyGroup>\n";
+    csprojFile << "    <TargetFramework>net8.0</TargetFramework>\n";
+    csprojFile << "    <ImplicitUsings>enable</ImplicitUsings>\n";
+    csprojFile << "    <Nullable>enable</Nullable>\n";
+    csprojFile << "  </PropertyGroup>\n";
+    csprojFile << "  <ItemGroup>\n";
+    
+    // 添加所有 .cs 文件
+    for (const auto& entry : fs::recursive_directory_iterator(projectPath))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".cs")
+        {
+            std::string relativePath = fs::relative(entry.path(), projectPath).string();
+            csprojFile << "    <Compile Include=\"" << relativePath << "\" />\n";
+        }
+    }
+    
+    csprojFile << "  </ItemGroup>\n";
+    csprojFile << "</Project>\n";
+    csprojFile.close();
+    
+    // 创建 .sln 文件
+    std::string slnPath = projectPath + "/" + projectName + ".sln";
+    std::ofstream slnFile(slnPath);
+    if (!slnFile.is_open())
+    {
+        std::cerr << "[ProjectWindow] Failed to create .sln file" << std::endl;
+        return false;
+    }
+    
+    // 生成 GUID
+    GUID guid;
+    CoCreateGuid(&guid);
+    char guidStr[40];
+    sprintf_s(guidStr, "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+              guid.Data1, guid.Data2, guid.Data3,
+              guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],
+              guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
+    
+    slnFile << "Microsoft Visual Studio Solution File, Format Version 12.00\n";
+    slnFile << "# Visual Studio Version 17\n";
+    slnFile << "VisualStudioVersion = 17.0.31903.59\n";
+    slnFile << "MinimumVisualStudioVersion = 10.0.40219.1\n";
+    slnFile << "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"" << projectName << "\", \"" << projectName << ".csproj\", \"" << guidStr << "\"\n";
+    slnFile << "EndProject\n";
+    slnFile << "Global\n";
+    slnFile << "  GlobalSection(SolutionConfigurationPlatforms) = preSolution\n";
+    slnFile << "    Debug|Any CPU = Debug|Any CPU\n";
+    slnFile << "    Release|Any CPU = Release|Any CPU\n";
+    slnFile << "  EndGlobalSection\n";
+    slnFile << "  GlobalSection(ProjectConfigurationPlatforms) = postSolution\n";
+    slnFile << "    {" << guidStr << "}.Debug|Any CPU.ActiveCfg = Debug|Any CPU\n";
+    slnFile << "    {" << guidStr << "}.Debug|Any CPU.Build.0 = Debug|Any CPU\n";
+    slnFile << "    {" << guidStr << "}.Release|Any CPU.ActiveCfg = Release|Any CPU\n";
+    slnFile << "    {" << guidStr << "}.Release|Any CPU.Build.0 = Release|Any CPU\n";
+    slnFile << "  EndGlobalSection\n";
+    slnFile << "EndGlobal\n";
+    slnFile.close();
+    
+    std::cout << "[ProjectWindow] Created solution: " << slnPath << std::endl;
+    return true;
+}
+
+std::string ProjectWindow::GetVisualStudioPath()
+{
+    // 尝试从注册表获取 Visual Studio 路径
+    HKEY hKey;
+    const char* subKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\devenv.exe";
+    
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        char path[MAX_PATH];
+        DWORD pathSize = MAX_PATH;
+        if (RegQueryValueExA(hKey, NULL, NULL, NULL, (LPBYTE)path, &pathSize) == ERROR_SUCCESS)
+        {
+            RegCloseKey(hKey);
+            return std::string(path);
+        }
+        RegCloseKey(hKey);
+    }
+    
+    // 尝试常见路径
+    std::vector<std::string> possiblePaths = {
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\devenv.exe",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\IDE\\devenv.exe",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\Common7\\IDE\\devenv.exe",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\devenv.exe",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\Common7\\IDE\\devenv.exe",
+        "D:\\Visual Studio 2022\\Common7\\IDE\\devenv.exe"
+    };
+    
+    for (const auto& path : possiblePaths)
+    {
+        if (fs::exists(path))
+        {
+            return path;
+        }
+    }
+    
+    // 最后尝试在 PATH 中查找
+    char pathEnv[MAX_PATH];
+    if (GetEnvironmentVariableA("PATH", pathEnv, MAX_PATH) > 0)
+    {
+        std::string pathStr(pathEnv);
+        size_t pos = 0;
+        while ((pos = pathStr.find(';')) != std::string::npos)
+        {
+            std::string dir = pathStr.substr(0, pos);
+            std::string devenvPath = dir + "\\devenv.exe";
+            if (fs::exists(devenvPath))
+            {
+                return devenvPath;
+            }
+            pathStr.erase(0, pos + 1);
+        }
+    }
+    
+    return "";
 }

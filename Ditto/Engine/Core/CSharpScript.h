@@ -71,6 +71,12 @@ struct CSharpScriptSystem
     static void SetEditor(void* editor) { s_editor = editor; }
     static void LogToConsole(const std::string& message);
     
+    // 获取 Editor 指针（用于标记场景脏）
+    static void* GetEditor() { return s_editor; }
+    
+    // 声明 Editor 类为友元，以便访问 s_editor
+    friend class Editor;
+    
 private:
     static bool s_initialized;
     static LogCallback s_logCallback;

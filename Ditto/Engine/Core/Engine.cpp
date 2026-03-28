@@ -1,11 +1,13 @@
 #include "Engine.h"
 #include <iostream>
 #include <stdexcept>
+#include <functional>
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
+#include "CSharpScript.h"
 
 using namespace std;
 using namespace glm;
@@ -56,6 +58,37 @@ Engine::~Engine()
     glfwTerminate();
 }
 
+// 辅助函数：遍历所有 GameObject 并执行回调
+template<typename Func>
+void ForEachGameObject(Scene* scene, Func&& func)
+{
+    if (!scene) return;
+    
+    // 从 rootGameObject 开始遍历
+    if (scene->rootGameObject)
+    {
+        std::function<void(GameObject*)> traverse = [&](GameObject* obj)
+        {
+            if (!obj) return;
+            // 跳过标记为删除的对象
+            if (obj->removeComps.empty() == false) return;
+            func(obj);
+            for (GameObject* child : obj->children)
+                traverse(child);
+        };
+        traverse(scene->rootGameObject);
+    }
+    else
+    {
+        for (GameObject* obj : scene->gameObjects)
+        {
+            if (!obj) continue;
+            if (obj->removeComps.empty() == false) continue;
+            func(obj);
+        }
+    }
+}
+
 void Engine::Run()
 {
     // 如果editor还没有创建，现在创建它（此时gameMode已经确定）
@@ -69,8 +102,27 @@ void Engine::Run()
     {
         curTime = glfwGetTime(); deltaTime = curTime - lastTime; lastTime = curTime;
 
-        // Play 模式下更新物理，Pause 模式下不更新
-        if (state == Play) { curTime = glfwGetTime(); physics->UpdatePhysics(deltaTime); physicsCnt++; physicsTime += glfwGetTime() - curTime; }
+        // Play 模式下更新物理和脚本，Pause 模式下不更新
+        if (state == Play) 
+        { 
+            curTime = glfwGetTime(); 
+            physics->UpdatePhysics(deltaTime); 
+            physicsCnt++; 
+            physicsTime += glfwGetTime() - curTime; 
+            
+            // 调用所有 C# 脚本的 Update 方法
+            ForEachGameObject(scene, [](GameObject* obj)
+            {
+                for (Component* comp : obj->components)
+                {
+                    if (comp->index == (1 << 10))  // CSharpScriptComponent
+                    {
+                        CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
+                        script->Update();
+                    }
+                }
+            });
+        }
         ProcessInput(); glfwPollEvents();
 
         glfwGetFramebufferSize(window, &window_width, &window_height);
@@ -167,7 +219,7 @@ void Engine::SetEngineState(State newState)
     {
         case Play:
         {
-            // 从 Edit 模式进入 Play 模式时，生成碰撞体
+            // 从 Edit 模式进入 Play 模式时，生成碰撞体并调用 Start
             if (oldState == Edit)
             {
                 // 如果存在 rootGameObject，从它开始收集碰撞体
@@ -181,6 +233,19 @@ void Engine::SetEngineState(State newState)
                 {
                     physics->GenerateColliders(scene->gameObjects);
                 }
+                
+                // 调用所有 C# 脚本的 Start 方法
+                ForEachGameObject(scene, [](GameObject* obj)
+                {
+                    for (Component* comp : obj->components)
+                    {
+                        if (comp->index == (1 << 10))  // CSharpScriptComponent
+                        {
+                            CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
+                            script->Start();
+                        }
+                    }
+                });
             }
             // 从 Pause 模式恢复 Play 模式，不需要额外操作
             break;
@@ -193,6 +258,20 @@ void Engine::SetEngineState(State newState)
         case Stop:
         {
             // 停止 Play 模式，回到 Edit 模式
+            // 调用所有 C# 脚本的 OnDestroy 方法
+            ForEachGameObject(scene, [](GameObject* obj)
+            {
+                for (Component* comp : obj->components)
+                {
+                    if (comp->index == (1 << 10))  // CSharpScriptComponent
+                    {
+                        CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
+                        script->OnDestroy();
+                        script->started = false;  // 重置 started 状态
+                    }
+                }
+            });
+            
             // 清理物理碰撞体
             physics->ClearColliders();
             break;

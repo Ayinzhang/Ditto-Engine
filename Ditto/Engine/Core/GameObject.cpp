@@ -6,6 +6,13 @@
 #include <fstream>
 #include <algorithm>
 
+// 组件索引定义
+constexpr int TRANSFORM_INDEX = 1 << 0;
+constexpr int LIGHT_INDEX = 1 << 1;
+constexpr int RENDERER_INDEX = 1 << 2;
+constexpr int RIGIDBODY_INDEX = 1 << 3;
+constexpr int CSHARP_SCRIPT_INDEX = 1 << 10;
+
 static void WriteString(std::ofstream& file, const std::string& str)
 {
     uint32_t length = static_cast<uint32_t>(str.length());
@@ -236,10 +243,11 @@ void GameObject::Deserialize(std::ifstream& file)
         Component* newComp = nullptr;
         switch (index)
         {
-        case 1 << 0: newComp = new TransformComponent(); break;
-        case 1 << 1: newComp = new LightComponent(); break;
-        case 1 << 2: newComp = new RendererComponent(); break;
-        case 1 << 3: newComp = new RigidbodyComponent(); break;
+        case TRANSFORM_INDEX: newComp = new TransformComponent(); break;
+        case LIGHT_INDEX: newComp = new LightComponent(); break;
+        case RENDERER_INDEX: newComp = new RendererComponent(); break;
+        case RIGIDBODY_INDEX: newComp = new RigidbodyComponent(); break;
+        case CSHARP_SCRIPT_INDEX: newComp = new CSharpScriptComponent(); break;
         default: continue;
         }
         if (newComp)

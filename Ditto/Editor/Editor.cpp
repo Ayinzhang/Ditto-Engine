@@ -1452,17 +1452,16 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
     {
         // C# 脚本 - 创建 CSharpScriptComponent
         CSharpScriptComponent* csScript = new CSharpScriptComponent();
-        if (CSharpScriptSystem::LoadScript(scriptPath, csScript))
-        {
-            obj->components.push_back(csScript);
-            obj->compMask += csScript->index;
-            std::cout << "[Editor] C# script added successfully!" << std::endl;
-        }
-        else
-        {
-            delete csScript;
-            std::cerr << "[Editor] Failed to load C# script" << std::endl;
-        }
+        csScript->scriptPath = scriptPath;
+        csScript->scriptName = std::filesystem::path(scriptPath).filename().stem().string();
+        csScript->ParseScriptFields();
+        
+        obj->components.push_back(csScript);
+        obj->compMask += csScript->index;
+        std::cout << "[Editor] C# script added: " << csScript->scriptName << std::endl;
+        
+        // 标记场景为已修改
+        sceneDirty = true;
     }
 }
 

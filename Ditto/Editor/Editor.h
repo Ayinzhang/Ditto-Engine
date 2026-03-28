@@ -90,6 +90,9 @@ struct Editor
     // 保存当前场景（带修改检查）
     void SaveCurrentScene();
     
+    // 标记场景为已修改
+    void MarkSceneDirty() { sceneDirty = true; }
+    
     // 打包发布
     void BuildProject();
     
