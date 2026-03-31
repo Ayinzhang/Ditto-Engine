@@ -12,6 +12,7 @@ using namespace glm;
 #include "LayoutManager.h"
 #include "ProjectWindow.h"
 #include "InspectorWindow.h"
+#include "SceneWindow.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
@@ -93,6 +94,7 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     // 初始化窗口组件
     m_projectWindow = new ProjectWindow(this);
     m_inspectorWindow = new InspectorWindow(this);
+    m_sceneWindow = new SceneWindow(this);
     
     // 设置脚本日志回调
     CSharpScriptSystem::SetEditor(this);
@@ -872,59 +874,8 @@ void Editor::DrawHierarchy()
 
 void Editor::DrawScene()
 {
-    // 设置透明背景 - 确保在Begin之前设置
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
-    ImGui::SetNextWindowBgAlpha(0.0f);
-
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground;
-
-    if (!ImGui::Begin("Scene", nullptr, flags))
-    {
-        ImGui::End();
-        ImGui::PopStyleColor();
-        return;
-    }
-
-    // 只有Scene窗口获得焦点时才激活Scene相机控制
-    if (ImGui::IsWindowFocused()) isSceneActive = true;
-
-    // 获取窗口渲染区域并调用引擎渲染Scene视图（编辑器视角）
-    ImRect sceneViewportRect = GetCurrentViewportRect();
-    ImGui::GetWindowDrawList()->PushClipRect(sceneViewportRect.Min, sceneViewportRect.Max, true);
-    engine->RenderSceneToViewport(sceneViewportRect, false);
-    ImGui::GetWindowDrawList()->PopClipRect();
-
-    // 保存窗口状态
-    {
-        ImVec2 pos = ImGui::GetWindowPos();
-        ImVec2 size = ImGui::GetWindowSize();
-        bool collapsed = ImGui::IsWindowCollapsed();
-        //LayoutManager::GetInstance().SaveCurrentWindowState("Scene", pos, size, true, collapsed);
-    }
-
-    // 避免文字被遮挡，用ForegroundDrawList
-    frame++; deltaTime += engine->deltaTime;
-    if (deltaTime > 1.0f)
-    {
-        fps = frame / deltaTime;
-        ppf = 1e6f * engine->physicsTime / engine->physicsCnt;
-        frame = 0; deltaTime = 0; engine->physicsCnt = 0; engine->physicsTime = 0;
-    }
-    else if (deltaTime < 0) deltaTime = 0;
-    ImVec2 windowPos = ImGui::GetWindowPos();
-    ImVec2 windowSize = ImGui::GetWindowSize();
-
-    ImGui::GetForegroundDrawList()->AddText(
-        ImVec2(windowPos.x + windowSize.x - 80, windowPos.y + 20),
-        IM_COL32(0, 255, 0, 255), ("FPS: " + std::to_string((int)fps)).c_str()
-    );
-    if (engine->state == Engine::State::Play)
-        ImGui::GetForegroundDrawList()->AddText(
-            ImVec2(windowPos.x + windowSize.x - 80, windowPos.y + 40),
-            IM_COL32(0, 255, 0, 255), ("PPF: " + std::to_string((int)ppf)).c_str()
-        );
-    ImGui::End();
-    ImGui::PopStyleColor();
+    if (m_sceneWindow)
+        m_sceneWindow->Draw();
 }
 
 void Editor::DrawGame()

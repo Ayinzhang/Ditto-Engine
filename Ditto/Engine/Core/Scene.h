@@ -25,7 +25,6 @@ struct GeometryInstances
     std::vector<glm::vec4> instanceColors;
     GLuint modelSSBO = 0, colorSSBO = 0;
     size_t instanceCount = 0;
-    bool dirty = true;
 
     GeometryInstances(RendererComponent::Type t) : type(t) {}
     ~GeometryInstances();
@@ -60,6 +59,8 @@ struct Scene
         const glm::vec3& viewPos, int viewportWidth, int viewportHeight);
 
     void InitializeBaseGeometries(Resource* resource);
+
+    GameObject* RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4& view, const glm::mat4& projection, int viewportWidth, int viewportHeight);
 
     glm::vec3 GetLightColor() const;
     glm::vec3 GetLightDirection() const;

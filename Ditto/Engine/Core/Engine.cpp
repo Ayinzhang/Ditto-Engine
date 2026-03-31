@@ -171,15 +171,7 @@ void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
 void Engine::ProcessInput()
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) state = Exit;
-    if (editor && editor->isSceneActive)
-    {
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) sceneCamera->position += sceneCamera->forward * keySpeed;
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) sceneCamera->position -= sceneCamera->forward * keySpeed;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) sceneCamera->position -= sceneCamera->right * keySpeed;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) sceneCamera->position += sceneCamera->right * keySpeed;
-        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) sceneCamera->position += sceneCamera->up * keySpeed;
-        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) sceneCamera->position -= sceneCamera->up * keySpeed;
-    }
+    // 相机控制已移到 SceneWindow，使用方向键控制
 
     static bool altPressedLastFrame = false;
     bool altPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;

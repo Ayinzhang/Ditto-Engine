@@ -71,7 +71,6 @@ void Scene::CollectRenderData()
         pair.second->modelMatrices.clear();
         pair.second->instanceColors.clear();
         pair.second->instanceCount = 0;
-        pair.second->dirty = true;
     }
 
     mainLight = nullptr;
@@ -108,7 +107,6 @@ void Scene::CollectRenderData()
                     batch->modelMatrices.push_back(transform->GetWorldModel());
                     batch->instanceColors.push_back(glm::vec4(renderer->color));
                     batch->instanceCount++;
-                    batch->dirty = true;
                 }
             }
 
@@ -132,7 +130,7 @@ void Scene::UpdateSSBOs()
     for (auto& pair : geometryBatches)
     {
         GeometryInstances* batch = pair.second;
-        if (!batch->dirty || batch->instanceCount == 0) continue;
+        if (batch->instanceCount == 0) continue;
 
         if (batch->modelSSBO == 0) glGenBuffers(1, &batch->modelSSBO);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
@@ -147,7 +145,6 @@ void Scene::UpdateSSBOs()
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-        batch->dirty = false;
     }
 }
 
@@ -280,7 +277,54 @@ float Scene::GetLightIntensity() const
     return 1.0f;
 }
 
-// --- ���л�ͷ ---
+GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4& view, const glm::mat4& projection, int viewportWidth, int viewportHeight)
+{
+    float ndcX = (2.0f * mousePos.x / viewportWidth) - 1.0f;
+    float ndcY = 1.0f - (2.0f * mousePos.y / viewportHeight);
+    glm::vec4 rayClip = glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+    glm::mat4 invProj = glm::inverse(projection);
+    glm::vec4 rayEye = invProj * rayClip;
+    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+    glm::mat4 invView = glm::inverse(view);
+    glm::vec3 rayDir = glm::normalize(glm::vec3(invView * rayEye));
+
+    GameObject* closest = nullptr;
+    float closestDist = FLT_MAX;
+
+    std::function<void(GameObject*)> checkObject = [&](GameObject* obj)
+    {
+        if (!obj->enabled) return;
+        RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+        TransformComponent* transform = obj->GetComponent<TransformComponent>();
+        if (!renderer || !transform || !renderer->enabled || !transform->enabled) return;
+
+        glm::vec3 objPos = transform->position;
+        glm::vec3 camPos = glm::vec3(invView[3]);
+
+        glm::vec3 oc = camPos - objPos;
+        float b = glm::dot(oc, rayDir);
+        float c = glm::dot(oc, oc) - 1.0f;
+        float h = b * b - c;
+        if (h >= 0.0f)
+        {
+            float t = -b - std::sqrt(h);
+            if (t > 0.0f && t < closestDist)
+            {
+                closestDist = t;
+                closest = obj;
+            }
+        }
+    };
+
+    if (rootGameObject)
+        checkObject(rootGameObject);
+    else
+        for (auto obj : gameObjects) checkObject(obj);
+
+    return closest;
+}
+
+// --- 场景文件头结构体定义 --- ���л�ͷ ---
 struct SceneHeader
 {
     char magic[4];

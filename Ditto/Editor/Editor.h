@@ -19,6 +19,8 @@ namespace ImGui { class ImTextureID; }
 #include "InspectorWindow.h"
 #include "../Engine/Core/CSharpScript.h"
 
+class SceneWindow;
+
 // 选中的文件信息
 struct SelectedFile {
     std::string path;        // 完整路径
@@ -33,31 +35,30 @@ struct SelectedFile {
 struct Editor
 {
     Engine* engine = nullptr;
-    GameObject* selectedObject = nullptr;  // Inspector 显示的物体（锁定后不变）
-    GameObject* activeSelection = nullptr;  // 当前选中的物体（用于 Hierarchy 高亮）
-    std::set<GameObject*> m_expandedGameObjects;  // Hierarchy 展开状态
-    SelectedFile selectedFile;   // 选中的文件
+    GameObject* selectedObject = nullptr;
+    GameObject* activeSelection = nullptr;
+    std::set<GameObject*> m_expandedGameObjects;
+    SelectedFile selectedFile;
     char sceneNameBuffer[16] = "Default";
     char layoutNameBuffer[32] = "Default";
     char projectNameBuffer[32] = "MyProject";
     bool isSceneActive;
     bool showSavePopup, showLoadPopup, showSaveLayoutPopup;
-    bool showBuildPopup = false;  // 打包发布弹窗
-    bool showProjectManager = false;  // 项目管理界面
+    bool showBuildPopup = false;
+    bool showProjectManager = false;
     bool showNewProjectPopup = false;
     bool showRenameProjectPopup = false;
     std::string renameProjectOldPath;
     char renameProjectBuffer[64] = "";
     bool showProjectSelector = false;
     bool projectLoaded = false;
-    bool sceneDirty = false;  // 场景是否有修改未保存
-    bool lockingSelection = false;  // 是否锁定当前选择（Inspector锁定后不再切换）
+    bool sceneDirty = false;
+    bool lockingSelection = false;
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
     int frame; float fps, ppf, deltaTime;
     
-    // Play模式相关
-    std::string m_tempScenePath;  // 临时场景文件路径（Play时保存的场景）
+    std::string m_tempScenePath;
     bool m_isPlaying = false;     // 是否正在Play模式
 
     Editor(void* window, bool gameMode = false, const std::string& projectPath = "");
@@ -147,4 +148,5 @@ private:
     // 窗口组件
     ProjectWindow* m_projectWindow = nullptr;
     InspectorWindow* m_inspectorWindow = nullptr;
+    SceneWindow* m_sceneWindow = nullptr;
 };

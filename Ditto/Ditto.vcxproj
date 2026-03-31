@@ -328,6 +328,7 @@
     <ClInclude Include="Editor\InspectorWindow.h" />
     <ClInclude Include="Editor\LayoutManager.h" />
     <ClInclude Include="Editor\ProjectWindow.h" />
+    <ClInclude Include="Editor\SceneWindow.h" />
     <ClInclude Include="Engine\Core\CSharpScript.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
@@ -509,6 +510,7 @@
     <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp" />
     <ClCompile Include="Editor\Editor.cpp" />
     <ClCompile Include="Editor\InspectorWindow.cpp" />
+    <ClCompile Include="Editor\SceneWindow.cpp" />
     <ClCompile Include="Editor\LayoutManager.cpp" />
     <ClCompile Include="Editor\ProjectWindow.cpp" />
     <ClCompile Include="Engine\Core\CSharpScript.cpp" />
