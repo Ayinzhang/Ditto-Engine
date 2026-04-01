@@ -25,7 +25,10 @@ private:
     HandleAxis m_highlightedAxis = HandleAxis::None;
     HandleAxis m_draggingAxis = HandleAxis::None;
     bool m_isDragging = false;
+    bool m_isRotatingCamera = false;
+    bool m_justFinishedDrag = false;  // Flag to skip selection after drag ends
     ImVec2D m_dragStartMousePos;
+    ImVec2D m_lastMousePos;
     glm::vec3 m_originalPosition;
     glm::vec3 m_originalRotation;
     glm::vec3 m_originalScale;
@@ -35,8 +38,11 @@ private:
     void DrawTranslateGizmo(const glm::vec3& worldPos, float scale);
     void DrawRotateGizmo(const glm::vec3& worldPos, float scale);
     void DrawScaleGizmo(const glm::vec3& worldPos, float scale);
+    void DrawAxisGizmo();
     void HandleMouseInput();
     void HandleCameraMovement();
+    void HandleCameraRotation();
+    void HandleObjectSelection();
     HandleAxis RaycastGizmos(const ImVec2D& mousePos);
     float DistToRotateRing(const ImVec2D& mousePos, const glm::vec3& worldPos, int axis, float ringRadius);
     ImVec2D WorldToScreen(const glm::vec3& worldPos);

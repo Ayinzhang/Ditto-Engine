@@ -396,37 +396,71 @@ void SceneWindow::HandleMouseInput()
     if (m_isDragging && ImGui::IsMouseDown(0))
     {
         ImVec2D currentMousePos(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-        ImVec2D delta(currentMousePos.x - m_dragStartMousePos.x, currentMousePos.y - m_dragStartMousePos.y);
-
+        
+        // Calculate screen-space axis direction for more accurate dragging
+        Camera* camera = m_editor->engine->sceneCamera;
+        glm::vec3 worldPos = transform->position;
+        ImVec2D screenPos = WorldToScreen(worldPos);
+        
+        // Get screen-space axis directions
+        glm::vec3 axisDir(0);
+        if (m_draggingAxis == HandleAxis::X) axisDir = glm::vec3(1, 0, 0);
+        else if (m_draggingAxis == HandleAxis::Y) axisDir = glm::vec3(0, 1, 0);
+        else if (m_draggingAxis == HandleAxis::Z) axisDir = glm::vec3(0, 0, 1);
+        
+        ImVec2D screenAxisEnd = WorldToScreen(worldPos + axisDir * 0.5f);
+        ImVec2D screenAxisDir(screenAxisEnd.x - screenPos.x, screenAxisEnd.y - screenPos.y);
+        
+        // Normalize screen axis direction
+        float axisLen = std::sqrt(screenAxisDir.x * screenAxisDir.x + screenAxisDir.y * screenAxisDir.y);
+        if (axisLen > 0.001f)
+        {
+            screenAxisDir.x /= axisLen;
+            screenAxisDir.y /= axisLen;
+        }
+        else
+        {
+            // Fallback if axis is perpendicular to view
+            screenAxisDir.x = (m_draggingAxis == HandleAxis::X) ? 1 : 0;
+            screenAxisDir.y = (m_draggingAxis == HandleAxis::Y) ? -1 : 0;
+        }
+        
+        // Calculate mouse movement projected onto screen axis
+        ImVec2D mouseDelta(currentMousePos.x - m_dragStartMousePos.x, currentMousePos.y - m_dragStartMousePos.y);
+        float projectedDelta = mouseDelta.x * screenAxisDir.x + mouseDelta.y * screenAxisDir.y;
+        
+        // Calculate perpendicular movement for Z axis fallback
+        float perpDelta = mouseDelta.x;
+        
         switch (m_toolMode)
         {
         case ToolMode::Translate:
         {
-            float sensitivity = 0.01f;
+            float sensitivity = 0.02f;
             glm::vec3 newPos = m_originalPosition;
-            if (m_draggingAxis == HandleAxis::X) newPos.x += delta.x * sensitivity;
-            if (m_draggingAxis == HandleAxis::Y) newPos.y -= delta.y * sensitivity;
-            if (m_draggingAxis == HandleAxis::Z) newPos.z += delta.x * sensitivity;
+            if (m_draggingAxis == HandleAxis::X) newPos.x += projectedDelta * sensitivity;
+            if (m_draggingAxis == HandleAxis::Y) newPos.y += projectedDelta * sensitivity;
+            if (m_draggingAxis == HandleAxis::Z) newPos.z += projectedDelta * sensitivity;
             transform->position = newPos;
             break;
         }
         case ToolMode::Rotate:
         {
-            float sensitivity = 0.5f;
+            float sensitivity = 1.0f;
             glm::vec3 newRot = m_originalRotation;
-            if (m_draggingAxis == HandleAxis::X) newRot.x += delta.y * sensitivity;
-            if (m_draggingAxis == HandleAxis::Y) newRot.y += delta.x * sensitivity;
-            if (m_draggingAxis == HandleAxis::Z) newRot.z += delta.x * sensitivity;
+            if (m_draggingAxis == HandleAxis::X) newRot.x += projectedDelta * sensitivity;
+            if (m_draggingAxis == HandleAxis::Y) newRot.y += projectedDelta * sensitivity;
+            if (m_draggingAxis == HandleAxis::Z) newRot.z += projectedDelta * sensitivity;
             transform->rotation = newRot;
             break;
         }
         case ToolMode::Scale:
         {
-            float sensitivity = 0.01f;
+            float sensitivity = 0.02f;
             glm::vec3 newScale = m_originalScale;
-            if (m_draggingAxis == HandleAxis::X) newScale.x = std::max(0.1f, m_originalScale.x + delta.x * sensitivity);
-            if (m_draggingAxis == HandleAxis::Y) newScale.y = std::max(0.1f, m_originalScale.y - delta.y * sensitivity);
-            if (m_draggingAxis == HandleAxis::Z) newScale.z = std::max(0.1f, m_originalScale.z + delta.x * sensitivity);
+            if (m_draggingAxis == HandleAxis::X) newScale.x = std::max(0.1f, m_originalScale.x + projectedDelta * sensitivity);
+            if (m_draggingAxis == HandleAxis::Y) newScale.y = std::max(0.1f, m_originalScale.y + projectedDelta * sensitivity);
+            if (m_draggingAxis == HandleAxis::Z) newScale.z = std::max(0.1f, m_originalScale.z + projectedDelta * sensitivity);
             transform->scale = newScale;
             break;
         }
@@ -439,6 +473,10 @@ void SceneWindow::HandleMouseInput()
 
     if (ImGui::IsMouseReleased(0))
     {
+        if (m_isDragging)
+        {
+            m_justFinishedDrag = true;  // Mark that we just finished a drag operation
+        }
         m_isDragging = false;
         m_draggingAxis = HandleAxis::None;
     }
@@ -475,16 +513,6 @@ void SceneWindow::Draw()
     ImGui::SetNextWindowBgAlpha(0.0f);
 
     bool windowOpen = ImGui::Begin("Scene", nullptr);
-    
-    // Debug log
-    static int frameCount = 0;
-    if (++frameCount % 60 == 0)
-    {
-        std::cout << "[SceneWindow] windowOpen=" << windowOpen 
-                  << " IsWindowFocused=" << ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
-                  << " IsWindowHovered=" << ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)
-                  << std::endl;
-    }
     
     // Set isSceneActive based on window focus/hover
     m_editor->isSceneActive = windowOpen && (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) || ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows));
@@ -528,12 +556,216 @@ void SceneWindow::Draw()
 
     DrawGizmos();
     HandleMouseInput();
+    HandleCameraRotation();
+    DrawAxisGizmo();
 
-    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0))
+    // Only handle object selection when not dragging Gizmo, not rotating camera, and not just finished drag
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !m_isRotatingCamera && !m_isDragging && !m_justFinishedDrag)
     {
-        // TODO: Implement scene object selection
+        HandleObjectSelection();
     }
+    
+    // Reset the flag after this frame
+    m_justFinishedDrag = false;
 
     ImGui::End();
     ImGui::PopStyleColor();
+}
+
+void SceneWindow::DrawAxisGizmo()
+{
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 windowPos = ImGui::GetWindowPos();
+    ImVec2 windowSize = ImGui::GetWindowSize();
+    
+    // Position in top-right corner with some padding
+    float gizmoSize = 80.0f;
+    float padding = 20.0f;
+    ImVec2 center(windowPos.x + windowSize.x - gizmoSize * 0.5f - padding, windowPos.y + gizmoSize * 0.5f + padding);
+    
+    Camera* camera = m_editor->engine->sceneCamera;
+    if (!camera) return;
+    
+    // Get camera's basis vectors (right, up, forward)
+    glm::vec3 camRight = camera->right;
+    glm::vec3 camUp = camera->up;
+    glm::vec3 camForward = camera->forward;
+    
+    // World axes
+    glm::vec3 worldX(1, 0, 0);
+    glm::vec3 worldY(0, 1, 0);
+    glm::vec3 worldZ(0, 0, 1);
+    
+    // Project world axis to camera view space
+    auto worldToView = [&](const glm::vec3& worldAxis) -> glm::vec3 {
+        return glm::vec3(
+            glm::dot(worldAxis, camRight),
+            glm::dot(worldAxis, camUp),
+            glm::dot(worldAxis, -camForward) // Negative because camera looks down negative Z
+        );
+    };
+    
+    glm::vec3 viewX = worldToView(worldX);
+    glm::vec3 viewY = worldToView(worldY);
+    glm::vec3 viewZ = worldToView(worldZ);
+    
+    // Axis colors (Unity style)
+    ImU32 xColor = IM_COL32(220, 50, 50, 255);
+    ImU32 yColor = IM_COL32(50, 220, 50, 255);
+    ImU32 zColor = IM_COL32(50, 100, 220, 255);
+    
+    // Axis length
+    float axisLength = gizmoSize * 0.35f;
+    float lineThickness = 3.0f;
+    
+    // Store axis info for proper depth sorting
+    struct AxisInfo {
+        glm::vec3 viewDir;
+        ImU32 color;
+        const char* label;
+        float zDepth;
+    };
+    
+    AxisInfo axes[3] = {
+        { viewX, xColor, "X", viewX.z },
+        { viewY, yColor, "Y", viewY.z },
+        { viewZ, zColor, "Z", viewZ.z }
+    };
+    
+    // Sort by Z depth (draw back axes first)
+    // Simple bubble sort for 3 elements
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2 - i; j++) {
+            if (axes[j].zDepth > axes[j + 1].zDepth) {
+                AxisInfo temp = axes[j];
+                axes[j] = axes[j + 1];
+                axes[j + 1] = temp;
+            }
+        }
+    }
+    
+    // Draw axes from back to front
+    for (int i = 0; i < 3; i++) {
+        const AxisInfo& axis = axes[i];
+        
+        // Project to 2D (X right, Y up in screen space)
+        ImVec2 endPoint(
+            center.x + axis.viewDir.x * axisLength,
+            center.y - axis.viewDir.y * axisLength
+        );
+        
+        // Draw line from center to end
+        drawList->AddLine(center, endPoint, axis.color, lineThickness);
+        
+        // Draw label at end of axis
+        ImVec2 textSize = ImGui::CalcTextSize(axis.label);
+        ImVec2 textPos(
+            endPoint.x - textSize.x * 0.5f,
+            endPoint.y - textSize.y * 0.5f
+        );
+        
+        // Draw text background for better visibility
+        drawList->AddRectFilled(
+            ImVec2(textPos.x - 2, textPos.y - 2),
+            ImVec2(textPos.x + textSize.x + 2, textPos.y + textSize.y + 2),
+            IM_COL32(0, 0, 0, 180)
+        );
+        drawList->AddText(textPos, axis.color, axis.label);
+    }
+}
+
+void SceneWindow::HandleCameraRotation()
+{
+    if (!m_editor->isSceneActive)
+        return;
+    
+    Camera* camera = m_editor->engine->sceneCamera;
+    if (!camera)
+        return;
+    
+    ImVec2 mousePos = ImGui::GetMousePos();
+    
+    // Start right-click drag
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(1))
+    {
+        m_isRotatingCamera = true;
+        m_lastMousePos = ImVec2D(mousePos.x, mousePos.y);
+    }
+    
+    // End right-click drag
+    if (ImGui::IsMouseReleased(1))
+    {
+        m_isRotatingCamera = false;
+    }
+    
+    // Handle rotation while dragging
+    if (m_isRotatingCamera && ImGui::IsMouseDown(1))
+    {
+        ImVec2D currentMousePos(mousePos.x, mousePos.y);
+        float deltaX = currentMousePos.x - m_lastMousePos.x;
+        float deltaY = currentMousePos.y - m_lastMousePos.y;
+        
+        float sensitivity = 0.005f;
+        
+        // Rotate around Y axis (yaw) based on horizontal mouse movement
+        float yaw = -deltaX * sensitivity;
+        // Rotate around X axis (pitch) based on vertical mouse movement
+        float pitch = -deltaY * sensitivity;
+        
+        // Create rotation quaternions
+        glm::quat yawRotation = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
+        glm::quat pitchRotation = glm::angleAxis(pitch, camera->right);
+        
+        // Apply rotations to forward vector
+        glm::vec3 newForward = glm::normalize(yawRotation * pitchRotation * camera->forward);
+        
+        // Update camera
+        camera->forward = newForward;
+        camera->right = glm::normalize(glm::cross(camera->forward, glm::vec3(0, 1, 0)));
+        camera->up = glm::normalize(glm::cross(camera->right, camera->forward));
+        
+        m_lastMousePos = currentMousePos;
+    }
+}
+
+void SceneWindow::HandleObjectSelection()
+{
+    if (!m_editor->engine->scene)
+        return;
+
+    Camera* camera = m_editor->engine->sceneCamera;
+    if (!camera)
+        return;
+
+    // Get mouse position relative to window
+    ImVec2 mousePos = ImGui::GetMousePos();
+    ImVec2 windowPos = ImGui::GetWindowPos();
+    ImVec2 windowSize = ImGui::GetWindowSize();
+
+    // Calculate mouse position in viewport coordinates
+    glm::vec2 mouseViewportPos(mousePos.x - windowPos.x, mousePos.y - windowPos.y);
+
+    // Get view and projection matrices
+    glm::mat4 view = camera->GetViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), windowSize.x / windowSize.y, 0.1f, 100.0f);
+
+    // Perform raycast
+    GameObject* hitObject = m_editor->engine->scene->RaycastGameObjects(
+        mouseViewportPos, view, projection, (int)windowSize.x, (int)windowSize.y);
+
+    if (hitObject)
+    {
+        // Select the object
+        m_editor->activeSelection = hitObject;
+        m_editor->selectedObject = hitObject;
+        m_editor->selectedFile.Clear();
+        std::cout << "[SceneWindow] Selected object: " << hitObject->name << std::endl;
+    }
+    else
+    {
+        // Deselect if clicked on empty space
+        m_editor->activeSelection = nullptr;
+        m_editor->selectedObject = nullptr;
+        std::cout << "[SceneWindow] Deselected object" << std::endl;
+    }
 }

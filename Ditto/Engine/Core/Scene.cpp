@@ -189,8 +189,10 @@ void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& proje
     }
 }
 
-void Scene::InitializeBaseGeometries(Resource* resource)
+void Scene::InitializeBaseGeometries(Resource* _resource)
 {
+    this->resource = _resource;
+    
     if (resource->cubeModel && !resource->cubeModel->vertexData.empty())
     {
         BaseGeometry cubeGeo;
@@ -286,10 +288,45 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
     glm::vec4 rayEye = invProj * rayClip;
     rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
     glm::mat4 invView = glm::inverse(view);
+    glm::vec3 rayOrigin = glm::vec3(invView[3]);
     glm::vec3 rayDir = glm::normalize(glm::vec3(invView * rayEye));
+
+    std::cout << "[Raycast] MousePos: (" << mousePos.x << ", " << mousePos.y << ")" << std::endl;
+    std::cout << "[Raycast] RayOrigin: (" << rayOrigin.x << ", " << rayOrigin.y << ", " << rayOrigin.z << ")" << std::endl;
+    std::cout << "[Raycast] RayDir: (" << rayDir.x << ", " << rayDir.y << ", " << rayDir.z << ")" << std::endl;
 
     GameObject* closest = nullptr;
     float closestDist = FLT_MAX;
+    int checkedCount = 0;
+
+    // Get mesh data based on renderer type
+    auto getMeshData = [&](RendererComponent::Type type) -> MeshData* {
+        if (!resource) return nullptr;
+        if (type == RendererComponent::Cube) return resource->cubeMesh;
+        if (type == RendererComponent::Sphere) return resource->sphereMesh;
+        return nullptr;
+    };
+
+    // Ray-triangle intersection (Möller–Trumbore algorithm)
+    auto rayTriangleIntersect = [&](const glm::vec3& orig, const glm::vec3& dir,
+                                    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
+                                    float& t) -> bool {
+        const float EPSILON = 0.000001f;
+        glm::vec3 edge1 = v1 - v0;
+        glm::vec3 edge2 = v2 - v0;
+        glm::vec3 h = glm::cross(dir, edge2);
+        float a = glm::dot(edge1, h);
+        if (a > -EPSILON && a < EPSILON) return false;
+        float f = 1.0f / a;
+        glm::vec3 s = orig - v0;
+        float u = f * glm::dot(s, h);
+        if (u < 0.0f || u > 1.0f) return false;
+        glm::vec3 q = glm::cross(s, edge1);
+        float v = f * glm::dot(dir, q);
+        if (v < 0.0f || u + v > 1.0f) return false;
+        t = f * glm::dot(edge2, q);
+        return t > EPSILON;
+    };
 
     std::function<void(GameObject*)> checkObject = [&](GameObject* obj)
     {
@@ -298,28 +335,80 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
         TransformComponent* transform = obj->GetComponent<TransformComponent>();
         if (!renderer || !transform || !renderer->enabled || !transform->enabled) return;
 
-        glm::vec3 objPos = transform->position;
-        glm::vec3 camPos = glm::vec3(invView[3]);
-
-        glm::vec3 oc = camPos - objPos;
-        float b = glm::dot(oc, rayDir);
-        float c = glm::dot(oc, oc) - 1.0f;
-        float h = b * b - c;
-        if (h >= 0.0f)
+        checkedCount++;
+        glm::mat4 worldMat = transform->GetWorldModel();
+        MeshData* mesh = getMeshData(renderer->type);
+        
+        if (!mesh)
         {
-            float t = -b - std::sqrt(h);
-            if (t > 0.0f && t < closestDist)
+            std::cout << "[Raycast] Object '" << obj->name << "' has no mesh data" << std::endl;
+            return;
+        }
+
+        std::cout << "[Raycast] Checking object: " << obj->name << " (mesh vertices: " << mesh->vertices.size() << ", indices: " << mesh->indices.size() << ")" << std::endl;
+
+        float tMin = FLT_MAX;
+        bool hit = false;
+
+        // Check all triangles in the mesh
+        for (size_t i = 0; i < mesh->indices.size(); i += 3)
+        {
+            if (i + 2 >= mesh->indices.size()) break;
+
+            unsigned int idx0 = mesh->indices[i];
+            unsigned int idx1 = mesh->indices[i + 1];
+            unsigned int idx2 = mesh->indices[i + 2];
+
+            if (idx0 >= mesh->vertices.size() || idx1 >= mesh->vertices.size() || idx2 >= mesh->vertices.size())
+                continue;
+
+            // Transform vertices to world space
+            glm::vec3 v0 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx0], 1.0f));
+            glm::vec3 v1 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx1], 1.0f));
+            glm::vec3 v2 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx2], 1.0f));
+
+            float t;
+            if (rayTriangleIntersect(rayOrigin, rayDir, v0, v1, v2, t))
             {
-                closestDist = t;
+                if (t < tMin)
+                {
+                    tMin = t;
+                    hit = true;
+                }
+            }
+        }
+
+        if (hit)
+        {
+            std::cout << "[Raycast] Hit object: " << obj->name << " at distance " << tMin << std::endl;
+            if (tMin < closestDist)
+            {
+                closestDist = tMin;
                 closest = obj;
             }
         }
     };
 
+    // Traverse all objects - if rootGameObject exists, traverse its hierarchy, otherwise use gameObjects list
     if (rootGameObject)
-        checkObject(rootGameObject);
+    {
+        std::cout << "[Raycast] Traversing rootGameObject hierarchy: " << rootGameObject->name << std::endl;
+        std::function<void(GameObject*)> traverseHierarchy = [&](GameObject* obj)
+        {
+            if (!obj) return;
+            checkObject(obj);
+            for (auto* child : obj->children)
+                traverseHierarchy(child);
+        };
+        traverseHierarchy(rootGameObject);
+    }
     else
+    {
+        std::cout << "[Raycast] Traversing gameObjects list, count: " << gameObjects.size() << std::endl;
         for (auto obj : gameObjects) checkObject(obj);
+    }
+
+    std::cout << "[Raycast] Checked " << checkedCount << " objects, closest: " << (closest ? closest->name : "none") << std::endl;
 
     return closest;
 }
@@ -536,6 +625,33 @@ bool Scene::LoadScene(const std::string& filepath)
                     break;
                 }
         }
+
+        // 报告可射线检测的物体
+        std::cout << "[Scene::LoadScene] === Raycast-capable objects ===" << std::endl;
+        int raycastObjCount = 0;
+        std::function<void(GameObject*)> reportRaycastObjects = [&](GameObject* obj) {
+            if (!obj) return;
+            RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+            TransformComponent* transform = obj->GetComponent<TransformComponent>();
+            if (renderer && transform)
+            {
+                std::cout << "[Scene::LoadScene] Raycast object: " << obj->name 
+                          << " (enabled=" << obj->enabled 
+                          << ", renderer=" << (renderer->enabled ? "enabled" : "disabled")
+                          << ", transform=" << (transform->enabled ? "enabled" : "disabled")
+                          << ", type=" << (renderer->type == RendererComponent::Cube ? "Cube" : "Sphere")
+                          << ", pos=[" << transform->position.x << ", " << transform->position.y << ", " << transform->position.z << "])" 
+                          << std::endl;
+                raycastObjCount++;
+            }
+            for (auto child : obj->children)
+                reportRaycastObjects(child);
+        };
+        if (rootGameObject)
+            reportRaycastObjects(rootGameObject);
+        else
+            for (auto obj : gameObjects) reportRaycastObjects(obj);
+        std::cout << "[Scene::LoadScene] Total raycast-capable objects: " << raycastObjCount << std::endl;
 
         return true;
     }

@@ -39,6 +39,8 @@ struct Scene
     GameObject* mainLight = nullptr;
     std::unordered_map<RendererComponent::Type, BaseGeometry> baseGeometries;
     std::unordered_map<RendererComponent::Type, GeometryInstances*> geometryBatches;
+    
+    Resource* resource = nullptr;
 
     // 场景修改回调（用于通知 Editor 标记 dirty）
     std::function<void()> onModified;

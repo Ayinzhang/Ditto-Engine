@@ -133,6 +133,32 @@ MeshData::MeshData(const std::string& filePath)
         {
             std::vector<std::string> faceTokens; std::string token;
             while (lineStream >> token) faceTokens.push_back(token);
+            
+            // Parse face indices (supporting triangles and quads, triangulate quads)
+            std::vector<unsigned int> faceIndices;
+            for (const auto& faceToken : faceTokens)
+            {
+                // Parse "vertexIndex/textureIndex/normalIndex" format, get vertex index
+                std::string indexStr = faceToken;
+                size_t slashPos = indexStr.find('/');
+                if (slashPos != std::string::npos)
+                    indexStr = indexStr.substr(0, slashPos);
+                
+                if (!indexStr.empty())
+                {
+                    int idx = std::stoi(indexStr) - 1; // OBJ indices are 1-based
+                    if (idx >= 0)
+                        faceIndices.push_back(static_cast<unsigned int>(idx));
+                }
+            }
+            
+            // Triangulate the face (assuming convex polygon)
+            for (size_t i = 2; i < faceIndices.size(); i++)
+            {
+                indices.push_back(faceIndices[0]);
+                indices.push_back(faceIndices[i - 1]);
+                indices.push_back(faceIndices[i]);
+            }
         }
     }
     file.close();
