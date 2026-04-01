@@ -8,12 +8,41 @@
 #include "../../3rdParty/GLAD/glad.h"
 #include "../../3rdParty/GLFW/glfw3.h"
 
-Resource::Resource()
+Resource::Resource(const std::string& basePath)
 {
-    cubeModel = new ModelData("Assets/Models/Cube.obj");
-    sphereModel = new ModelData("Assets/Models/Sphere.obj");
-	cubeMesh = new MeshData("Assets/Models/Cube.obj");
-    sphereMesh = new MeshData("Assets/Models/Sphere.obj");
+    Initialize(basePath);
+}
+
+void Resource::Initialize(const std::string& basePath)
+{
+    // Determine the base path for assets
+    if (basePath.empty())
+    {
+        // Try to find Assets directory relative to executable
+        if (std::filesystem::exists("Assets/Models/Cube.obj"))
+            resourcePath = "Assets/Models";
+        else if (std::filesystem::exists("../../Assets/Models/Cube.obj"))
+            resourcePath = "../../Assets/Models";
+        else if (std::filesystem::exists("../Assets/Models/Cube.obj"))
+            resourcePath = "../Assets/Models";
+        else
+            resourcePath = "Assets/Models"; // Default fallback
+    }
+    else
+    {
+        resourcePath = basePath;
+    }
+    
+    // Clean up existing resources if reinitializing
+    delete cubeModel; delete sphereModel; delete planeModel;
+    delete cubeMesh; delete sphereMesh; delete planeMesh;
+    
+    cubeModel = new ModelData(resourcePath + "/Cube.obj");
+    sphereModel = new ModelData(resourcePath + "/Sphere.obj");
+    cubeMesh = new MeshData(resourcePath + "/Cube.obj");
+    sphereMesh = new MeshData(resourcePath + "/Sphere.obj");
+    planeModel = nullptr;
+    planeMesh = nullptr;
 }
 
 ModelData::ModelData(const std::string& path)

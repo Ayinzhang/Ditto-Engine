@@ -6,12 +6,14 @@
 struct ModelData; struct MeshData;
 struct Resource
 {
-	std::string resourcePath = "../../Assets/Models";
+	std::string resourcePath;
 	ModelData* cubeModel, *sphereModel, *planeModel;
 	MeshData* cubeMesh, *sphereMesh, *planeMesh;
 
-	Resource();
+	Resource(const std::string& basePath = "");
 	~Resource();
+	
+	void Initialize(const std::string& basePath);
 };
 
 struct ModelData // For Rendering

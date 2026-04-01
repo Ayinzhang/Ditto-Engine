@@ -29,6 +29,62 @@ using namespace glm;
 
 namespace fs = std::filesystem;
 
+// Helper function to find editor assets directory
+static std::string FindEditorAssetsPath()
+{
+    const std::vector<std::string> possiblePaths = {
+        "Assets",
+        "Ditto/Assets",
+        "../../Ditto/Ditto/Assets",
+        "../Ditto/Assets",
+        "Ditto/Ditto/Assets",
+    };
+    
+    for (const auto& path : possiblePaths)
+    {
+        if (fs::exists(path + "/Settings") || fs::exists(path + "/Icon"))
+            return path;
+    }
+    
+    std::cerr << "[Editor] Warning: Editor assets not found, using default" << std::endl;
+    return "Assets";
+}
+
+// Helper function to find VS vcvars64.bat
+static std::string FindVCVarsPath()
+{
+    // Check environment variable first
+    char* vsPath = nullptr;
+    size_t vsPathLen = 0;
+    _dupenv_s(&vsPath, &vsPathLen, "VSINSTALLDIR");
+    if (vsPath)
+    {
+        std::string vcvarsPath = std::string(vsPath) + "VC\\Auxiliary\\Build\\vcvars64.bat";
+        free(vsPath);
+        if (fs::exists(vcvarsPath))
+            return vcvarsPath;
+    }
+    
+    // Check common installation paths
+    const std::vector<std::string> possiblePaths = {
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat",
+        "C:/Program Files/Microsoft Visual Studio/2022/Professional/VC/Auxiliary/Build/vcvars64.bat",
+        "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
+        "D:/Visual Studio 2022/VC/Auxiliary/Build/vcvars64.bat",
+        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Auxiliary/Build/vcvars64.bat",
+        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Professional/VC/Auxiliary/Build/vcvars64.bat",
+    };
+    
+    for (const auto& path : possiblePaths)
+    {
+        if (fs::exists(path))
+            return path;
+    }
+    
+    std::cerr << "[Editor] Warning: vcvars64.bat not found, compilation may fail" << std::endl;
+    return "";
+}
+
 // 全局 Editor 指针定义
 Editor* g_editor = nullptr;
 
@@ -80,7 +136,8 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     ProjectManager::GetInstance().Initialize("../../Ditto/Ditto/Projects");
     
     // 初始化布局管理器
-    LayoutManager::GetInstance().Initialize("../../Ditto/Ditto/Assets/Settings");
+    std::string editorAssetsPath = FindEditorAssetsPath();
+    LayoutManager::GetInstance().Initialize(editorAssetsPath + "/Settings");
     
     // 显示项目选择界面
     showProjectSelector = true;
@@ -1654,7 +1711,11 @@ void Editor::BuildScripts()
     
     batFile << "@echo off\n";
     batFile << "cd /d \"" << projPathAbs.string() << "\"\n";
-    batFile << "call \"D:\\Visual Studio 2022\\VC\\Auxiliary\\Build\\vcvars64.bat\"\n";
+    std::string vcvarsPath = FindVCVarsPath();
+    if (!vcvarsPath.empty())
+        batFile << "call \"" << vcvarsPath << "\"\n";
+    else
+        batFile << "echo Warning: vcvars64.bat not found, compilation may fail\n";
     
     // 使用绝对路径，添加 C++20 和更多头文件路径
     std::string clCmd = "cl /LD /EHsc /std:c++latest /I\"" + enginePathAbs.string() + "\\3rdParty\\GLM\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\\include\" /I\"" + enginePathAbs.string() + "\\3rdParty\\ImGui\" /I\"" + enginePathAbs.string() + "\\Engine\\Core\" /I\"" + enginePathAbs.string() + "\\Engine\\Graphics\" /I\"" + enginePathAbs.string() + "\\Engine\\Physics\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\" /I\"" + enginePathAbs.string() + "\" /D\"SCRIPT_DLL\" /O2 /MD " + compileFiles + "/Fe:\"" + outputDllAbs.string() + "\"";
@@ -1704,7 +1765,7 @@ void Editor::InitFileIcons()
     if (m_fileIconsInitialized) return;
     
     // 获取图标目录路径
-    m_assetsPath = "../../Ditto/Ditto/Assets/Icon";
+    m_assetsPath = FindEditorAssetsPath() + "/Icon";
     std::cout << "[FileIcon] Initializing from: " << m_assetsPath << std::endl;
     
     // 加载文件图标

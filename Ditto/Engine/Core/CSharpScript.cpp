@@ -9,6 +9,66 @@
 #include <windows.h>
 #include <regex>
 
+namespace fs = std::filesystem;
+
+// Helper function to find DittoEngine.dll
+static std::string FindDittoEngineDll()
+{
+    const std::vector<std::string> possiblePaths = {
+        "3rdParty/Mono/DittoEngine.dll",
+        "../../3rdParty/Mono/DittoEngine.dll",
+        "../3rdParty/Mono/DittoEngine.dll",
+        "Ditto/3rdParty/Mono/DittoEngine.dll",
+        "../../Ditto/3rdParty/Mono/DittoEngine.dll",
+    };
+    
+    for (const auto& path : possiblePaths)
+    {
+        if (fs::exists(path))
+            return fs::absolute(path).string();
+    }
+    
+    // Fallback to original hardcoded path for compatibility
+    std::cerr << "[CSharpScript] Warning: DittoEngine.dll not found in standard locations" << std::endl;
+    return "3rdParty/Mono/DittoEngine.dll";
+}
+
+// Helper function to find MSBuild Roslyn path
+static std::string FindMSBuildPath()
+{
+    // Check environment variable first
+    char* vsPath = nullptr;
+    size_t vsPathLen = 0;
+    _dupenv_s(&vsPath, &vsPathLen, "VSINSTALLDIR");
+    if (vsPath)
+    {
+        std::string roslynPath = std::string(vsPath) + "MSBuild\Current\Bin\Roslyn";
+        free(vsPath);
+        if (fs::exists(roslynPath))
+            return roslynPath;
+    }
+    
+    // Check common installation paths
+    const std::vector<std::string> possiblePaths = {
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/Roslyn",
+        "C:/Program Files/Microsoft Visual Studio/2022/Professional/MSBuild/Current/Bin/Roslyn",
+        "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/MSBuild/Current/Bin/Roslyn",
+        "D:/Visual Studio 2022/MSBuild/Current/Bin/Roslyn",
+        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin/Roslyn",
+        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Professional/MSBuild/Current/Bin/Roslyn",
+    };
+    
+    for (const auto& path : possiblePaths)
+    {
+        if (fs::exists(path))
+            return path;
+    }
+    
+    // Fallback - try to find csc in PATH
+    std::cerr << "[CSharpScript] Warning: MSBuild Roslyn not found, relying on PATH" << std::endl;
+    return "";
+}
+
 // 静态成员初始化
 bool CSharpScriptSystem::s_initialized = false;
 LogCallback CSharpScriptSystem::s_logCallback = nullptr;
@@ -484,9 +544,13 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
     std::filesystem::path dllAbsPath = absScriptPath.parent_path() / (absScriptPath.stem().string() + ".dll");
     std::string dllPath = dllAbsPath.string();
     
-    std::string dittoEngineDll = "e:\\Engine Source\\Ditto\\Ditto\\3rdParty\\Mono\\DittoEngine.dll";
+    std::string dittoEngineDll = FindDittoEngineDll();
+    std::string msbuildPath = FindMSBuildPath();
     
-    std::string pathCmd = "set PATH=D:\\Visual Studio 2022\\MSBuild\\Current\\Bin\\Roslyn;%PATH%&";
+    std::string pathCmd;
+    if (!msbuildPath.empty())
+        pathCmd = "set PATH=" + msbuildPath + ";%PATH%&";
+    
     std::string cmd = pathCmd + "cd /d \"" + dir + "\" && csc /target:library /reference:\"" + dittoEngineDll + "\" /out:\"" + dllPath + "\" \"" + absScriptPath.filename().string() + "\"";
     std::cout << "[CSharpScriptSystem] Compile cmd: " << cmd << std::endl;
     int result = system(cmd.c_str());

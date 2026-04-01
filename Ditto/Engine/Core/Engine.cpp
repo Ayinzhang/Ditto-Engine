@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <functional>
+#include <filesystem>
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
@@ -11,6 +12,30 @@
 
 using namespace std;
 using namespace glm;
+namespace fs = std::filesystem;
+
+// Helper function to find shader files
+static std::string FindShaderPath(const std::string& shaderName)
+{
+    // List of possible paths to check
+    const std::vector<std::string> possiblePaths = {
+        "Assets/Shaders/" + shaderName,
+        "Ditto/Assets/Shaders/" + shaderName,
+        "../../Ditto/Ditto/Assets/Shaders/" + shaderName,
+        "../Ditto/Assets/Shaders/" + shaderName,
+        "Ditto/Ditto/Assets/Shaders/" + shaderName,
+    };
+    
+    for (const auto& path : possiblePaths)
+    {
+        if (fs::exists(path))
+            return path;
+    }
+    
+    // Return default if not found
+    std::cerr << "[Engine] Warning: Shader not found: " << shaderName << std::endl;
+    return "Assets/Shaders/" + shaderName;
+}
 
 Engine::Engine()
 {
@@ -39,7 +64,9 @@ Engine::Engine()
     // Game游戏相机 - 更贴近游戏视角
     gameCamera = new Camera(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     sceneCamera = sceneCamera; // 默认激活Scene相机
-    shader = new Shader("../../Ditto/Ditto/Assets/Shaders/Vertex.glsl", "../../Ditto/Ditto/Assets/Shaders/Fragment.glsl");
+    std::string vertexPath = FindShaderPath("Vertex.glsl");
+    std::string fragmentPath = FindShaderPath("Fragment.glsl");
+    shader = new Shader(vertexPath.c_str(), fragmentPath.c_str());
     editor = new Editor(window, gameMode, gameProjectPath); editor->engine = this;
     physics = new ParallelPhysics(); physics->engine = this;
 
