@@ -4,40 +4,18 @@ project(Ditto)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Source files
-set(SOURCES
-    3rdParty/GLAD/glad.c
-    3rdParty/GLM/detail/glm.cpp
-    3rdParty/ImGui/imgui.cpp
-    3rdParty/ImGui/imgui_demo.cpp
-    3rdParty/ImGui/imgui_draw.cpp
-    3rdParty/ImGui/imgui_impl_glfw.cpp
-    3rdParty/ImGui/imgui_impl_opengl3.cpp
-    3rdParty/ImGui/imgui_impl_win32.cpp
-    3rdParty/ImGui/imgui_tables.cpp
-    3rdParty/ImGui/imgui_widgets.cpp
-    Editor/Editor.cpp
-    Editor/InspectorWindow.cpp
-    Editor/SceneWindow.cpp
-    Editor/LayoutManager.cpp
-    Editor/ProjectWindow.cpp
-    Engine/Core/CSharpScript.cpp
-    Engine/Core/Engine.cpp
-    Engine/Core/GameObject.cpp
-    Engine/Core/ProjectManager.cpp
-    Engine/Core/Scene.cpp
-    Engine/Graphics/Camera.cpp
-    Engine/Graphics/Shader.cpp
-    Engine/Main.cpp
-    Engine/Physics/CollisionShape.cpp
-    Engine/Physics/ComputePhysics.cpp
-    Engine/Physics/GJK.cpp
-    Engine/Physics/ParallelPhysics.cpp
-    Engine/Physics/ParallelPhysicsBarrier.cpp
-    Engine/Physics/Physics.cpp
-    Engine/Physics/ThreadPool.cpp
-    Engine/Resources/Resource.cpp
+# Automatically collect source files using GLOB
+file(GLOB_RECURSE SOURCES
+    "3rdParty/GLAD/*.c"
+    "3rdParty/GLM/detail/*.cpp"
+    "3rdParty/ImGui/*.cpp"
+    "Editor/*.cpp"
+    "Engine/*.cpp"
+    "Engine/*/*.cpp"
 )
+
+# Filter out non-source files
+list(FILTER SOURCES EXCLUDE REGEX ".*\\.cppm$")
 
 # Find GLFW (use built-in if not found)
 find_package(GLFW QUIET)
