@@ -123,7 +123,7 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     ImGui::GetStyle().Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0, 0, 0, 0);
 
     ImGui_ImplGlfw_InitForOpenGL((GLFWwindow*)window, true);
-    ImGui_ImplOpenGL3_Init("#version 450");
+    ImGui_ImplOpenGL3_Init("#version 430");
 
     showSavePopup = false;
     showLoadPopup = false;

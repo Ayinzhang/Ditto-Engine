@@ -18,6 +18,8 @@ void Resource::Initialize(const std::string& basePath)
     // Determine the base path for assets
     if (basePath.empty())
     {
+        cubeModel = sphereModel = planeModel = nullptr;
+        cubeMesh = sphereMesh = planeMesh = nullptr;
         // Try to find Assets directory relative to executable
         if (std::filesystem::exists("Assets/Models/Cube.obj"))
             resourcePath = "Assets/Models";
