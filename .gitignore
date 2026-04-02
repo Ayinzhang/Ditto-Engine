@@ -1,3 +1,6 @@
 /.vs
+/.vscode
 /x64
 /Ditto/x64
+/build
+/Ditto/build
