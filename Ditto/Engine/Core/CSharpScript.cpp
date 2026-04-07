@@ -1,4 +1,5 @@
 #include "CSharpScript.h"
+#include "MonoRuntime.h"
 #include "GameObject.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
@@ -164,24 +165,62 @@ void CSharpScriptComponent::ParseScriptFields()
 // ==================== CSharpScriptComponent 实现 ====================
 void CSharpScriptComponent::Start()
 {
+    std::cout << "[CSharpScript] Start called, started=" << started 
+              << " enabled=" << enabled 
+              << " scriptInstance=" << (scriptInstance ? "valid" : "null") << std::endl;
+    
     if (!started && enabled)
     {
         CSharpScriptSystem::LogToConsole("[CSharpScript] Start: " + scriptName);
+        
+        // 如果 scriptInstance 为 null，尝试加载脚本
+        if (!scriptInstance && !scriptPath.empty())
+        {
+            std::cout << "[CSharpScript] Attempting to load script from path: " << scriptPath << std::endl;
+            CSharpScriptSystem::LoadScript(scriptPath, this);
+        }
+        
+        // 调用 Mono 脚本的 Start 方法
+        if (scriptInstance)
+        {
+            std::cout << "[CSharpScript] Calling MonoRuntime::CallStart" << std::endl;
+            MonoRuntime::CallStart(scriptInstance);
+        }
+        else
+        {
+            std::cerr << "[CSharpScript] scriptInstance is null after load attempt!" << std::endl;
+        }
+        
         started = true;
     }
 }
 
 void CSharpScriptComponent::Update()
 {
-    if (enabled && gameObject)
+    static int updateCount = 0;
+    if (++updateCount < 5)  // 只输出前5次，避免刷屏
     {
-        // TODO: 调用 C# Update
+        std::cout << "[CSharpScript] Update called, enabled=" << enabled 
+                  << " gameObject=" << gameObject 
+                  << " scriptInstance=" << (scriptInstance ? "valid" : "null") << std::endl;
+    }
+    
+    if (enabled && gameObject && scriptInstance)
+    {
+        // 调用 Mono 脚本的 Update 方法
+        MonoRuntime::CallUpdate(scriptInstance);
     }
 }
 
 void CSharpScriptComponent::OnDestroy()
 {
     CSharpScriptSystem::LogToConsole("[CSharpScript] Destroy: " + scriptName);
+    
+    // 调用 Mono 脚本的 OnDestroy 方法
+    if (scriptInstance)
+    {
+        MonoRuntime::CallOnDestroy(scriptInstance);
+    }
 }
 
 void CSharpScriptComponent::Serialize(std::ofstream& file) const
@@ -496,6 +535,17 @@ void CSharpScriptSystem::Initialize()
 {
     if (s_initialized) return;
     std::cout << "[CSharpScriptSystem] Initializing..." << std::endl;
+    
+    // 初始化 Mono 运行时
+    if (!MonoRuntime::Initialize(""))
+    {
+        std::cerr << "[CSharpScriptSystem] Failed to initialize Mono runtime" << std::endl;
+        return;
+    }
+    
+    // 注册内部调用函数
+    RegisterInternalCalls();
+    
     s_initialized = true;
     std::cout << "[CSharpScriptSystem] Initialized" << std::endl;
 }
@@ -504,6 +554,8 @@ void CSharpScriptSystem::Shutdown()
 {
     if (!s_initialized) return;
     std::cout << "[CSharpScriptSystem] Shutting down..." << std::endl;
+    
+    MonoRuntime::Shutdown();
     s_initialized = false;
 }
 
@@ -562,6 +614,60 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
     }
     
     std::cout << "[CSharpScriptSystem] Compiled: " << dllPath << std::endl;
+    std::cout << "[CSharpScriptSystem] s_initialized=" << s_initialized 
+              << " MonoRuntime::IsInitialized()=" << MonoRuntime::IsInitialized() << std::endl;
+    
+    // 加载到 Mono 运行时
+    if (s_initialized && MonoRuntime::IsInitialized())
+    {
+        std::cout << "[CSharpScriptSystem] Loading script into Mono runtime..." << std::endl;
+        component->scriptInstance = MonoRuntime::LoadScript(dllPath, fileName);
+        if (component->scriptInstance)
+        {
+            std::cout << "[CSharpScriptSystem] Script loaded into Mono runtime: " << fileName << std::endl;
+            
+            // 设置 GameObject 指针到 C# 脚本实例
+            if (component->gameObject && component->scriptInstance->instance)
+            {
+                // 调用 SetNativeGameObject 方法设置 GameObject 指针
+                // 从实例获取类，然后查找方法（包括基类）
+                MonoClass* klass = MonoRuntime::GetClassFromObject(component->scriptInstance->instance);
+                MonoMethod* setNativeMethod = nullptr;
+                
+                // 在当前类及其基类中查找方法
+                while (klass && !setNativeMethod)
+                {
+                    setNativeMethod = MonoRuntime::GetMethod(klass, "SetNativeGameObject", 1);
+                    if (!setNativeMethod)
+                    {
+                        // 获取父类
+                        klass = MonoRuntime::GetParentClass(klass);
+                    }
+                }
+                
+                if (setNativeMethod)
+                {
+                    void* goPtr = component->gameObject;
+                    void* args[1] = { &goPtr };
+                    MonoRuntime::InvokeMethod(component->scriptInstance->instance, setNativeMethod, args);
+                    std::cout << "[CSharpScriptSystem] Set gameObject pointer: " << goPtr << std::endl;
+                }
+                else
+                {
+                    std::cerr << "[CSharpScriptSystem] SetNativeGameObject method not found in class hierarchy!" << std::endl;
+                }
+            }
+        }
+        else
+        {
+            std::cerr << "[CSharpScriptSystem] Failed to load script into Mono runtime: " << fileName << std::endl;
+        }
+    }
+    else
+    {
+        std::cerr << "[CSharpScriptSystem] Mono runtime not initialized! s_initialized=" 
+                  << s_initialized << " MonoInitialized=" << MonoRuntime::IsInitialized() << std::endl;
+    }
     
     // 解析 public 变量
     component->ParseScriptFields();
@@ -576,10 +682,134 @@ void CSharpScriptSystem::ReloadAll()
 
 void CSharpScriptSystem::CallStart()
 {
-    // TODO: 遍历调用
+    if (!s_initialized) return;
+    
+    // 遍历所有 GameObject 的 C# 脚本组件并调用 Start
+    // 注意：这里需要通过某种方式获取所有 GameObject
+    // 暂时通过 Editor 获取 Scene 来遍历
+    void* editor = GetEditor();
+    if (!editor) return;
+    
+    // TODO: 实现遍历逻辑
 }
 
 void CSharpScriptSystem::CallUpdate()
 {
-    // TODO: 遍历调用
+    if (!s_initialized) return;
+    
+    // 遍历所有 GameObject 的 C# 脚本组件并调用 Update
+    void* editor = GetEditor();
+    if (!editor) return;
+    
+    // TODO: 实现遍历逻辑
+}
+
+// 注册内部调用函数（C++ 函数供 C# 调用）
+void CSharpScriptSystem::RegisterInternalCalls()
+{
+    // 注册 Transform 相关函数
+    ::MonoRuntime::AddInternalCall("DittoEngine.Transform::GetPosition", (void*)Internal_Transform_GetPosition);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Transform::SetPosition", (void*)Internal_Transform_SetPosition);
+    
+    // 注册 GameObject 相关函数
+    ::MonoRuntime::AddInternalCall("DittoEngine.MonoBehaviour::GameObject_GetTransform", (void*)Internal_GameObject_GetTransform);
+    ::MonoRuntime::AddInternalCall("DittoEngine.GameObject::GetTransform", (void*)Internal_GameObject_GetTransform);
+    
+    // 注册 Time 相关函数
+    ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetDeltaTime", (void*)Internal_Time_GetDeltaTime);
+    
+    // 注册 Debug 相关函数
+    ::MonoRuntime::AddInternalCall("DittoEngine.Debug::Log", (void*)Internal_Debug_Log);
+    
+    std::cout << "[CSharpScriptSystem] Internal calls registered" << std::endl;
+}
+
+// 内部调用实现
+extern "C" {
+    // Transform 组件操作 - transform 指针实际上是 TransformComponent*
+    void Internal_Transform_GetPosition(void* transform, float* outPos)
+    {
+        std::cout << "[Internal] GetPosition called with transform: " << transform << std::endl;
+        
+        if (!transform || !outPos) 
+        {
+            std::cerr << "[Internal] transform or outPos is null!" << std::endl;
+            return;
+        }
+        
+        TransformComponent* trans = static_cast<TransformComponent*>(transform);
+        std::cout << "[Internal] Transform position: (" << trans->position.x << ", " << trans->position.y << ", " << trans->position.z << ")" << std::endl;
+        
+        outPos[0] = trans->position.x;
+        outPos[1] = trans->position.y;
+        outPos[2] = trans->position.z;
+    }
+
+    void Internal_Transform_SetPosition(void* transform, float x, float y, float z)
+    {
+        std::cout << "[Internal] SetPosition called with transform: " << transform << " pos: (" << x << ", " << y << ", " << z << ")" << std::endl;
+        
+        if (!transform) 
+        {
+            std::cerr << "[Internal] transform is null!" << std::endl;
+            return;
+        }
+        
+        TransformComponent* trans = static_cast<TransformComponent*>(transform);
+        trans->position.x = x;
+        trans->position.y = y;
+        trans->position.z = z;
+        trans->localDirty = true;
+        
+        std::cout << "[Internal] Position set successfully" << std::endl;
+    }
+    
+    // 通过 GameObject 指针获取 Transform 组件指针
+    void* Internal_GameObject_GetTransform(void* gameObject)
+    {
+        std::cout << "[Internal] GetTransform called with gameObject: " << gameObject << std::endl;
+        
+        if (!gameObject) 
+        {
+            std::cerr << "[Internal] gameObject is null!" << std::endl;
+            return nullptr;
+        }
+        
+        GameObject* go = static_cast<GameObject*>(gameObject);
+        std::cout << "[Internal] GameObject name: " << (go->name.empty() ? "<empty>" : go->name) << std::endl;
+        std::cout << "[Internal] GameObject components count: " << go->components.size() << std::endl;
+        
+        for (Component* comp : go->components)
+        {
+            if (!comp) 
+            {
+                std::cerr << "[Internal] Found null component!" << std::endl;
+                continue;
+            }
+            
+            std::cout << "[Internal] Checking component with index: " << comp->index << std::endl;
+            
+            if (comp->index == (1 << 0)) // TRANSFORM_INDEX
+            {
+                std::cout << "[Internal] Found Transform component: " << comp << std::endl;
+                return comp;
+            }
+        }
+        
+        std::cerr << "[Internal] Transform component not found!" << std::endl;
+        return nullptr;
+    }
+
+    float Internal_Time_GetDeltaTime()
+    {
+        // TODO: 返回引擎的 deltaTime
+        return 0.016f; // 默认 60fps
+    }
+
+    void Internal_Debug_Log(void* msg)  // MonoString*
+    {
+        std::string message = MonoRuntime::GetStringFromMono((MonoString*)msg);
+        std::cout << "[C#] " << message << std::endl;
+        CSharpScriptSystem::LogToConsole("[C#] " + message);
+    }
 }

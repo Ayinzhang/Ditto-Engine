@@ -71,10 +71,16 @@ Engine::Engine()
     physics = new ParallelPhysics(); physics->engine = this;
 
     scene->InitializeBaseGeometries(resource);
+    
+    // 初始化 C# 脚本系统
+    CSharpScriptSystem::Initialize();
 }
 
 Engine::~Engine()
 {
+    // 关闭 C# 脚本系统
+    CSharpScriptSystem::Shutdown();
+    
     delete editor;
     delete shader;
     delete sceneCamera;
