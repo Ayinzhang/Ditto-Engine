@@ -1,10 +1,12 @@
 #pragma once
 #include "GameObject.h"
+#include "MonoRuntime.h"
 #include <fstream>
 #include <variant>
 #include <vector>
 #include <string>
 #include <iostream>
+#include <memory>
 
 // ==================== 脚本字段 ====================
 enum class ScriptFieldType { Float, Int, Bool, String, Vector2, Vector3, Vector4 };
@@ -27,6 +29,9 @@ struct CSharpScriptComponent : Component
     std::string scriptPath;
     bool started = false;
     std::vector<ScriptField> fields;  // 解析出的public字段
+    
+    // Mono 运行时脚本实例
+    std::shared_ptr<MonoRuntime::ScriptInstance> scriptInstance;
     
     CSharpScriptComponent() { index = 1 << 10; }
     
@@ -77,8 +82,20 @@ struct CSharpScriptSystem
     // 声明 Editor 类为友元，以便访问 s_editor
     friend class Editor;
     
+    // 注册内部调用函数
+    static void RegisterInternalCalls();
+    
 private:
     static bool s_initialized;
     static LogCallback s_logCallback;
     static void* s_editor;
 };
+
+// 内部调用函数声明（C++ 函数供 C# 调用）
+extern "C" {
+    void Internal_Transform_GetPosition(void* transform, float* outPos);
+    void Internal_Transform_SetPosition(void* transform, float x, float y, float z);
+    void* Internal_GameObject_GetTransform(void* gameObject);
+    float Internal_Time_GetDeltaTime();
+    void Internal_Debug_Log(void* msg);  // MonoString*
+}

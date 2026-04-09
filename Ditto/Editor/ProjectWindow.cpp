@@ -140,40 +140,25 @@ void ProjectWindow::Draw()
                                 ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
                             }
                             
-                            // 名称
+                            // 名称 - 使用 Selectable 来检测点击（和 Hierarchy 一样）
                             ImGui::SameLine();
-                            ImVec2 textSize = ImGui::CalcTextSize(folderName.c_str());
-                            ImGui::Text(folderName.c_str());
-                            
-                            // 检测点击（使用 InvisibleButton 覆盖文本区域）
-                            ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() - textSize.x - 8, 
-                                                        ImGui::GetCursorPosY() - textSize.y - 4));
-                            ImGui::InvisibleButton(("folder_" + fullPath).c_str(), 
-                                                   ImVec2(textSize.x + 8, textSize.y + 8));
-                            
-                            if (ImGui::IsItemClicked(0))
+                            bool isSelected = (m_currentFolder == fullPath);
+                            if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
-                                double currentTime = ImGui::GetTime();
-                                bool isDoubleClick = (fullPath == m_lastClickedFolderPath) && 
-                                                     (currentTime - m_lastClickTime < 1.0);
-                                
-                                if (isDoubleClick)
+                                std::cout << "[ProjectWindow] Folder clicked: " << folderName << std::endl;
+                                m_currentFolder = fullPath;
+                                if (m_editor) m_editor->selectedFile.Clear();
+                            }
+                            
+                            // 右键菜单
+                            if (ImGui::BeginPopupContextItem())
+                            {
+                                if (ImGui::MenuItem("Open in Explorer"))
                                 {
-                                    // 双击：在资源管理器中打开文件夹
-                                    std::cout << "[ProjectWindow] Double click on folder: " << folderName << std::endl;
                                     std::wstring fullPathW = std::filesystem::absolute(fullFsPath).wstring();
                                     ShellExecuteW(NULL, L"open", L"explorer.exe", (L"/select,\"" + fullPathW + L"\"").c_str(), NULL, SW_SHOW);
-                                    m_lastClickedFolderPath = "";
-                                    m_lastClickTime = 0.0;
                                 }
-                                else
-                                {
-                                    // 单击：选中文件夹
-                                    m_currentFolder = fullPath;
-                                    if (m_editor) m_editor->selectedFile.Clear();
-                                    m_lastClickedFolderPath = fullPath;
-                                    m_lastClickTime = currentTime;
-                                }
+                                ImGui::EndPopup();
                             }
                             
                             // 子文件夹
@@ -198,37 +183,24 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名称和点击处理
-                            ImVec2 textSize = ImGui::CalcTextSize(folderName.c_str());
-                            ImGui::Text(folderName.c_str());
-                            
-                            ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() - textSize.x - 8, 
-                                                        ImGui::GetCursorPosY() - textSize.y - 4));
-                            ImGui::InvisibleButton(("folder_" + fullPath).c_str(), 
-                                                   ImVec2(textSize.x + 8, textSize.y + 8));
-                            
-                            if (ImGui::IsItemClicked(0))
+                            // 文件夹名称 - 使用 Selectable
+                            bool isSelected = (m_currentFolder == fullPath);
+                            if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
-                                double currentTime = ImGui::GetTime();
-                                bool isDoubleClick = (fullPath == m_lastClickedFolderPath) && 
-                                                     (currentTime - m_lastClickTime < 1.0);
-                                
-                                if (isDoubleClick)
+                                std::cout << "[ProjectWindow] Folder clicked: " << folderName << std::endl;
+                                m_currentFolder = fullPath;
+                                if (m_editor) m_editor->selectedFile.Clear();
+                            }
+                            
+                            // 右键菜单
+                            if (ImGui::BeginPopupContextItem())
+                            {
+                                if (ImGui::MenuItem("Open in Explorer"))
                                 {
-                                    // 双击：在资源管理器中打开文件夹
-                                    std::cout << "[ProjectWindow] Double click on folder: " << folderName << std::endl;
                                     std::wstring fullPathW = std::filesystem::absolute(fullFsPath).wstring();
                                     ShellExecuteW(NULL, L"open", L"explorer.exe", (L"/select,\"" + fullPathW + L"\"").c_str(), NULL, SW_SHOW);
-                                    m_lastClickedFolderPath = "";
-                                    m_lastClickTime = 0.0;
                                 }
-                                else
-                                {
-                                    m_currentFolder = fullPath;
-                                    if (m_editor) m_editor->selectedFile.Clear();
-                                    m_lastClickedFolderPath = fullPath;
-                                    m_lastClickTime = currentTime;
-                                }
+                                ImGui::EndPopup();
                             }
                             
                             ImGui::PopID();
@@ -248,37 +220,24 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名称和点击处理
-                            ImVec2 textSize = ImGui::CalcTextSize(folderName.c_str());
-                            ImGui::Text(folderName.c_str());
-                            
-                            ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() - textSize.x - 8, 
-                                                        ImGui::GetCursorPosY() - textSize.y - 4));
-                            ImGui::InvisibleButton(("folder_" + fullPath).c_str(), 
-                                                   ImVec2(textSize.x + 8, textSize.y + 8));
-                            
-                            if (ImGui::IsItemClicked(0))
+                            // 文件夹名称 - 使用 Selectable
+                            bool isSelected = (m_currentFolder == fullPath);
+                            if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
-                                double currentTime = ImGui::GetTime();
-                                bool isDoubleClick = (fullPath == m_lastClickedFolderPath) && 
-                                                     (currentTime - m_lastClickTime < 1.0);
-                                
-                                if (isDoubleClick)
+                                std::cout << "[ProjectWindow] Folder clicked: " << folderName << std::endl;
+                                m_currentFolder = fullPath;
+                                if (m_editor) m_editor->selectedFile.Clear();
+                            }
+                            
+                            // 右键菜单
+                            if (ImGui::BeginPopupContextItem())
+                            {
+                                if (ImGui::MenuItem("Open in Explorer"))
                                 {
-                                    // 双击：在资源管理器中打开文件夹
-                                    std::cout << "[ProjectWindow] Double click on folder: " << folderName << std::endl;
                                     std::wstring fullPathW = std::filesystem::absolute(fullFsPath).wstring();
                                     ShellExecuteW(NULL, L"open", L"explorer.exe", (L"/select,\"" + fullPathW + L"\"").c_str(), NULL, SW_SHOW);
-                                    m_lastClickedFolderPath = "";
-                                    m_lastClickTime = 0.0;
                                 }
-                                else
-                                {
-                                    m_currentFolder = fullPath;
-                                    if (m_editor) m_editor->selectedFile.Clear();
-                                    m_lastClickedFolderPath = fullPath;
-                                    m_lastClickTime = currentTime;
-                                }
+                                ImGui::EndPopup();
                             }
                             
                             ImGui::PopID();
@@ -398,9 +357,15 @@ void ProjectWindow::Draw()
                     ImGui::SetCursorPos(cursorPos);
                     ImGui::InvisibleButton(("folder_" + folderName).c_str(), ImVec2(itemWidth, itemHeight));
 
-                    if (ImGui::IsItemClicked(0))
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     {
-                        m_currentFolder = m_currentFolder + "/" + folderName;
+                        // 双击进入文件夹
+                        std::string newFolder = m_currentFolder + "/" + folderName;
+                        m_currentFolder = newFolder;
+                    }
+                    else if (ImGui::IsItemClicked(0))
+                    {
+                        // 单击选中文件夹
                         if (m_editor) m_editor->selectedFile.Clear();
                     }
 
@@ -462,46 +427,31 @@ void ProjectWindow::Draw()
                     ImGui::SetCursorPos(cursorPos);
                     ImGui::InvisibleButton(("file_" + filename).c_str(), ImVec2(itemWidth, itemHeight));
 
-                    if (ImGui::IsItemClicked(0))
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+                    {
+                        std::string filePath = entry.path().string();
+                        std::string ext = entry.path().extension().string();
+                        
+                        std::cout << "[ProjectWindow] Double click on: " << filename << std::endl;
+                        
+                        if (ext == ".bin")
+                        {
+                            OnLoadScene(filePath);
+                        }
+                        else if (ext == ".cs")
+                        {
+                            OpenCSharpFile(filePath);
+                        }
+                    }
+                    else if (ImGui::IsItemClicked(0))
                     {
                         std::string filePath = entry.path().string();
                         std::string nameOnly = filename.substr(0, filename.size() - ext.size());
-                        double currentTime = ImGui::GetTime();
                         
-                        // 检查是否是双击（1秒内点击同一文件）
-                        bool isDoubleClick = (filePath == m_lastClickedFilePath) && 
-                                             (currentTime - m_lastClickTime < 1.0);
+                        OnFileSelected(filePath, nameOnly, ext, m_currentFolder);
                         
-                        if (isDoubleClick)
-                        {
-                            // 双击：打开文件
-                            std::cout << "[ProjectWindow] Double click on: " << filename << std::endl;
-                            
-                            if (ext == ".bin")
-                            {
-                                OnLoadScene(filePath);
-                            }
-                            else if (ext == ".cs")
-                            {
-                                OpenCSharpFile(filePath);
-                            }
-                            // 重置点击状态
-                            m_lastClickedFilePath = "";
-                            m_lastClickTime = 0.0;
-                        }
-                        else
-                        {
-                            // 单击：选中文件
-                            OnFileSelected(filePath, nameOnly, ext, m_currentFolder);
-                            
-                            // 加载模型预览
-                            if (m_editor && (ext == ".obj" || ext == ".fbx")) {
-                                m_editor->LoadPreviewModel(filePath);
-                            }
-                            
-                            // 记录点击状态
-                            m_lastClickedFilePath = filePath;
-                            m_lastClickTime = currentTime;
+                        if (m_editor && (ext == ".obj" || ext == ".fbx")) {
+                            m_editor->LoadPreviewModel(filePath);
                         }
                     }
 

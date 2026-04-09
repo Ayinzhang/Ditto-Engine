@@ -1,12 +1,20 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "InspectorWindow.h"
 #include "Editor.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
+#include "../Engine/Core/ProjectManager.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <filesystem>
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
+
+namespace fs = std::filesystem;
 
 InspectorWindow::InspectorWindow(Editor* editor)
     : m_editor(editor)
@@ -188,13 +196,13 @@ void InspectorWindow::Draw()
         // 显示 GameObject UI
         m_currentObject->OnInspectorGUI();
         
-        // 拖拽目标区域 - "添加脚本"
+        // 统一的添加组件区域 - 支持点击展开菜单和拖拽脚本
         ImGui::Separator();
         ImVec4 prevColor = ImGui::GetStyle().Colors[ImGuiCol_Button];
         ImGui::GetStyle().Colors[ImGuiCol_Button] = ImVec4(0.2f, 0.2f, 0.2f, 0.5f);
-        if (ImGui::Button("+ Add Script (drag .cpp here)", ImVec2(ImGui::GetContentRegionAvail().x, 30)))
+        if (ImGui::Button("+ Add Component (drag .cpp here)", ImVec2(ImGui::GetContentRegionAvail().x, 30)))
         {
-            // TODO: 打开脚本选择菜单
+            ImGui::OpenPopup("AddComponentPopup");
         }
         ImGui::GetStyle().Colors[ImGuiCol_Button] = prevColor;
         
@@ -208,6 +216,61 @@ void InspectorWindow::Draw()
                 m_editor->OnScriptComponentDroppedToObject(m_currentObject, scriptPath);
             }
             ImGui::EndDragDropTarget();
+        }
+        
+        // 组件选择弹出菜单
+        if (ImGui::BeginPopup("AddComponentPopup"))
+        {
+            ImGui::TextUnformatted("Components");
+            ImGui::Separator();
+            
+            // 内置组件
+            if (!(m_currentObject->compMask >> 1 & 1) && ImGui::MenuItem("Light"))
+                m_currentObject->AddComponent<LightComponent>();
+            if (!(m_currentObject->compMask >> 2 & 1) && ImGui::MenuItem("Renderer"))
+                m_currentObject->AddComponent<RendererComponent>();
+            if (!(m_currentObject->compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody"))
+                m_currentObject->AddComponent<RigidbodyComponent>();
+            
+            ImGui::Separator();
+            ImGui::TextUnformatted("Scripts");
+            ImGui::Separator();
+            
+            // 从项目 Scripts 目录读取可用脚本
+            Project* project = ProjectManager::GetInstance().GetCurrentProject();
+            if (project)
+            {
+                std::string scriptsDir = project->path + "/Assets/Scripts";
+                if (fs::exists(scriptsDir))
+                {
+                    for (const auto& entry : fs::directory_iterator(scriptsDir))
+                    {
+                        if (entry.is_regular_file())
+                        {
+                            std::string ext = entry.path().extension().string();
+                            if (ext == ".cs" || ext == ".cpp")
+                            {
+                                std::string filename = entry.path().stem().string();
+                                std::string fullPath = entry.path().string();
+                                if (ImGui::MenuItem(filename.c_str()))
+                                {
+                                    m_editor->OnScriptComponentDroppedToObject(m_currentObject, fullPath.c_str());
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    ImGui::TextDisabled("No scripts found");
+                }
+            }
+            else
+            {
+                ImGui::TextDisabled("No project loaded");
+            }
+            
+            ImGui::EndPopup();
         }
         
         if (m_editor->engine && m_editor->engine->state == Engine::State::Play) ImGui::EndDisabled();

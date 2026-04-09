@@ -330,6 +330,7 @@
     <ClInclude Include="Editor\ProjectWindow.h" />
     <ClInclude Include="Editor\SceneWindow.h" />
     <ClInclude Include="Engine\Core\CSharpScript.h" />
+    <ClInclude Include="Engine\Core\MonoRuntime.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
     <ClInclude Include="Engine\Core\ProjectManager.h" />
@@ -514,6 +515,7 @@
     <ClCompile Include="Editor\LayoutManager.cpp" />
     <ClCompile Include="Editor\ProjectWindow.cpp" />
     <ClCompile Include="Engine\Core\CSharpScript.cpp" />
+    <ClCompile Include="Engine\Core\MonoRuntime.cpp" />
     <ClCompile Include="Engine\Core\Engine.cpp" />
     <ClCompile Include="Engine\Core\GameObject.cpp" />
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />

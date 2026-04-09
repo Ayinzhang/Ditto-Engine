@@ -18,8 +18,8 @@ void Resource::Initialize(const std::string& basePath)
     // Determine the base path for assets
     if (basePath.empty())
     {
-        cubeModel = sphereModel = planeModel = nullptr;
-        cubeMesh = sphereMesh = planeMesh = nullptr;
+        cubeModel = nullptr; sphereModel = nullptr;
+        cubeMesh = nullptr; sphereMesh = nullptr;
         // Try to find Assets directory relative to executable
         if (std::filesystem::exists("Assets/Models/Cube.obj"))
             resourcePath = "Assets/Models";
@@ -36,15 +36,13 @@ void Resource::Initialize(const std::string& basePath)
     }
     
     // Clean up existing resources if reinitializing
-    delete cubeModel; delete sphereModel; delete planeModel;
-    delete cubeMesh; delete sphereMesh; delete planeMesh;
+    delete cubeModel; delete sphereModel;
+    delete cubeMesh; delete sphereMesh;
     
     cubeModel = new ModelData(resourcePath + "/Cube.obj");
     sphereModel = new ModelData(resourcePath + "/Sphere.obj");
     cubeMesh = new MeshData(resourcePath + "/Cube.obj");
     sphereMesh = new MeshData(resourcePath + "/Sphere.obj");
-    planeModel = nullptr;
-    planeMesh = nullptr;
 }
 
 ModelData::ModelData(const std::string& path)

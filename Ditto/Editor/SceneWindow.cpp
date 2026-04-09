@@ -1,3 +1,7 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "SceneWindow.h"
 #include "Editor.h"
 #include "../Engine/Core/Engine.h"

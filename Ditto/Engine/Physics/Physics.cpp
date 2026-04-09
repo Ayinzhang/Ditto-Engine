@@ -1,3 +1,7 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "Physics.h"
 #include "../Core/Engine.h"
 #include <iostream>

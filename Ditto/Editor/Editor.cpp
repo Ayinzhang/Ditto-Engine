@@ -1462,6 +1462,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
         CSharpScriptComponent* csScript = new CSharpScriptComponent();
         csScript->scriptPath = scriptPath;
         csScript->scriptName = std::filesystem::path(scriptPath).filename().stem().string();
+        csScript->gameObject = obj;
         csScript->ParseScriptFields();
         
         obj->components.push_back(csScript);

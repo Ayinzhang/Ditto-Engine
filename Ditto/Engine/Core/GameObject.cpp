@@ -1,3 +1,7 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "Scene.h"
 #include "GameObject.h"
 #include "../../Editor/Editor.h"
@@ -180,15 +184,6 @@ void GameObject::OnInspectorGUI()
         comp->OnInspectorGUI();
         ImGui::PopID();
         ImGui::Separator();
-    }
-
-    if (ImGui::Button("Add Component")) ImGui::OpenPopup("AddComponentPopup");
-    if (ImGui::BeginPopup("AddComponentPopup"))
-    {
-        if (!(compMask >> 1 & 1) && ImGui::MenuItem("DirLight")) AddComponent<LightComponent>();
-        if (!(compMask >> 2 & 1) && ImGui::MenuItem("Renderer")) AddComponent<RendererComponent>();
-        if (!(compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody")) AddComponent<RigidbodyComponent>();
-        ImGui::EndPopup();
     }
     ProcessRemovals();
 }
