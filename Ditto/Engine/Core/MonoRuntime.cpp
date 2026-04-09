@@ -1,0 +1,440 @@
+#include "MonoRuntime.h"
+#include <iostream>
+#include <filesystem>
+#include <sstream>
+
+namespace fs = std::filesystem;
+
+typedef MonoDomain* (*mono_jit_init_t)(const char*);
+typedef void (*mono_jit_cleanup_t)(MonoDomain*);
+typedef void (*mono_config_parse_t)(const char*);
+typedef MonoAssembly* (*mono_domain_assembly_open_t)(MonoDomain*, const char*);
+typedef MonoImage* (*mono_assembly_get_image_t)(MonoAssembly*);
+typedef MonoClass* (*mono_class_from_name_t)(MonoImage*, const char*, const char*);
+typedef MonoObject* (*mono_object_new_t)(MonoDomain*, MonoClass*);
+typedef void (*mono_runtime_object_init_t)(MonoObject*);
+typedef MonoMethod* (*mono_class_get_method_from_name_t)(MonoClass*, const char*, int);
+typedef MonoObject* (*mono_runtime_invoke_t)(MonoMethod*, void*, void**, MonoObject**);
+typedef MonoString* (*mono_string_new_t)(MonoDomain*, const char*);
+typedef char* (*mono_string_to_utf8_t)(MonoString*);
+typedef void (*mono_free_t)(void*);
+typedef void (*mono_add_internal_call_t)(const char*, void*);
+typedef MonoClassField* (*mono_class_get_field_from_name_t)(MonoClass*, const char*);
+typedef void (*mono_field_set_value_t)(MonoObject*, MonoClassField*, void*);
+typedef void (*mono_field_get_value_t)(MonoObject*, MonoClassField*, void*);
+typedef void (*mono_set_assemblies_path_t)(const char*);
+typedef MonoClass* (*mono_object_get_class_t)(MonoObject*);
+typedef MonoClass* (*mono_class_get_parent_t)(MonoClass*);
+typedef MonoThread* (*mono_thread_attach_t)(MonoDomain*);
+typedef void (*mono_thread_detach_t)(MonoThread*);
+typedef uint32_t (*mono_gchandle_new_t)(MonoObject*, int);
+typedef void (*mono_gchandle_free_t)(uint32_t);
+
+namespace MonoRuntime
+{
+    static HMODULE g_monoDll = nullptr;
+    static MonoDomain* g_domain = nullptr;
+    static bool g_initialized = false;
+
+    static mono_jit_init_t p_mono_jit_init = nullptr;
+    static mono_jit_cleanup_t p_mono_jit_cleanup = nullptr;
+    static mono_config_parse_t p_mono_config_parse = nullptr;
+    static mono_domain_assembly_open_t p_mono_domain_assembly_open = nullptr;
+    static mono_assembly_get_image_t p_mono_assembly_get_image = nullptr;
+    static mono_class_from_name_t p_mono_class_from_name = nullptr;
+    static mono_object_new_t p_mono_object_new = nullptr;
+    static mono_runtime_object_init_t p_mono_runtime_object_init = nullptr;
+    static mono_class_get_method_from_name_t p_mono_class_get_method_from_name = nullptr;
+    static mono_runtime_invoke_t p_mono_runtime_invoke = nullptr;
+    static mono_string_new_t p_mono_string_new = nullptr;
+    static mono_string_to_utf8_t p_mono_string_to_utf8 = nullptr;
+    static mono_free_t p_mono_free = nullptr;
+    static mono_add_internal_call_t p_mono_add_internal_call = nullptr;
+    static mono_class_get_field_from_name_t p_mono_class_get_field_from_name = nullptr;
+    static mono_field_set_value_t p_mono_field_set_value = nullptr;
+    static mono_field_get_value_t p_mono_field_get_value = nullptr;
+    static mono_object_get_class_t p_mono_object_get_class = nullptr;
+    static mono_class_get_parent_t p_mono_class_get_parent = nullptr;
+    static mono_set_assemblies_path_t p_mono_set_assemblies_path = nullptr;
+    static mono_thread_attach_t p_mono_thread_attach = nullptr;
+    static mono_thread_detach_t p_mono_thread_detach = nullptr;
+    static mono_gchandle_new_t p_mono_gchandle_new = nullptr;
+    static mono_gchandle_free_t p_mono_gchandle_free = nullptr;
+
+    static bool LoadMonoFunctions()
+    {
+        if (!g_monoDll) return false;
+
+        p_mono_jit_init = (mono_jit_init_t)GetProcAddress(g_monoDll, "mono_jit_init");
+        p_mono_jit_cleanup = (mono_jit_cleanup_t)GetProcAddress(g_monoDll, "mono_jit_cleanup");
+        p_mono_config_parse = (mono_config_parse_t)GetProcAddress(g_monoDll, "mono_config_parse");
+        p_mono_domain_assembly_open = (mono_domain_assembly_open_t)GetProcAddress(g_monoDll, "mono_domain_assembly_open");
+        p_mono_assembly_get_image = (mono_assembly_get_image_t)GetProcAddress(g_monoDll, "mono_assembly_get_image");
+        p_mono_class_from_name = (mono_class_from_name_t)GetProcAddress(g_monoDll, "mono_class_from_name");
+        p_mono_object_new = (mono_object_new_t)GetProcAddress(g_monoDll, "mono_object_new");
+        p_mono_runtime_object_init = (mono_runtime_object_init_t)GetProcAddress(g_monoDll, "mono_runtime_object_init");
+        p_mono_class_get_method_from_name = (mono_class_get_method_from_name_t)GetProcAddress(g_monoDll, "mono_class_get_method_from_name");
+        p_mono_runtime_invoke = (mono_runtime_invoke_t)GetProcAddress(g_monoDll, "mono_runtime_invoke");
+        p_mono_string_new = (mono_string_new_t)GetProcAddress(g_monoDll, "mono_string_new");
+        p_mono_string_to_utf8 = (mono_string_to_utf8_t)GetProcAddress(g_monoDll, "mono_string_to_utf8");
+        p_mono_free = (mono_free_t)GetProcAddress(g_monoDll, "mono_free");
+        p_mono_add_internal_call = (mono_add_internal_call_t)GetProcAddress(g_monoDll, "mono_add_internal_call");
+        p_mono_class_get_field_from_name = (mono_class_get_field_from_name_t)GetProcAddress(g_monoDll, "mono_class_get_field_from_name");
+        p_mono_field_set_value = (mono_field_set_value_t)GetProcAddress(g_monoDll, "mono_field_set_value");
+        p_mono_field_get_value = (mono_field_get_value_t)GetProcAddress(g_monoDll, "mono_field_get_value");
+        p_mono_object_get_class = (mono_object_get_class_t)GetProcAddress(g_monoDll, "mono_object_get_class");
+        p_mono_class_get_parent = (mono_class_get_parent_t)GetProcAddress(g_monoDll, "mono_class_get_parent");
+        p_mono_set_assemblies_path = (mono_set_assemblies_path_t)GetProcAddress(g_monoDll, "mono_set_assemblies_path");
+        p_mono_thread_attach = (mono_thread_attach_t)GetProcAddress(g_monoDll, "mono_thread_attach");
+        p_mono_thread_detach = (mono_thread_detach_t)GetProcAddress(g_monoDll, "mono_thread_detach");
+        p_mono_gchandle_new = (mono_gchandle_new_t)GetProcAddress(g_monoDll, "mono_gchandle_new");
+        p_mono_gchandle_free = (mono_gchandle_free_t)GetProcAddress(g_monoDll, "mono_gchandle_free");
+
+        // Check critical function pointers
+        if (!p_mono_runtime_invoke) std::cerr << "[MonoRuntime] Failed to load mono_runtime_invoke" << std::endl;
+        if (!p_mono_thread_attach) std::cerr << "[MonoRuntime] Failed to load mono_thread_attach" << std::endl;
+        if (!p_mono_object_get_class) std::cerr << "[MonoRuntime] Failed to load mono_object_get_class" << std::endl;
+
+        return p_mono_jit_init && p_mono_jit_cleanup && p_mono_domain_assembly_open;
+    }
+
+    bool Initialize(const std::string& monoLibPath)
+    {
+        if (g_initialized) return true;
+
+        // Try loading from project 3rdParty first, then system Mono
+        std::vector<std::string> tryPaths = {
+            "3rdParty/Mono/mono-2.0-sgen.dll",
+            "../../3rdParty/Mono/mono-2.0-sgen.dll",
+            "../3rdParty/Mono/mono-2.0-sgen.dll",
+            "C:/Program Files/Mono/bin/mono-2.0-sgen.dll",
+            "C:/Program Files (x86)/Mono/bin/mono-2.0-sgen.dll",
+        };
+        
+        // If custom path provided, try it first
+        if (!monoLibPath.empty())
+        {
+            tryPaths.insert(tryPaths.begin(), monoLibPath + "/mono-2.0-sgen.dll");
+        }
+
+        for (const auto& path : tryPaths)
+        {
+            g_monoDll = LoadLibraryA(path.c_str());
+            if (g_monoDll)
+            {
+                std::cout << "[MonoRuntime] Loaded mono.dll from: " << path << std::endl;
+                break;
+            }
+        }
+
+        if (!g_monoDll)
+        {
+            std::cerr << "[MonoRuntime] Failed to load mono.dll" << std::endl;
+            std::cerr << "[MonoRuntime] Please install Mono from https://www.mono-project.com/download/" << std::endl;
+            return false;
+        }
+
+        if (!LoadMonoFunctions())
+        {
+            std::cerr << "[MonoRuntime] Failed to load Mono functions" << std::endl;
+            FreeLibrary(g_monoDll);
+            g_monoDll = nullptr;
+            return false;
+        }
+
+        // Set Mono assemblies path
+        if (p_mono_set_assemblies_path)
+        {
+            // Try multiple possible assembly paths (prefer project internal)
+            std::vector<std::string> assemblyPaths = {
+                "3rdParty/Mono",
+                "../../3rdParty/Mono",
+                "../3rdParty/Mono",
+                "C:/Program Files/Mono/lib/mono/4.5",
+                "C:/Program Files (x86)/Mono/lib/mono/4.5",
+            };
+            
+            for (const auto& path : assemblyPaths)
+            {
+                if (fs::exists(path + "/mscorlib.dll"))
+                {
+                    p_mono_set_assemblies_path(path.c_str());
+                    std::cout << "[MonoRuntime] Set assemblies path: " << path << std::endl;
+                    break;
+                }
+            }
+        }
+
+        p_mono_config_parse(nullptr);
+
+        g_domain = p_mono_jit_init("DittoEngine");
+        if (!g_domain)
+        {
+            std::cerr << "[MonoRuntime] Failed to initialize JIT" << std::endl;
+            FreeLibrary(g_monoDll);
+            g_monoDll = nullptr;
+            return false;
+        }
+
+        g_initialized = true;
+        std::cout << "[MonoRuntime] Initialized successfully" << std::endl;
+        return true;
+    }
+
+    void Shutdown()
+    {
+        if (!g_initialized) return;
+
+        if (g_domain && p_mono_jit_cleanup)
+        {
+            p_mono_jit_cleanup(g_domain);
+            g_domain = nullptr;
+        }
+
+        if (g_monoDll)
+        {
+            FreeLibrary(g_monoDll);
+            g_monoDll = nullptr;
+        }
+
+        g_initialized = false;
+        std::cout << "[MonoRuntime] Shutdown" << std::endl;
+    }
+
+    bool IsInitialized()
+    {
+        return g_initialized;
+    }
+
+    MonoAssembly* LoadAssembly(const std::string& path)
+    {
+        if (!g_initialized || !g_domain) return nullptr;
+
+        std::string absPath = fs::absolute(path).string();
+        MonoAssembly* assembly = p_mono_domain_assembly_open(g_domain, absPath.c_str());
+        
+        if (!assembly)
+        {
+            std::cerr << "[MonoRuntime] Failed to load assembly: " << path << std::endl;
+            return nullptr;
+        }
+
+        std::cout << "[MonoRuntime] Loaded assembly: " << path << std::endl;
+        return assembly;
+    }
+
+    MonoImage* GetAssemblyImage(MonoAssembly* assembly)
+    {
+        if (!g_initialized || !assembly) return nullptr;
+        return p_mono_assembly_get_image(assembly);
+    }
+
+    MonoClass* GetClass(MonoImage* image, const std::string& namespaceName, const std::string& className)
+    {
+        if (!g_initialized || !image) return nullptr;
+        return p_mono_class_from_name(image, namespaceName.c_str(), className.c_str());
+    }
+
+    MonoClass* GetClassFromObject(MonoObject* obj)
+    {
+        if (!g_initialized || !obj || !p_mono_object_get_class) return nullptr;
+        return p_mono_object_get_class(obj);
+    }
+
+    MonoClass* GetParentClass(MonoClass* klass)
+    {
+        if (!g_initialized || !klass || !p_mono_class_get_parent) return nullptr;
+        return p_mono_class_get_parent(klass);
+    }
+
+    MonoMethod* GetMethod(MonoClass* klass, const std::string& methodName, int paramCount)
+    {
+        if (!g_initialized || !klass) return nullptr;
+        return p_mono_class_get_method_from_name(klass, methodName.c_str(), paramCount);
+    }
+
+    MonoObject* CreateInstance(MonoClass* klass)
+    {
+        if (!g_initialized || !g_domain || !klass) return nullptr;
+
+        MonoObject* obj = p_mono_object_new(g_domain, klass);
+        if (obj)
+        {
+            p_mono_runtime_object_init(obj);
+        }
+        return obj;
+    }
+
+    MonoObject* InvokeMethod(MonoObject* instance, MonoMethod* method, void** params)
+    {
+        if (!g_initialized || !method) return nullptr;
+        
+        // Check if p_mono_runtime_invoke is valid
+        if (!p_mono_runtime_invoke)
+        {
+            std::cerr << "[MonoRuntime] InvokeMethod: p_mono_runtime_invoke is null!" << std::endl;
+            return nullptr;
+        }
+
+        // Ensure current thread is attached to Mono domain
+        if (p_mono_thread_attach && g_domain)
+        {
+            p_mono_thread_attach(g_domain);
+        }
+
+        MonoObject* exc = nullptr;
+        MonoObject* result = p_mono_runtime_invoke(method, instance, params, &exc);
+
+        if (exc)
+        {
+            PrintException(exc);
+            return nullptr;
+        }
+
+        return result;
+    }
+
+    MonoString* CreateString(const std::string& str)
+    {
+        if (!g_initialized || !g_domain) return nullptr;
+        return p_mono_string_new(g_domain, str.c_str());
+    }
+
+    void AddInternalCall(const std::string& name, void* method)
+    {
+        if (!g_initialized || !p_mono_add_internal_call) return;
+        p_mono_add_internal_call(name.c_str(), method);
+    }
+
+    std::shared_ptr<ScriptInstance> LoadScript(const std::string& dllPath, const std::string& className)
+    {
+        if (!g_initialized) return nullptr;
+
+        auto script = std::make_shared<ScriptInstance>();
+        script->className = className;
+        script->assemblyPath = dllPath;
+
+        MonoAssembly* assembly = LoadAssembly(dllPath);
+        if (!assembly) return nullptr;
+
+        MonoImage* image = GetAssemblyImage(assembly);
+        if (!image) return nullptr;
+
+        MonoClass* klass = GetClass(image, "", className);
+        if (!klass)
+        {
+            std::cerr << "[MonoRuntime] Class not found: " << className << std::endl;
+            return nullptr;
+        }
+
+        script->instance = CreateInstance(klass);
+        if (!script->instance)
+        {
+            std::cerr << "[MonoRuntime] Failed to create instance of: " << className << std::endl;
+            return nullptr;
+        }
+
+        script->startMethod = GetMethod(klass, "Start", 0);
+        script->updateMethod = GetMethod(klass, "Update", 0);
+        script->onDestroyMethod = GetMethod(klass, "OnDestroy", 0);
+
+        // Create GC handle to prevent object from being collected
+        if (p_mono_gchandle_new && script->instance)
+        {
+            script->gcHandle = p_mono_gchandle_new(script->instance, 0);  // 0 = normal handle, not pinned
+            std::cout << "[MonoRuntime] Created GC handle for script: " << className << std::endl;
+        }
+
+        std::cout << "[MonoRuntime] Script loaded: " << className << std::endl;
+        return script;
+    }
+
+    void UnloadScript(std::shared_ptr<ScriptInstance> script)
+    {
+        if (!script) return;
+        
+        CallOnDestroy(script);
+        
+        // Free GC handle
+        if (p_mono_gchandle_free && script->gcHandle)
+        {
+            p_mono_gchandle_free(script->gcHandle);
+            script->gcHandle = 0;
+        }
+        
+        script->instance = nullptr;
+    }
+
+    void CallStart(std::shared_ptr<ScriptInstance> script)
+    {
+        if (!script || !script->instance || !script->startMethod || script->started) return;
+
+        InvokeMethod(script->instance, script->startMethod, nullptr);
+        script->started = true;
+    }
+
+    void CallUpdate(std::shared_ptr<ScriptInstance> script)
+    {
+        if (!script || !script->instance || !script->updateMethod) return;
+
+        if (!script->started)
+        {
+            CallStart(script);
+        }
+
+        InvokeMethod(script->instance, script->updateMethod, nullptr);
+    }
+
+    void CallOnDestroy(std::shared_ptr<ScriptInstance> script)
+    {
+        if (!script || !script->instance || !script->onDestroyMethod) return;
+        InvokeMethod(script->instance, script->onDestroyMethod, nullptr);
+    }
+
+    void SetFieldValue(MonoObject* obj, const std::string& fieldName, void* value)
+    {
+        if (!g_initialized || !obj || !p_mono_class_get_field_from_name || !p_mono_object_get_class) return;
+
+        MonoClass* klass = p_mono_object_get_class(obj);
+        MonoClassField* field = p_mono_class_get_field_from_name(klass, fieldName.c_str());
+        
+        if (field && p_mono_field_set_value)
+        {
+            p_mono_field_set_value(obj, field, value);
+        }
+    }
+
+    void GetFieldValue(MonoObject* obj, const std::string& fieldName, void* value)
+    {
+        if (!g_initialized || !obj || !p_mono_class_get_field_from_name || !p_mono_object_get_class) return;
+
+        MonoClass* klass = p_mono_object_get_class(obj);
+        MonoClassField* field = p_mono_class_get_field_from_name(klass, fieldName.c_str());
+        
+        if (field && p_mono_field_get_value)
+        {
+            p_mono_field_get_value(obj, field, value);
+        }
+    }
+
+    std::string GetStringFromMono(MonoString* str)
+    {
+        if (!g_initialized || !str || !p_mono_string_to_utf8) return "";
+
+        char* utf8 = p_mono_string_to_utf8(str);
+        std::string result(utf8);
+        
+        if (p_mono_free)
+        {
+            p_mono_free(utf8);
+        }
+
+        return result;
+    }
+
+    void PrintException(MonoObject* exc)
+    {
+        if (!exc) return;
+        std::cerr << "[MonoRuntime] Exception occurred during method invocation" << std::endl;
+    }
+}

@@ -1,0 +1,1 @@
+csc /target:library /out:DittoEngine.dll DittoEngine.cs && pause
