@@ -9,6 +9,7 @@ e:\Engine Source\Ditto\ditto\3rdParty\ImGui\imgui_impl_opengl3.cpp;e:\Engine Sou
 e:\Engine Source\Ditto\ditto\3rdParty\ImGui\imgui_impl_win32.cpp;e:\Engine Source\Ditto\ditto\Ditto\x64\Debug\imgui_impl_win32.obj
 e:\Engine Source\Ditto\ditto\3rdParty\ImGui\imgui_tables.cpp;e:\Engine Source\Ditto\ditto\Ditto\x64\Debug\imgui_tables.obj
 e:\Engine Source\Ditto\ditto\3rdParty\ImGui\imgui_widgets.cpp;e:\Engine Source\Ditto\ditto\Ditto\x64\Debug\imgui_widgets.obj
+e:\Engine Source\Ditto\ditto\Editor\BuildSystem.cpp;e:\Engine Source\Ditto\ditto\Ditto\x64\Debug\BuildSystem.obj
 e:\Engine Source\Ditto\ditto\Editor\Editor.cpp;e:\Engine Source\Ditto\ditto\Ditto\x64\Debug\Editor.obj
 e:\Engine Source\Ditto\ditto\Editor\InspectorWindow.cpp;e:\Engine Source\Ditto\ditto\Ditto\x64\Debug\InspectorWindow.obj
 e:\Engine Source\Ditto\ditto\Editor\SceneWindow.cpp;e:\Engine Source\Ditto\ditto\Ditto\x64\Debug\SceneWindow.obj

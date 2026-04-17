@@ -59,6 +59,7 @@ struct CSharpScriptSystem
     static void Initialize();
     static void Shutdown();
     static bool LoadScript(const std::string& csPath, CSharpScriptComponent* component);
+    static bool LoadPrecompiledScript(const std::string& className, CSharpScriptComponent* component);
     static void ReloadAll();
     static void CallStart();
     static void CallUpdate();
@@ -96,6 +97,9 @@ extern "C" {
     void Internal_Transform_GetPosition(void* transform, float* outPos);
     void Internal_Transform_SetPosition(void* transform, float x, float y, float z);
     void* Internal_GameObject_GetTransform(void* gameObject);
+    void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName);
+    void Internal_Renderer_GetColor(void* renderer, float* outColor);
+    void Internal_Renderer_SetColor(void* renderer, float r, float g, float b, float a);
     float Internal_Time_GetDeltaTime();
     void Internal_Debug_Log(void* msg);  // MonoString*
 }

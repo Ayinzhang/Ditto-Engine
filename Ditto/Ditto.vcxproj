@@ -324,6 +324,7 @@
     <ClInclude Include="3rdParty\ImGui\imstb_textedit.h" />
     <ClInclude Include="3rdParty\ImGui\imstb_truetype.h" />
     <ClInclude Include="3rdParty\stb_image.h" />
+    <ClInclude Include="Editor\BuildSystem.h" />
     <ClInclude Include="Editor\Editor.h" />
     <ClInclude Include="Editor\InspectorWindow.h" />
     <ClInclude Include="Editor\LayoutManager.h" />
@@ -509,6 +510,7 @@
     <ClCompile Include="3rdParty\ImGui\imgui_impl_win32.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="Editor\BuildSystem.cpp" />
     <ClCompile Include="Editor\Editor.cpp" />
     <ClCompile Include="Editor\InspectorWindow.cpp" />
     <ClCompile Include="Editor\SceneWindow.cpp" />

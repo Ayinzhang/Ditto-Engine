@@ -13,6 +13,7 @@ using namespace glm;
 #include "ProjectWindow.h"
 #include "InspectorWindow.h"
 #include "SceneWindow.h"
+#include "BuildSystem.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
@@ -139,8 +140,8 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     std::string editorAssetsPath = FindEditorAssetsPath();
     LayoutManager::GetInstance().Initialize(editorAssetsPath + "/Settings");
     
-    // 显示项目选择界面
-    showProjectSelector = true;
+    // 显示项目选择界面（仅在非游戏模式下）
+    showProjectSelector = !gameMode;
 
     // 初始化 3D 模型预览
     InitModelPreview();
@@ -183,49 +184,6 @@ void Editor::Draw()
 {
     isSceneActive = false;
     
-    // 游戏模式：直接渲染场景，不走ImGui窗口
-    if (gameMode)
-    {
-        // 如果项目未加载，尝试加载项目
-        if (!projectLoaded && !gameProjectPath.empty())
-        {
-            std::filesystem::path projectFile = std::filesystem::path(gameProjectPath) / "project.bin";
-            if (std::filesystem::exists(projectFile))
-            {
-                std::cout << "[Editor] Loading project from: " << projectFile.string() << std::endl;
-                OpenProject(gameProjectPath);
-                projectLoaded = true;
-            }
-            else
-            {
-                std::cerr << "[Editor] Project file not found: " << projectFile.string() << std::endl;
-            }
-        }
-        
-        if (engine)
-            engine->state = Engine::Play;
-        isSceneActive = true;
-        
-        // 游戏模式直接渲染，不使用ImGui
-        int w = 0, h = 0;
-        glfwGetFramebufferSize(engine->window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glEnable(GL_DEPTH_TEST);
-        
-        if (engine && engine->scene && engine->shader)
-        {
-            Camera* cam = engine->gameCamera;
-            mat4 view = cam->GetViewMatrix();
-            mat4 projection = perspective(radians(45.0f), (float)w / (float)h, 0.1f, 100.0f);
-            engine->scene->Render(engine->shader, view, projection, cam->position, w, h);
-        }
-        
-        return;
-    }
-    
-    // 编辑器模式
     ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
     
     // 全局 Ctrl+S 快捷键 - 保存当前场景
@@ -325,6 +283,7 @@ void Editor::Draw()
     if (m_projectWindow) m_projectWindow->Draw();
     if (m_inspectorWindow) m_inspectorWindow->Draw();
     DrawPopups();
+    DrawBuildSettingsWindow();
 
     // DockSpace结束
     ImGui::End();
@@ -423,9 +382,21 @@ void Editor::DrawToolbar()
     {
         if (ImGui::BeginMenu("File"))
         {
-            if (ImGui::MenuItem("Build..."))
+            if (ImGui::MenuItem("Build Settings..."))
             {
-                showBuildPopup = true;
+                showBuildSettingsWindow = true;
+                // 初始化构建设置
+                Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+                if (proj)
+                {
+                    buildSettings.productName = proj->name;
+                    buildSettings.outputPath = BuildSystem::GetDefaultOutputPath(proj->path);
+                    buildSettings.scenes = ::BuildSystem::GetProjectScenes(proj->path);
+                    if (!buildSettings.scenes.empty())
+                    {
+                        buildSettings.startupScene = fs::path(buildSettings.scenes[0]).stem().string();
+                    }
+                }
             }
             ImGui::EndMenu();
         }
@@ -1107,6 +1078,206 @@ void Editor::DrawPopups()
         }
         ImGui::EndPopup();
     }
+}
+
+void Editor::DrawBuildSettingsWindow()
+{
+    if (!showBuildSettingsWindow) return;
+    
+    ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Build Settings", &showBuildSettingsWindow))
+    {
+        Project* proj = ProjectManager::GetInstance().GetCurrentProject();
+        if (!proj)
+        {
+            ImGui::TextDisabled("No project loaded");
+            ImGui::End();
+            return;
+        }
+        
+        // 平台选择
+        ImGui::Text("Platform:");
+        const char* platforms[] = { "Windows" };
+        int currentPlatform = (int)buildSettings.platform;
+        if (ImGui::Combo("##Platform", &currentPlatform, platforms, IM_ARRAYSIZE(platforms)))
+        {
+            buildSettings.platform = (BuildPlatform)currentPlatform;
+        }
+        
+        // 配置选择
+        ImGui::Text("Configuration:");
+        const char* configs[] = { "Debug", "Release" };
+        int currentConfig = (int)buildSettings.configuration;
+        if (ImGui::Combo("##Config", &currentConfig, configs, IM_ARRAYSIZE(configs)))
+        {
+            buildSettings.configuration = (BuildConfiguration)currentConfig;
+        }
+        
+        ImGui::Separator();
+        
+        // 产品信息
+        ImGui::Text("Product Settings:");
+        
+        char productName[256];
+        strcpy_s(productName, buildSettings.productName.c_str());
+        ImGui::Text("Product Name:");
+        if (ImGui::InputText("##ProductName", productName, sizeof(productName)))
+        {
+            buildSettings.productName = productName;
+        }
+        
+        char companyName[256];
+        strcpy_s(companyName, buildSettings.companyName.c_str());
+        ImGui::Text("Company Name:");
+        if (ImGui::InputText("##CompanyName", companyName, sizeof(companyName)))
+        {
+            buildSettings.companyName = companyName;
+        }
+        
+        char version[64];
+        strcpy_s(version, buildSettings.version.c_str());
+        ImGui::Text("Version:");
+        if (ImGui::InputText("##Version", version, sizeof(version)))
+        {
+            buildSettings.version = version;
+        }
+        
+        ImGui::Separator();
+        
+        // 场景列表
+        ImGui::Text("Scenes In Build:");
+        
+        // 刷新场景列表按钮
+        ImGui::SameLine();
+        if (ImGui::Button("Refresh"))
+        {
+            buildSettings.scenes = ::BuildSystem::GetProjectScenes(proj->path);
+        }
+        
+        ImGui::BeginChild("ScenesList", ImVec2(0, 150), true);
+        
+        if (buildSettings.scenes.empty())
+        {
+            ImGui::TextDisabled("No scenes found in project");
+        }
+        else
+        {
+            for (size_t i = 0; i < buildSettings.scenes.size(); i++)
+            {
+                std::string sceneName = fs::path(buildSettings.scenes[i]).stem().string();
+                bool isSelected = (buildSettings.startupScene == sceneName);
+                
+                // 显示场景索引和名称
+                ImGui::Text("%d", (int)i);
+                ImGui::SameLine(30);
+                
+                if (ImGui::Selectable(sceneName.c_str(), isSelected))
+                {
+                    buildSettings.startupScene = sceneName;
+                }
+                
+                // 显示是否为启动场景
+                if (isSelected)
+                {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(Startup)");
+                }
+            }
+        }
+        
+        ImGui::EndChild();
+        
+        // 启动场景显示
+        ImGui::Text("Startup Scene: %s", buildSettings.startupScene.empty() ? "None" : buildSettings.startupScene.c_str());
+        
+        ImGui::Separator();
+        
+        // 输出路径
+        ImGui::Text("Output Path:");
+        char outputPath[512];
+        strcpy_s(outputPath, buildSettings.outputPath.c_str());
+        if (ImGui::InputText("##OutputPath", outputPath, sizeof(outputPath)))
+        {
+            buildSettings.outputPath = outputPath;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Browse##Output"))
+        {
+            // TODO: 打开文件夹选择对话框
+        }
+        
+        // 开发构建设置
+        ImGui::Checkbox("Development Build", &buildSettings.developmentBuild);
+        if (buildSettings.developmentBuild)
+        {
+            ImGui::Checkbox("Script Debugging", &buildSettings.enableScriptDebugging);
+        }
+        
+        ImGui::Separator();
+        
+        // 构建进度
+        if (isBuilding)
+        {
+            ImGui::Text("Building: %s", buildStatus.c_str());
+            ImGui::ProgressBar(buildProgress, ImVec2(-1, 0));
+        }
+        
+        // 构建按钮
+        ImGui::BeginDisabled(isBuilding);
+        
+        if (ImGui::Button("Build", ImVec2(120, 30)))
+        {
+            std::string error;
+            if (BuildSystem::ValidateSettings(buildSettings, error))
+            {
+                isBuilding = true;
+                buildProgress = 0.0f;
+                buildStatus = "Starting...";
+                
+                // 执行构建
+                bool success = BuildSystem::Build(buildSettings, 
+                    [this](const std::string& stage, float progress)
+                    {
+                        buildStatus = stage;
+                        buildProgress = progress;
+                    });
+                
+                isBuilding = false;
+                if (success)
+                {
+                    buildStatus = "Build completed successfully!";
+                    // 打开输出目录 - 使用绝对路径
+                    std::wstring outputDirW = fs::absolute(buildSettings.outputPath).wstring();
+                    ShellExecuteW(NULL, L"open", outputDirW.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                }
+                else
+                {
+                    buildStatus = "Build failed!";
+                }
+            }
+            else
+            {
+                buildStatus = "Error: " + error;
+            }
+        }
+        
+        ImGui::EndDisabled();
+        
+        ImGui::SameLine();
+        
+        if (ImGui::Button("Close", ImVec2(120, 30)))
+        {
+            showBuildSettingsWindow = false;
+        }
+        
+        // 显示状态信息
+        if (!buildStatus.empty())
+        {
+            ImGui::Separator();
+            ImGui::Text("Status: %s", buildStatus.c_str());
+        }
+    }
+    ImGui::End();
 }
 
 void Editor::CopySelectedObject()

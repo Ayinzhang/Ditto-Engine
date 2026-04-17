@@ -145,23 +145,42 @@ namespace MonoRuntime
         // Set Mono assemblies path
         if (p_mono_set_assemblies_path)
         {
-            // Try multiple possible assembly paths (prefer project internal)
-            std::vector<std::string> assemblyPaths = {
-                "3rdParty/Mono",
-                "../../3rdParty/Mono",
-                "../3rdParty/Mono",
-                "C:/Program Files/Mono/lib/mono/4.5",
-                "C:/Program Files (x86)/Mono/lib/mono/4.5",
-            };
+            std::vector<std::string> assemblyPaths;
             
+            char exePathBuf[MAX_PATH];
+            DWORD exeLen = GetModuleFileNameA(NULL, exePathBuf, MAX_PATH);
+            if (exeLen > 0 && exeLen < MAX_PATH)
+            {
+                std::string exeDir(exePathBuf);
+                size_t lastSlash = exeDir.find_last_of("\\/");
+                if (lastSlash != std::string::npos)
+                {
+                    std::string dir = exeDir.substr(0, lastSlash);
+                    assemblyPaths.push_back(dir);
+                    assemblyPaths.push_back(dir + "/Mono");
+                }
+            }
+            
+            assemblyPaths.push_back("3rdParty/Mono");
+            assemblyPaths.push_back("../../3rdParty/Mono");
+            assemblyPaths.push_back("../3rdParty/Mono");
+            assemblyPaths.push_back("C:/Program Files/Mono/lib/mono/4.5");
+            assemblyPaths.push_back("C:/Program Files (x86)/Mono/lib/mono/4.5");
+            
+            std::string combinedPath;
             for (const auto& path : assemblyPaths)
             {
-                if (fs::exists(path + "/mscorlib.dll"))
+                if (fs::exists(path + "/mscorlib.dll") || fs::exists(path + "/GameScripts.dll") || fs::exists(path + "/DittoEngine.dll"))
                 {
-                    p_mono_set_assemblies_path(path.c_str());
-                    std::cout << "[MonoRuntime] Set assemblies path: " << path << std::endl;
-                    break;
+                    if (!combinedPath.empty()) combinedPath += ";";
+                    combinedPath += path;
                 }
+            }
+            
+            if (!combinedPath.empty())
+            {
+                p_mono_set_assemblies_path(combinedPath.c_str());
+                std::cout << "[MonoRuntime] Set assemblies path: " << combinedPath << std::endl;
             }
         }
 

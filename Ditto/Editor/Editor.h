@@ -17,6 +17,7 @@ namespace ImGui { class ImTextureID; }
 // 窗口类头文件
 #include "ProjectWindow.h"
 #include "InspectorWindow.h"
+#include "BuildSystem.h"
 #include "../Engine/Core/CSharpScript.h"
 
 class SceneWindow;
@@ -45,6 +46,11 @@ struct Editor
     bool isSceneActive;
     bool showSavePopup, showLoadPopup, showSaveLayoutPopup;
     bool showBuildPopup = false;
+    bool showBuildSettingsWindow = false;
+    bool isBuilding = false;
+    float buildProgress = 0.0f;
+    std::string buildStatus;
+    BuildSettings buildSettings;
     bool showProjectManager = false;
     bool showNewProjectPopup = false;
     bool showRenameProjectPopup = false;
@@ -77,6 +83,7 @@ struct Editor
     void DrawProject();
     void DrawInspector();
     void DrawPopups();
+    void DrawBuildSettingsWindow();
     void DrawLayoutMenu();
 
     void SetupDocking();

@@ -28,9 +28,11 @@ struct Engine
     Shader* shader;
     Physics* physics;
     std::string gameProjectPath;
+    std::string startupSceneName;
     bool gameMode = false;
 
     Engine();
+    Engine(bool isGameMode, const std::string& projectPath, const std::string& startupScene = "");
     ~Engine();
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
@@ -40,5 +42,6 @@ struct Engine
     void RenderSceneToViewport(ImRect viewport, bool isGameView);
     void SetEngineState(State state);
     void SetProjectPath(const std::string& path);
+    void LoadGameScene();
     static void MouseCallBack(GLFWwindow* window, double xpos, double ypos);
 };

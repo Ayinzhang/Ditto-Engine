@@ -803,7 +803,6 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
 {
     std::cout << "[ProjectWindow] Opening C# file: " << filePath << std::endl;
     
-    // 获取项目路径
     Project* proj = ProjectManager::GetInstance().GetCurrentProject();
     if (!proj)
     {
@@ -811,33 +810,26 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
         return;
     }
     
-    std::cout << "[ProjectWindow] Project name: " << proj->name << std::endl;
-    std::cout << "[ProjectWindow] Project path: " << proj->path << std::endl;
-    
-    // 转换为绝对路径并规范化（统一使用反斜杠）
     std::filesystem::path absPath = std::filesystem::absolute(proj->path);
     std::string projectPath = absPath.string();
     std::replace(projectPath.begin(), projectPath.end(), '/', '\\');
     
-    std::cout << "[ProjectWindow] Absolute project path: " << projectPath << std::endl;
+    // 解决方案放在项目根目录
+    std::string solutionName = proj->name;
+    std::string solutionPath = projectPath + "\\" + solutionName + ".sln";
     
-    std::string projectName = proj->name;
-    std::string solutionPath = projectPath + "\\" + projectName + ".sln";
+    std::cout << "[ProjectWindow] Project solution path: " << solutionPath << std::endl;
     
-    std::cout << "[ProjectWindow] Solution path: " << solutionPath << std::endl;
-    
-    // 检查解决方案是否存在，不存在则创建
     if (!fs::exists(solutionPath))
     {
         std::cout << "[ProjectWindow] Creating Visual Studio solution: " << solutionPath << std::endl;
-        if (!CreateVisualStudioSolution(projectPath, projectName))
+        if (!CreateVisualStudioSolution(projectPath, solutionName))
         {
             std::cerr << "[ProjectWindow] Failed to create solution" << std::endl;
             return;
         }
     }
     
-    // 使用 Visual Studio 打开解决方案并定位到文件
     std::string vsPath = GetVisualStudioPath();
     if (vsPath.empty())
     {
@@ -845,30 +837,111 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
         return;
     }
     
-    // 规范化文件路径
     std::string normalizedFilePath = filePath;
     std::replace(normalizedFilePath.begin(), normalizedFilePath.end(), '/', '\\');
     
     std::cout << "[ProjectWindow] Opening solution: " << solutionPath << std::endl;
     std::cout << "[ProjectWindow] Target file: " << normalizedFilePath << std::endl;
     
-    // 使用 devenv 打开解决方案和文件
-    // 格式: devenv "solution.sln" /Edit "filepath"
-    std::string args = "\"" + solutionPath + "\" /Edit \"" + normalizedFilePath + "\"";
-    
-    HINSTANCE result = ShellExecuteA(NULL, "open", vsPath.c_str(), args.c_str(), NULL, SW_SHOW);
-    
+    // 使用 ShellExecuteW 打开 .sln 文件，让 Windows Shell 正确关联 Visual Studio
+    // 这样会启动新的 VS 实例或在已有该解决方案的实例中打开，避免 /Edit 把文件发到引擎的 VS 实例
+    std::wstring slnPathW = std::filesystem::absolute(solutionPath).wstring();
+    HINSTANCE result = ShellExecuteW(NULL, L"open", slnPathW.c_str(), NULL, NULL, SW_SHOW);
     if ((intptr_t)result <= 32)
     {
-        std::cerr << "[ProjectWindow] Failed to open Visual Studio, error: " << (intptr_t)result << std::endl;
+        std::cerr << "[ProjectWindow] Failed to open solution with ShellExecuteW" << std::endl;
         return;
     }
     
-    std::cout << "[ProjectWindow] Visual Studio opened successfully" << std::endl;
+    std::cout << "[ProjectWindow] Solution opened in Visual Studio" << std::endl;
+    
+    // 后台线程：等待 VS 启动后再用 devenv /Edit 打开具体的脚本文件
+    std::thread([vsPath, normalizedFilePath]() {
+        Sleep(3000);
+        
+        std::string editCmd = "\"" + vsPath + "\" /Edit \"" + normalizedFilePath + "\"";
+        std::cout << "[ProjectWindow] Opening file with /Edit: " << editCmd << std::endl;
+        
+        STARTUPINFOA si = { sizeof(si) };
+        PROCESS_INFORMATION pi = {};
+        
+        std::vector<char> cmdBuffer(editCmd.begin(), editCmd.end());
+        cmdBuffer.push_back('\0');
+        
+        BOOL success = CreateProcessA(
+            NULL,
+            cmdBuffer.data(),
+            NULL,
+            NULL,
+            FALSE,
+            0,
+            NULL,
+            NULL,
+            &si,
+            &pi
+        );
+        
+        if (success)
+        {
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            std::cout << "[ProjectWindow] File opened in Visual Studio" << std::endl;
+        }
+        else
+        {
+            DWORD error = GetLastError();
+            std::cerr << "[ProjectWindow] Failed to open file with /Edit, error: " << error << std::endl;
+        }
+    }).detach();
 }
 
 bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, const std::string& projectName)
 {
+    // 查找 DittoEngine.dll 路径 - 从项目目录向上搜索引擎根目录
+    std::string dittoEnginePath;
+    fs::path currentPath = fs::absolute(projectPath);
+    
+    // 向上遍历目录树，查找包含 Ditto/ditto 目录的地方
+    while (!currentPath.empty() && currentPath.has_parent_path())
+    {
+        std::vector<std::string> searchPaths = {
+            (currentPath / "Ditto" / "3rdParty" / "Mono" / "DittoEngine.dll").string(),
+            (currentPath / "ditto" / "3rdParty" / "Mono" / "DittoEngine.dll").string(),
+        };
+        
+        for (const auto& p : searchPaths)
+        {
+            if (fs::exists(p))
+            {
+                dittoEnginePath = fs::absolute(p).string();
+                std::cout << "[ProjectWindow] Found DittoEngine.dll at: " << dittoEnginePath << std::endl;
+                break;
+            }
+        }
+        
+        if (!dittoEnginePath.empty()) break;
+        currentPath = currentPath.parent_path();
+    }
+    
+    if (dittoEnginePath.empty())
+    {
+        // 回退到相对路径搜索（从项目目录）
+        std::vector<std::string> searchPaths = {
+            projectPath + "\\..\\..\\Ditto\\3rdParty\\Mono\\DittoEngine.dll",
+            projectPath + "\\..\\..\\ditto\\3rdParty\\Mono\\DittoEngine.dll",
+            projectPath + "\\..\\Ditto\\3rdParty\\Mono\\DittoEngine.dll",
+            projectPath + "\\..\\ditto\\3rdParty\\Mono\\DittoEngine.dll",
+        };
+        for (const auto& p : searchPaths)
+        {
+            if (fs::exists(p))
+            {
+                dittoEnginePath = fs::absolute(p).string();
+                break;
+            }
+        }
+    }
+    
     // 创建 .csproj 文件
     std::string csprojPath = projectPath + "/" + projectName + ".csproj";
     std::ofstream csprojFile(csprojPath);
@@ -897,6 +970,23 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     }
     
     csprojFile << "  </ItemGroup>\n";
+    
+    // 添加 DittoEngine.dll 引用
+    if (!dittoEnginePath.empty())
+    {
+        std::replace(dittoEnginePath.begin(), dittoEnginePath.end(), '/', '\\');
+        csprojFile << "  <ItemGroup>\n";
+        csprojFile << "    <Reference Include=\"DittoEngine\">\n";
+        csprojFile << "      <HintPath>" << dittoEnginePath << "</HintPath>\n";
+        csprojFile << "    </Reference>\n";
+        csprojFile << "  </ItemGroup>\n";
+        std::cout << "[ProjectWindow] DittoEngine.dll reference: " << dittoEnginePath << std::endl;
+    }
+    else
+    {
+        std::cerr << "[ProjectWindow] Warning: DittoEngine.dll not found for project reference" << std::endl;
+    }
+    
     csprojFile << "</Project>\n";
     csprojFile.close();
     

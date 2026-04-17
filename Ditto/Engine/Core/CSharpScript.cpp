@@ -173,14 +173,20 @@ void CSharpScriptComponent::Start()
     {
         CSharpScriptSystem::LogToConsole("[CSharpScript] Start: " + scriptName);
         
-        // 如果 scriptInstance 为 null，尝试加载脚本
-        if (!scriptInstance && !scriptPath.empty())
+        if (!scriptInstance)
         {
-            std::cout << "[CSharpScript] Attempting to load script from path: " << scriptPath << std::endl;
-            CSharpScriptSystem::LoadScript(scriptPath, this);
+            if (!scriptPath.empty() && fs::exists(scriptPath))
+            {
+                std::cout << "[CSharpScript] Loading script from source: " << scriptPath << std::endl;
+                CSharpScriptSystem::LoadScript(scriptPath, this);
+            }
+            else if (!scriptName.empty())
+            {
+                std::cout << "[CSharpScript] Script source not found, trying precompiled DLL for: " << scriptName << std::endl;
+                CSharpScriptSystem::LoadPrecompiledScript(scriptName, this);
+            }
         }
         
-        // 调用 Mono 脚本的 Start 方法
         if (scriptInstance)
         {
             std::cout << "[CSharpScript] Calling MonoRuntime::CallStart" << std::endl;
@@ -675,6 +681,89 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
     return true;
 }
 
+bool CSharpScriptSystem::LoadPrecompiledScript(const std::string& className, CSharpScriptComponent* component)
+{
+    if (!component) return false;
+    if (!s_initialized || !MonoRuntime::IsInitialized())
+    {
+        std::cerr << "[CSharpScriptSystem] Mono runtime not initialized for precompiled loading" << std::endl;
+        return false;
+    }
+
+    std::vector<std::string> searchPaths = {
+        "GameScripts.dll",
+        "Assets/GameScripts.dll",
+        "../GameScripts.dll",
+    };
+
+    char exePath[MAX_PATH];
+    DWORD len = GetModuleFileNameA(NULL, exePath, MAX_PATH);
+    if (len > 0 && len < MAX_PATH)
+    {
+        std::string exeDir(exePath);
+        size_t lastSlash = exeDir.find_last_of("\\/");
+        if (lastSlash != std::string::npos)
+        {
+            std::string dir = exeDir.substr(0, lastSlash);
+            searchPaths.insert(searchPaths.begin(), dir + "/GameScripts.dll");
+        }
+    }
+
+    std::string dllPath;
+    for (const auto& p : searchPaths)
+    {
+        if (fs::exists(p))
+        {
+            dllPath = fs::absolute(p).string();
+            break;
+        }
+    }
+
+    if (dllPath.empty())
+    {
+        std::cerr << "[CSharpScriptSystem] GameScripts.dll not found" << std::endl;
+        return false;
+    }
+
+    std::cout << "[CSharpScriptSystem] Loading precompiled script: " << className << " from " << dllPath << std::endl;
+
+    component->scriptInstance = MonoRuntime::LoadScript(dllPath, className);
+    if (!component->scriptInstance)
+    {
+        std::cerr << "[CSharpScriptSystem] Failed to load precompiled script: " << className << std::endl;
+        return false;
+    }
+
+    std::cout << "[CSharpScriptSystem] Precompiled script loaded: " << className << std::endl;
+
+    if (component->gameObject && component->scriptInstance->instance)
+    {
+        MonoClass* klass = MonoRuntime::GetClassFromObject(component->scriptInstance->instance);
+        MonoMethod* setNativeMethod = nullptr;
+
+        while (klass && !setNativeMethod)
+        {
+            setNativeMethod = MonoRuntime::GetMethod(klass, "SetNativeGameObject", 1);
+            if (!setNativeMethod)
+                klass = MonoRuntime::GetParentClass(klass);
+        }
+
+        if (setNativeMethod)
+        {
+            void* goPtr = component->gameObject;
+            void* args[1] = { &goPtr };
+            MonoRuntime::InvokeMethod(component->scriptInstance->instance, setNativeMethod, args);
+            std::cout << "[CSharpScriptSystem] Set gameObject pointer for precompiled: " << goPtr << std::endl;
+        }
+        else
+        {
+            std::cerr << "[CSharpScriptSystem] SetNativeGameObject method not found!" << std::endl;
+        }
+    }
+
+    return true;
+}
+
 void CSharpScriptSystem::ReloadAll()
 {
     std::cout << "[CSharpScriptSystem] Reloading..." << std::endl;
@@ -714,6 +803,11 @@ void CSharpScriptSystem::RegisterInternalCalls()
     // 注册 GameObject 相关函数
     ::MonoRuntime::AddInternalCall("DittoEngine.MonoBehaviour::GameObject_GetTransform", (void*)Internal_GameObject_GetTransform);
     ::MonoRuntime::AddInternalCall("DittoEngine.GameObject::GetTransform", (void*)Internal_GameObject_GetTransform);
+    ::MonoRuntime::AddInternalCall("DittoEngine.GameObject::GetComponentByType", (void*)Internal_GameObject_GetComponentByType);
+    
+    // 注册 Renderer 相关函数
+    ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::GetColor", (void*)Internal_Renderer_GetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::SetColor", (void*)Internal_Renderer_SetColor);
     
     // 注册 Time 相关函数
     ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetDeltaTime", (void*)Internal_Time_GetDeltaTime);
@@ -811,5 +905,71 @@ extern "C" {
         std::string message = MonoRuntime::GetStringFromMono((MonoString*)msg);
         std::cout << "[C#] " << message << std::endl;
         CSharpScriptSystem::LogToConsole("[C#] " + message);
+    }
+    
+    // 通过类型名获取组件
+    void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName)
+    {
+        if (!gameObject || !typeName) return nullptr;
+        
+        std::string typeStr = MonoRuntime::GetStringFromMono((MonoString*)typeName);
+        GameObject* go = static_cast<GameObject*>(gameObject);
+        
+        std::cout << "[Internal] GetComponentByType: " << typeStr << " on GameObject: " << go->name << std::endl;
+        
+        if (typeStr == "Transform")
+        {
+            for (Component* comp : go->components)
+            {
+                if (comp && comp->index == (1 << 0))
+                    return comp;
+            }
+        }
+        else if (typeStr == "Renderer")
+        {
+            for (Component* comp : go->components)
+            {
+                if (comp && comp->index == (1 << 2))
+                    return comp;
+            }
+        }
+        
+        std::cerr << "[Internal] Component not found: " << typeStr << std::endl;
+        return nullptr;
+    }
+    
+    // Renderer 组件颜色操作
+    void Internal_Renderer_GetColor(void* renderer, float* outColor)
+    {
+        if (!renderer || !outColor)
+        {
+            std::cerr << "[Internal] Renderer_GetColor: null pointer!" << std::endl;
+            return;
+        }
+        
+        RendererComponent* rend = static_cast<RendererComponent*>(renderer);
+        outColor[0] = rend->color.r;
+        outColor[1] = rend->color.g;
+        outColor[2] = rend->color.b;
+        outColor[3] = rend->color.a;
+        
+        std::cout << "[Internal] Renderer_GetColor: (" << outColor[0] << ", " << outColor[1] << ", " << outColor[2] << ", " << outColor[3] << ")" << std::endl;
+    }
+    
+    void Internal_Renderer_SetColor(void* renderer, float r, float g, float b, float a)
+    {
+        if (!renderer)
+        {
+            std::cerr << "[Internal] Renderer_SetColor: null pointer!" << std::endl;
+            return;
+        }
+        
+        RendererComponent* rend = static_cast<RendererComponent*>(renderer);
+        rend->color.r = r;
+        rend->color.g = g;
+        rend->color.b = b;
+        rend->color.a = a;
+        
+        std::cout << "[Internal] Renderer_SetColor: (" << r << ", " << g << ", " << b << ", " << a << ")" << std::endl;
     }
 }

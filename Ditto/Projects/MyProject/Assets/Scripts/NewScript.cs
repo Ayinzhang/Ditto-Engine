@@ -5,17 +5,18 @@ public class NewScript : MonoBehaviour
     public float speed = 5.0f;
     public int health = 100;
 
-    void Start()
+    public override void Start()
     {
-        Debug.Log("NewScript: Start");
+        Debug.Log("NewScript: Start");>
+        gameObject.GetComponent<Renderer>().color = new Vector4(0, 0, 1, 1);
         gameObject.transform.position += new Vector3(0, 1, 0);
     }
 
-    void Update()
+    public override void Update()
     {
     }
 
-    void OnDestroy()
+    public override void OnDestroy()
     {
         Debug.Log("NewScript: OnDestroy");
     }
