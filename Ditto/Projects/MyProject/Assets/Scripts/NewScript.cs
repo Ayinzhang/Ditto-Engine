@@ -7,9 +7,9 @@ public class NewScript : MonoBehaviour
 
     public override void Start()
     {
-        Debug.Log("NewScript: Start");>
+        Debug.Log("NewScript: Start");
         gameObject.GetComponent<Renderer>().color = new Vector4(0, 0, 1, 1);
-        gameObject.transform.position += new Vector3(0, 1, 0);
+        gameObject.GetComponent<Light>().color = new Vector3(1, 0, 0);
     }
 
     public override void Update()

@@ -64,6 +64,9 @@
     <Filter Include="源文件\Engine\Physics">
       <UniqueIdentifier>{4ca95b89-4782-4646-84ef-d52410582398}</UniqueIdentifier>
     </Filter>
+    <Filter Include="三方库\Mono">
+      <UniqueIdentifier>{007951ef-7bdc-45d4-8383-b2019b50dd4f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="3rdParty\GLFW\glfw3.h">
@@ -1041,6 +1044,15 @@
     <ClInclude Include="Engine\Core\CSharpScript.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\BuildSystem.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\SceneWindow.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Core\MonoRuntime.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="3rdParty\GLFW\glfw3dll.lib">
@@ -1483,6 +1495,9 @@
     <None Include="Assets\Shaders\Vertex.glsl">
       <Filter>资源文件</Filter>
     </None>
+    <None Include="3rdParty\Mono\DittoEngine.cs">
+      <Filter>三方库\Mono</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Editor\Editor.cpp">
@@ -1577,6 +1592,15 @@
     </ClCompile>
     <ClCompile Include="Engine\Core\CSharpScript.cpp">
       <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\BuildSystem.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\SceneWindow.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\MonoRuntime.cpp">
+      <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

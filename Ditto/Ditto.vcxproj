@@ -495,6 +495,7 @@
     <None Include="3rdParty\GLM\gtx\vector_angle.inl" />
     <None Include="3rdParty\GLM\gtx\vector_query.inl" />
     <None Include="3rdParty\GLM\gtx\wrap.inl" />
+    <None Include="3rdParty\Mono\DittoEngine.cs" />
     <None Include="Assets\Shaders\Fragment.glsl" />
     <None Include="Assets\Shaders\Vertex.glsl" />
   </ItemGroup>
@@ -646,6 +647,9 @@
       <AdditionalOptions>/NODEFAULTLIB:libc.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:libcd.lib /NODEFAULTLIB:libcmtd.lib /NODEFAULTLIB:msvcrt.lib
  %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <PostBuildEvent>
+      <Command>cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; dotnet build DittoEngine.csproj -c Release</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -665,6 +669,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
     </Link>
+    <PostBuildEvent>
+      <Command>cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; dotnet build DittoEngine.csproj -c Release</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -425,10 +425,10 @@ void RendererComponent::OnInspectorGUI()
     if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
-    const char* typeNames[] = { "Cube", "Sphere", "Plane" };
+    const char* typeNames[] = { "Cube", "Sphere" };
     int currentType = static_cast<int>(type);
     ImGui::Text("Type "); ImGui::SameLine();
-    if (ImGui::Combo("##Type", &currentType, typeNames, 3))
+    if (ImGui::Combo("##Type", &currentType, typeNames, 2))
         type = static_cast<Type>(currentType);
     ImGui::Text("Color"); ImGui::SameLine();
     ImGui::ColorEdit4("##Color", &color.x, ImGuiColorEditFlags_AlphaBar);

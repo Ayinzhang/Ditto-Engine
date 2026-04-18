@@ -167,15 +167,9 @@ Engine::~Engine()
 {
     CSharpScriptSystem::Shutdown();
     
-    if (editor) delete editor;
-    delete physics;
-    delete shader;
-    delete sceneCamera;
-    delete gameCamera;
-    delete scene;
-    delete resource;
-    if (window) glfwDestroyWindow(window);
-    glfwTerminate();
+    if (editor) delete editor; if (physics) delete physics; if (shader) delete shader;
+    if (sceneCamera) delete sceneCamera; if (gameCamera) delete gameCamera; if (scene) delete scene;
+    if (resource) delete resource; if (window) glfwDestroyWindow(window); glfwTerminate();
 }
 
 void Engine::Run()

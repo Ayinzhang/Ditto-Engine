@@ -1,0 +1,8 @@
+is_global = true
+build_property.RootNamespace = DittoEngine
+build_property.ProjectDir = E:\Engine Source\Ditto\Ditto\3rdParty\Mono\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.CsWinRTUseWindowsUIXamlProjections = false
+build_property.EffectiveAnalysisLevelStyle = 
+build_property.EnableCodeStyleSeverity = 

@@ -100,6 +100,26 @@ extern "C" {
     void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName);
     void Internal_Renderer_GetColor(void* renderer, float* outColor);
     void Internal_Renderer_SetColor(void* renderer, float r, float g, float b, float a);
+    int Internal_Renderer_GetShapeType(void* renderer);
+    void Internal_Renderer_SetShapeType(void* renderer, int type);
+    void Internal_Light_GetColor(void* light, float* outColor);
+    void Internal_Light_SetColor(void* light, float r, float g, float b);
+    float Internal_Light_GetIntensity(void* light);
+    void Internal_Light_SetIntensity(void* light, float intensity);
+    int Internal_Rigidbody_GetBodyType(void* rigidbody);
+    void Internal_Rigidbody_SetBodyType(void* rigidbody, int type);
+    float Internal_Rigidbody_GetMass(void* rigidbody);
+    void Internal_Rigidbody_SetMass(void* rigidbody, float mass);
+    int Internal_Rigidbody_GetUseGravity(void* rigidbody);
+    void Internal_Rigidbody_SetUseGravity(void* rigidbody, int useGravity);
+    float Internal_Rigidbody_GetLinearDamping(void* rigidbody);
+    void Internal_Rigidbody_SetLinearDamping(void* rigidbody, float damp);
+    float Internal_Rigidbody_GetAngularDamping(void* rigidbody);
+    void Internal_Rigidbody_SetAngularDamping(void* rigidbody, float damp);
+    void Internal_Rigidbody_GetVelocity(void* rigidbody, float* outVel);
+    void Internal_Rigidbody_SetVelocity(void* rigidbody, float x, float y, float z);
+    void Internal_Rigidbody_GetAngularVelocity(void* rigidbody, float* outVel);
+    void Internal_Rigidbody_SetAngularVelocity(void* rigidbody, float x, float y, float z);
     float Internal_Time_GetDeltaTime();
-    void Internal_Debug_Log(void* msg);  // MonoString*
+    void Internal_Debug_Log(void* msg);
 }

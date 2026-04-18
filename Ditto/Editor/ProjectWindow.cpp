@@ -12,6 +12,7 @@
 #include <chrono>
 #include <windows.h>
 #include <objbase.h>
+#include <comdef.h>
 
 namespace fs = std::filesystem;
 
@@ -22,7 +23,7 @@ ProjectWindow::ProjectWindow(Editor* editor)
 
 void ProjectWindow::OnLoadScene(const std::string& scenePath)
 {
-    // 转发给 Editor
+    // 转发�?Editor
     if (m_editor) {
         m_editor->LoadSceneFromProject(scenePath);
     }
@@ -59,7 +60,7 @@ void ProjectWindow::Draw()
 
     ImGui::Begin("Project");
 
-    // 顶部路径栏
+    // 顶部路径�?
     ImGui::Text("Project");
     ImGui::SameLine();
 
@@ -113,7 +114,7 @@ void ProjectWindow::Draw()
                             }
                         }
 
-                        // 计算缩进：每层 18px
+                        // 计算缩进：每�?18px
                         float indent = depth * 18.0f;
 
                         if (hasSubfolders) {
@@ -121,7 +122,7 @@ void ProjectWindow::Draw()
                             
                             bool isOpen = IsFolderExpanded(fullPath);
                             
-                            // 箭头按钮（12px）
+                            // 箭头按钮�?2px�?
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
                             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
                             if (ImGui::ArrowButton(("##arrow_" + fullPath).c_str(), isOpen ? ImGuiDir_Down : ImGuiDir_Right)) {
@@ -140,7 +141,7 @@ void ProjectWindow::Draw()
                                 ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
                             }
                             
-                            // 名称 - 使用 Selectable 来检测点击（和 Hierarchy 一样）
+                            // 名称 - 使用 Selectable 来检测点击（�?Hierarchy 一样）
                             ImGui::SameLine();
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
@@ -170,7 +171,7 @@ void ProjectWindow::Draw()
                         } else if (hasFiles) {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // 无子文件夹但有文件：留出箭头位置（20px = 12px箭头 + 8px间距）+ 深度缩进
+                            // 无子文件夹但有文件：留出箭头位置�?0px = 12px箭头 + 8px间距�? 深度缩进
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             unsigned int folderIcon = 0;
@@ -183,7 +184,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名称 - 使用 Selectable
+                            // 文件夹名�?- 使用 Selectable
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -207,7 +208,7 @@ void ProjectWindow::Draw()
                         } else {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // 空文件夹：留出箭头位置（20px = 12px箭头 + 8px间距）+ 深度缩进
+                            // 空文件夹：留出箭头位置（20px = 12px箭头 + 8px间距�? 深度缩进
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             unsigned int folderIcon = 0;
@@ -220,7 +221,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名称 - 使用 Selectable
+                            // 文件夹名�?- 使用 Selectable
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -258,7 +259,7 @@ void ProjectWindow::Draw()
     ImGui::PopStyleColor();
     ImGui::EndChild();
 
-    // 分隔条
+    // 分隔�?
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 0.5f));
     ImGui::Button("##splitter", ImVec2(1, panelHeight));
@@ -359,13 +360,13 @@ void ProjectWindow::Draw()
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     {
-                        // 双击进入文件夹
+                        // 双击进入文件�?
                         std::string newFolder = m_currentFolder + "/" + folderName;
                         m_currentFolder = newFolder;
                     }
                     else if (ImGui::IsItemClicked(0))
                     {
-                        // 单击选中文件夹
+                        // 单击选中文件�?
                         if (m_editor) m_editor->selectedFile.Clear();
                     }
 
@@ -375,7 +376,7 @@ void ProjectWindow::Draw()
                 }
             }
 
-            // 再显示文件
+            // 再显示文�?
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
                 if (entry.is_regular_file())
@@ -491,7 +492,7 @@ void ProjectWindow::Draw()
                         ImGui::EndPopup();
                     }
 
-                    // 设置拖拽源（.cs 文件可拖到 Inspector）
+                    // 设置拖拽源（.cs 文件可拖�?Inspector�?
                     if (ext == ".cs" && ImGui::BeginDragDropSource())
                     {
                         ImGui::SetDragDropPayload("CS_SCRIPT", entry.path().string().c_str(), 
@@ -499,7 +500,7 @@ void ProjectWindow::Draw()
                         ImGui::EndDragDropSource();
                     }
 
-                    // 双击检测已在上面的 IsItemClicked 中处理
+                    // 双击检测已在上面的 IsItemClicked 中处�?
 
                     currentX += itemWidth;
                     ImGui::EndGroup();
@@ -520,7 +521,7 @@ void ProjectWindow::Draw()
 
 void ProjectWindow::OnScriptDropped(const std::string& scriptPath)
 {
-    // TODO: 将脚本附加到当前选中的 GameObject
+    // TODO: 将脚本附加到当前选中�?GameObject
     // 需要和 Inspector/Editor 协调
     std::cout << "[ProjectWindow] Script dropped: " << scriptPath << std::endl;
     
@@ -663,7 +664,7 @@ void ProjectWindow::RenameFile(const std::string& oldPath, const std::string& ne
 
 void ProjectWindow::DrawPopups()
 {
-    // 创建文件夹弹窗
+    // 创建文件夹弹�?
     if (m_showCreateFolderPopup)
     {
         ImGui::OpenPopup("Create Folder");
@@ -747,7 +748,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // 重命名弹窗
+    // 重命名弹�?
     if (m_showRenamePopup)
     {
         ImGui::OpenPopup("Rename");
@@ -814,11 +815,8 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
     std::string projectPath = absPath.string();
     std::replace(projectPath.begin(), projectPath.end(), '/', '\\');
     
-    // 解决方案放在项目根目录
     std::string solutionName = proj->name;
     std::string solutionPath = projectPath + "\\" + solutionName + ".sln";
-    
-    std::cout << "[ProjectWindow] Project solution path: " << solutionPath << std::endl;
     
     if (!fs::exists(solutionPath))
     {
@@ -830,42 +828,206 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
         }
     }
     
-    std::string vsPath = GetVisualStudioPath();
-    if (vsPath.empty())
+    std::string absFilePath = std::filesystem::absolute(filePath).string();
+    std::replace(absFilePath.begin(), absFilePath.end(), '/', '\\');
+    
+    std::cout << "[ProjectWindow] Solution: " << solutionPath << std::endl;
+    std::cout << "[ProjectWindow] File: " << absFilePath << std::endl;
+    
+    HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    bool comInitialized = SUCCEEDED(hr);
+    if (hr == RPC_E_CHANGED_MODE)
     {
-        std::cerr << "[ProjectWindow] Visual Studio not found" << std::endl;
-        return;
+        comInitialized = false;
     }
     
-    std::string normalizedFilePath = filePath;
-    std::replace(normalizedFilePath.begin(), normalizedFilePath.end(), '/', '\\');
+    IDispatch* pDte = nullptr;
+    bool foundExisting = false;
     
-    std::cout << "[ProjectWindow] Opening solution: " << solutionPath << std::endl;
-    std::cout << "[ProjectWindow] Target file: " << normalizedFilePath << std::endl;
-    
-    // 使用 ShellExecuteW 打开 .sln 文件，让 Windows Shell 正确关联 Visual Studio
-    // 这样会启动新的 VS 实例或在已有该解决方案的实例中打开，避免 /Edit 把文件发到引擎的 VS 实例
-    std::wstring slnPathW = std::filesystem::absolute(solutionPath).wstring();
-    HINSTANCE result = ShellExecuteW(NULL, L"open", slnPathW.c_str(), NULL, NULL, SW_SHOW);
-    if ((intptr_t)result <= 32)
+    IRunningObjectTable* pROT = nullptr;
+    if (SUCCEEDED(GetRunningObjectTable(0, &pROT)) && pROT)
     {
-        std::cerr << "[ProjectWindow] Failed to open solution with ShellExecuteW" << std::endl;
-        return;
+        IEnumMoniker* pEnum = nullptr;
+        if (SUCCEEDED(pROT->EnumRunning(&pEnum)) && pEnum)
+        {
+            IMoniker* pMoniker = nullptr;
+            while (pEnum->Next(1, &pMoniker, nullptr) == S_OK)
+            {
+                IBindCtx* pCtx = nullptr;
+                if (SUCCEEDED(CreateBindCtx(0, &pCtx)) && pCtx)
+                {
+                    LPOLESTR displayName = nullptr;
+                    if (SUCCEEDED(pMoniker->GetDisplayName(pCtx, nullptr, &displayName)) && displayName)
+                    {
+                        std::wstring name(displayName);
+                        CoTaskMemFree(displayName);
+                        
+                        if (name.find(L"VisualStudio.DTE") != std::wstring::npos)
+                        {
+                            IUnknown* pUnk = nullptr;
+                            if (SUCCEEDED(pROT->GetObject(pMoniker, &pUnk)) && pUnk)
+                            {
+                                IDispatch* pCandidate = nullptr;
+                                if (SUCCEEDED(pUnk->QueryInterface(IID_IDispatch, (void**)&pCandidate)) && pCandidate)
+                                {
+                                    DISPID dispidSolution = 0;
+                                    LPOLESTR propName = const_cast<LPOLESTR>(L"Solution");
+                                    if (SUCCEEDED(pCandidate->GetIDsOfNames(IID_NULL, &propName, 1, LOCALE_USER_DEFAULT, &dispidSolution)))
+                                    {
+                                        DISPPARAMS dp = {nullptr, nullptr, 0, 0};
+                                        VARIANT varSolution;
+                                        VariantInit(&varSolution);
+                                        if (SUCCEEDED(pCandidate->Invoke(dispidSolution, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &dp, &varSolution, nullptr, nullptr)))
+                                        {
+                                            if (varSolution.vt == VT_DISPATCH && varSolution.pdispVal)
+                                            {
+                                                IDispatch* pSolution = varSolution.pdispVal;
+                                                DISPID dispidFullName = 0;
+                                                LPOLESTR propFullName = const_cast<LPOLESTR>(L"FullName");
+                                                if (SUCCEEDED(pSolution->GetIDsOfNames(IID_NULL, &propFullName, 1, LOCALE_USER_DEFAULT, &dispidFullName)))
+                                                {
+                                                    DISPPARAMS dp2 = {nullptr, nullptr, 0, 0};
+                                                    VARIANT varPath;
+                                                    VariantInit(&varPath);
+                                                    if (SUCCEEDED(pSolution->Invoke(dispidFullName, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &dp2, &varPath, nullptr, nullptr)))
+                                                    {
+                                                        if (varPath.vt == VT_BSTR && varPath.bstrVal)
+                                                        {
+                                                            std::wstring openSlnPath(varPath.bstrVal);
+                                                            std::wstring wSolutionPath(solutionPath.begin(), solutionPath.end());
+                                                            if (_wcsicmp(openSlnPath.c_str(), wSolutionPath.c_str()) == 0)
+                                                            {
+                                                                pDte = pCandidate;
+                                                                pCandidate = nullptr;
+                                                                foundExisting = true;
+                                                                std::cout << "[ProjectWindow] Found existing VS instance with solution open" << std::endl;
+                                                            }
+                                                        }
+                                                        VariantClear(&varPath);
+                                                    }
+                                                }
+                                            }
+                                            VariantClear(&varSolution);
+                                        }
+                                    }
+                                    if (pCandidate) pCandidate->Release();
+                                }
+                                pUnk->Release();
+                            }
+                        }
+                    }
+                    pCtx->Release();
+                }
+                pMoniker->Release();
+                
+                if (foundExisting) break;
+            }
+            pEnum->Release();
+        }
+        pROT->Release();
     }
     
-    std::cout << "[ProjectWindow] Solution opened in Visual Studio" << std::endl;
-    
-    // 后台线程：等待 VS 启动后再用 devenv /Edit 打开具体的脚本文件
-    std::thread([vsPath, normalizedFilePath]() {
-        Sleep(3000);
+    if (foundExisting && pDte)
+    {
+        DISPID dispidItemOps = 0;
+        LPOLESTR propName = const_cast<LPOLESTR>(L"ItemOperations");
+        if (SUCCEEDED(pDte->GetIDsOfNames(IID_NULL, &propName, 1, LOCALE_USER_DEFAULT, &dispidItemOps)))
+        {
+            DISPPARAMS dp = {nullptr, nullptr, 0, 0};
+            VARIANT varItemOps;
+            VariantInit(&varItemOps);
+            if (SUCCEEDED(pDte->Invoke(dispidItemOps, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &dp, &varItemOps, nullptr, nullptr)))
+            {
+                if (varItemOps.vt == VT_DISPATCH && varItemOps.pdispVal)
+                {
+                    IDispatch* pItemOps = varItemOps.pdispVal;
+                    DISPID dispidOpenFile = 0;
+                    LPOLESTR methodName = const_cast<LPOLESTR>(L"OpenFile");
+                    if (SUCCEEDED(pItemOps->GetIDsOfNames(IID_NULL, &methodName, 1, LOCALE_USER_DEFAULT, &dispidOpenFile)))
+                    {
+                        std::wstring wFilePath(absFilePath.begin(), absFilePath.end());
+                        VARIANT varPath;
+                        varPath.vt = VT_BSTR;
+                        varPath.bstrVal = SysAllocString(wFilePath.c_str());
+                        
+                        VARIANT varViewKind;
+                        varViewKind.vt = VT_BSTR;
+                        varViewKind.bstrVal = SysAllocString(L"{7651A701-06E5-11D1-8EBD-00A0C90F26EA}");
+                        
+                        VARIANT args[2] = { varViewKind, varPath };
+                        DISPPARAMS dpOpen = { args, nullptr, 2, 0 };
+                        
+                        VARIANT varResult;
+                        VariantInit(&varResult);
+                        HRESULT openHR = pItemOps->Invoke(dispidOpenFile, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &dpOpen, &varResult, nullptr, nullptr);
+                        
+                        if (SUCCEEDED(openHR))
+                        {
+                            std::cout << "[ProjectWindow] File opened in existing VS instance" << std::endl;
+                        }
+                        else
+                        {
+                            std::cerr << "[ProjectWindow] Failed to open file via DTE, hr=0x" << std::hex << openHR << std::dec << std::endl;
+                        }
+                        
+                        VariantClear(&varResult);
+                        SysFreeString(varPath.bstrVal);
+                        SysFreeString(varViewKind.bstrVal);
+                    }
+                    pItemOps->Release();
+                }
+                VariantClear(&varItemOps);
+            }
+        }
         
-        std::string editCmd = "\"" + vsPath + "\" /Edit \"" + normalizedFilePath + "\"";
-        std::cout << "[ProjectWindow] Opening file with /Edit: " << editCmd << std::endl;
+        DISPID dispidMainWnd = 0;
+        LPOLESTR propMainWnd = const_cast<LPOLESTR>(L"MainWindow");
+        if (SUCCEEDED(pDte->GetIDsOfNames(IID_NULL, &propMainWnd, 1, LOCALE_USER_DEFAULT, &dispidMainWnd)))
+        {
+            DISPPARAMS dp = {nullptr, nullptr, 0, 0};
+            VARIANT varWnd;
+            VariantInit(&varWnd);
+            if (SUCCEEDED(pDte->Invoke(dispidMainWnd, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &dp, &varWnd, nullptr, nullptr)))
+            {
+                if (varWnd.vt == VT_DISPATCH && varWnd.pdispVal)
+                {
+                    IDispatch* pWnd = varWnd.pdispVal;
+                    DISPID dispidActivate = 0;
+                    LPOLESTR methodActivate = const_cast<LPOLESTR>(L"Activate");
+                    if (SUCCEEDED(pWnd->GetIDsOfNames(IID_NULL, &methodActivate, 1, LOCALE_USER_DEFAULT, &dispidActivate)))
+                    {
+                        DISPPARAMS dpAct = {nullptr, nullptr, 0, 0};
+                        VARIANT varRes;
+                        VariantInit(&varRes);
+                        pWnd->Invoke(dispidActivate, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &dpAct, &varRes, nullptr, nullptr);
+                        VariantClear(&varRes);
+                    }
+                    pWnd->Release();
+                }
+                VariantClear(&varWnd);
+            }
+        }
+        
+        pDte->Release();
+    }
+    else
+    {
+        std::string vsPath = GetVisualStudioPath();
+        if (vsPath.empty())
+        {
+            std::cerr << "[ProjectWindow] Visual Studio not found" << std::endl;
+            if (comInitialized) CoUninitialize();
+            return;
+        }
+        
+        std::string cmdLine = "\"" + vsPath + "\" \"" + solutionPath + "\"";
+        
+        std::cout << "[ProjectWindow] Starting new VS instance: " << cmdLine << std::endl;
         
         STARTUPINFOA si = { sizeof(si) };
         PROCESS_INFORMATION pi = {};
         
-        std::vector<char> cmdBuffer(editCmd.begin(), editCmd.end());
+        std::vector<char> cmdBuffer(cmdLine.begin(), cmdLine.end());
         cmdBuffer.push_back('\0');
         
         BOOL success = CreateProcessA(
@@ -881,18 +1043,174 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
             &pi
         );
         
-        if (success)
+        if (!success)
         {
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-            std::cout << "[ProjectWindow] File opened in Visual Studio" << std::endl;
+            DWORD error = GetLastError();
+            std::cerr << "[ProjectWindow] Failed to start Visual Studio, error code: " << error << std::endl;
+            if (comInitialized) CoUninitialize();
+            return;
+        }
+        
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        
+        std::cout << "[ProjectWindow] VS started, waiting for DTE to be available..." << std::endl;
+        
+        IDispatch* pNewDte = nullptr;
+        bool dteFound = false;
+        
+        for (int attempt = 0; attempt < 30; ++attempt)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            IRunningObjectTable* pROTRetry = nullptr;
+            if (FAILED(GetRunningObjectTable(0, &pROTRetry)) || !pROTRetry) continue;
+            
+            IEnumMoniker* pEnumRetry = nullptr;
+            if (FAILED(pROTRetry->EnumRunning(&pEnumRetry)) || !pEnumRetry)
+            {
+                pROTRetry->Release();
+                continue;
+            }
+            
+            IMoniker* pMoniker = nullptr;
+            while (pEnumRetry->Next(1, &pMoniker, nullptr) == S_OK)
+            {
+                IBindCtx* pCtx = nullptr;
+                if (SUCCEEDED(CreateBindCtx(0, &pCtx)) && pCtx)
+                {
+                    LPOLESTR displayName = nullptr;
+                    if (SUCCEEDED(pMoniker->GetDisplayName(pCtx, nullptr, &displayName)) && displayName)
+                    {
+                        std::wstring name(displayName);
+                        CoTaskMemFree(displayName);
+                        
+                        if (name.find(L"VisualStudio.DTE") != std::wstring::npos)
+                        {
+                            IUnknown* pUnk = nullptr;
+                            if (SUCCEEDED(pROTRetry->GetObject(pMoniker, &pUnk)) && pUnk)
+                            {
+                                IDispatch* pCandidate = nullptr;
+                                if (SUCCEEDED(pUnk->QueryInterface(IID_IDispatch, (void**)&pCandidate)) && pCandidate)
+                                {
+                                    DISPID dispidSolution = 0;
+                                    LPOLESTR propName = const_cast<LPOLESTR>(L"Solution");
+                                    if (SUCCEEDED(pCandidate->GetIDsOfNames(IID_NULL, &propName, 1, LOCALE_USER_DEFAULT, &dispidSolution)))
+                                    {
+                                        DISPPARAMS dp = {nullptr, nullptr, 0, 0};
+                                        VARIANT varSolution;
+                                        VariantInit(&varSolution);
+                                        if (SUCCEEDED(pCandidate->Invoke(dispidSolution, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &dp, &varSolution, nullptr, nullptr)))
+                                        {
+                                            if (varSolution.vt == VT_DISPATCH && varSolution.pdispVal)
+                                            {
+                                                IDispatch* pSolution = varSolution.pdispVal;
+                                                DISPID dispidFullName = 0;
+                                                LPOLESTR propFullName = const_cast<LPOLESTR>(L"FullName");
+                                                if (SUCCEEDED(pSolution->GetIDsOfNames(IID_NULL, &propFullName, 1, LOCALE_USER_DEFAULT, &dispidFullName)))
+                                                {
+                                                    DISPPARAMS dp2 = {nullptr, nullptr, 0, 0};
+                                                    VARIANT varPath;
+                                                    VariantInit(&varPath);
+                                                    if (SUCCEEDED(pSolution->Invoke(dispidFullName, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &dp2, &varPath, nullptr, nullptr)))
+                                                    {
+                                                        if (varPath.vt == VT_BSTR && varPath.bstrVal)
+                                                        {
+                                                            std::wstring openSlnPath(varPath.bstrVal);
+                                                            std::wstring wSolutionPath(solutionPath.begin(), solutionPath.end());
+                                                            if (_wcsicmp(openSlnPath.c_str(), wSolutionPath.c_str()) == 0)
+                                                            {
+                                                                pNewDte = pCandidate;
+                                                                pCandidate = nullptr;
+                                                                dteFound = true;
+                                                            }
+                                                        }
+                                                        VariantClear(&varPath);
+                                                    }
+                                                }
+                                            }
+                                            VariantClear(&varSolution);
+                                        }
+                                    }
+                                    if (pCandidate) pCandidate->Release();
+                                }
+                                pUnk->Release();
+                            }
+                        }
+                    }
+                    pCtx->Release();
+                }
+                pMoniker->Release();
+                
+                if (dteFound) break;
+            }
+            pEnumRetry->Release();
+            pROTRetry->Release();
+            
+            if (dteFound) break;
+        }
+        
+        if (dteFound && pNewDte)
+        {
+            DISPID dispidItemOps = 0;
+            LPOLESTR propName = const_cast<LPOLESTR>(L"ItemOperations");
+            if (SUCCEEDED(pNewDte->GetIDsOfNames(IID_NULL, &propName, 1, LOCALE_USER_DEFAULT, &dispidItemOps)))
+            {
+                DISPPARAMS dp = {nullptr, nullptr, 0, 0};
+                VARIANT varItemOps;
+                VariantInit(&varItemOps);
+                if (SUCCEEDED(pNewDte->Invoke(dispidItemOps, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &dp, &varItemOps, nullptr, nullptr)))
+                {
+                    if (varItemOps.vt == VT_DISPATCH && varItemOps.pdispVal)
+                    {
+                        IDispatch* pItemOps = varItemOps.pdispVal;
+                        DISPID dispidOpenFile = 0;
+                        LPOLESTR methodName = const_cast<LPOLESTR>(L"OpenFile");
+                        if (SUCCEEDED(pItemOps->GetIDsOfNames(IID_NULL, &methodName, 1, LOCALE_USER_DEFAULT, &dispidOpenFile)))
+                        {
+                            std::wstring wFilePath(absFilePath.begin(), absFilePath.end());
+                            VARIANT varPath;
+                            varPath.vt = VT_BSTR;
+                            varPath.bstrVal = SysAllocString(wFilePath.c_str());
+                            
+                            VARIANT varViewKind;
+                            varViewKind.vt = VT_BSTR;
+                            varViewKind.bstrVal = SysAllocString(L"{7651A701-06E5-11D1-8EBD-00A0C90F26EA}");
+                            
+                            VARIANT args[2] = { varViewKind, varPath };
+                            DISPPARAMS dpOpen = { args, nullptr, 2, 0 };
+                            
+                            VARIANT varResult;
+                            VariantInit(&varResult);
+                            HRESULT openHR = pItemOps->Invoke(dispidOpenFile, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &dpOpen, &varResult, nullptr, nullptr);
+                            
+                            if (SUCCEEDED(openHR))
+                            {
+                                std::cout << "[ProjectWindow] File opened in new VS instance" << std::endl;
+                            }
+                            else
+                            {
+                                std::cerr << "[ProjectWindow] Failed to open file via DTE, hr=0x" << std::hex << openHR << std::dec << std::endl;
+                            }
+                            
+                            VariantClear(&varResult);
+                            SysFreeString(varPath.bstrVal);
+                            SysFreeString(varViewKind.bstrVal);
+                        }
+                        pItemOps->Release();
+                    }
+                    VariantClear(&varItemOps);
+                }
+            }
+            pNewDte->Release();
         }
         else
         {
-            DWORD error = GetLastError();
-            std::cerr << "[ProjectWindow] Failed to open file with /Edit, error: " << error << std::endl;
+            std::cerr << "[ProjectWindow] Could not find VS DTE after starting, file not opened automatically" << std::endl;
         }
-    }).detach();
+    }
+    
+    if (comInitialized) CoUninitialize();
 }
 
 bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, const std::string& projectName)
@@ -901,7 +1219,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     std::string dittoEnginePath;
     fs::path currentPath = fs::absolute(projectPath);
     
-    // 向上遍历目录树，查找包含 Ditto/ditto 目录的地方
+    // 向上遍历目录树，查找包含 Ditto/ditto 目录的地�?
     while (!currentPath.empty() && currentPath.has_parent_path())
     {
         std::vector<std::string> searchPaths = {
@@ -956,31 +1274,35 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     csprojFile << "    <TargetFramework>net8.0</TargetFramework>\n";
     csprojFile << "    <ImplicitUsings>enable</ImplicitUsings>\n";
     csprojFile << "    <Nullable>enable</Nullable>\n";
+    csprojFile << "    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>\n";
     csprojFile << "  </PropertyGroup>\n";
     csprojFile << "  <ItemGroup>\n";
-    
-    // 添加所有 .cs 文件
-    for (const auto& entry : fs::recursive_directory_iterator(projectPath))
-    {
-        if (entry.is_regular_file() && entry.path().extension() == ".cs")
-        {
-            std::string relativePath = fs::relative(entry.path(), projectPath).string();
-            csprojFile << "    <Compile Include=\"" << relativePath << "\" />\n";
-        }
-    }
-    
+    csprojFile << "    <Compile Include=\"Assets\\Scripts\\**\\*.cs\" />\n";
     csprojFile << "  </ItemGroup>\n";
     
-    // 添加 DittoEngine.dll 引用
     if (!dittoEnginePath.empty())
     {
-        std::replace(dittoEnginePath.begin(), dittoEnginePath.end(), '/', '\\');
-        csprojFile << "  <ItemGroup>\n";
-        csprojFile << "    <Reference Include=\"DittoEngine\">\n";
-        csprojFile << "      <HintPath>" << dittoEnginePath << "</HintPath>\n";
-        csprojFile << "    </Reference>\n";
-        csprojFile << "  </ItemGroup>\n";
-        std::cout << "[ProjectWindow] DittoEngine.dll reference: " << dittoEnginePath << std::endl;
+        fs::path csprojPath = fs::path(dittoEnginePath).parent_path() / "DittoEngine.csproj";
+        if (fs::exists(csprojPath))
+        {
+            std::string projRefPath = fs::relative(csprojPath.string(), projectPath).string();
+            std::replace(projRefPath.begin(), projRefPath.end(), '/', '\\');
+            csprojFile << "  <ItemGroup>\n";
+            csprojFile << "    <ProjectReference Include=\"" << projRefPath << "\" />\n";
+            csprojFile << "  </ItemGroup>\n";
+            std::cout << "[ProjectWindow] DittoEngine project reference: " << projRefPath << std::endl;
+        }
+        else
+        {
+            std::string hintPath = fs::relative(dittoEnginePath, projectPath).string();
+            std::replace(hintPath.begin(), hintPath.end(), '/', '\\');
+            csprojFile << "  <ItemGroup>\n";
+            csprojFile << "    <Reference Include=\"DittoEngine\">\n";
+            csprojFile << "      <HintPath>" << hintPath << "</HintPath>\n";
+            csprojFile << "    </Reference>\n";
+            csprojFile << "  </ItemGroup>\n";
+            std::cout << "[ProjectWindow] DittoEngine.dll reference: " << hintPath << std::endl;
+        }
     }
     else
     {
@@ -1068,7 +1390,7 @@ std::string ProjectWindow::GetVisualStudioPath()
         }
     }
     
-    // 最后尝试在 PATH 中查找
+    // 最后尝试在 PATH 中查�?
     char pathEnv[MAX_PATH];
     if (GetEnvironmentVariableA("PATH", pathEnv, MAX_PATH) > 0)
     {

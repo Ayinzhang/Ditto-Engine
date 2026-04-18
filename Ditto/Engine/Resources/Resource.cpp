@@ -117,7 +117,7 @@ ModelData::ModelData(const std::string& path)
 
 Resource::~Resource()
 {
-    delete cubeModel; delete sphereModel; delete planeModel;
+    delete cubeModel; delete sphereModel;
 }
 
 ModelData::FaceIndices ModelData::ParseFaceIndices(const std::string& token)

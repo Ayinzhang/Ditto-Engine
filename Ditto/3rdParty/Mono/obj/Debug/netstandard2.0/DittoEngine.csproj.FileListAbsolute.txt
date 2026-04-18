@@ -1,0 +1,11 @@
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\bin\Debug\netstandard2.0\DittoEngine.deps.json
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\bin\Debug\netstandard2.0\DittoEngine.dll
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\bin\Debug\netstandard2.0\DittoEngine.pdb
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.csproj.AssemblyReference.cache
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.GeneratedMSBuildEditorConfig.editorconfig
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.AssemblyInfoInputs.cache
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.AssemblyInfo.cs
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.csproj.CoreCompileInputs.cache
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.sourcelink.json
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.dll
+E:\Engine Source\Ditto\Ditto\3rdParty\Mono\obj\Debug\netstandard2.0\DittoEngine.pdb

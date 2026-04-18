@@ -808,6 +808,30 @@ void CSharpScriptSystem::RegisterInternalCalls()
     // 注册 Renderer 相关函数
     ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::GetColor", (void*)Internal_Renderer_GetColor);
     ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::SetColor", (void*)Internal_Renderer_SetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::GetShapeType", (void*)Internal_Renderer_GetShapeType);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::SetShapeType", (void*)Internal_Renderer_SetShapeType);
+    
+    // 注册 Light 相关函数
+    ::MonoRuntime::AddInternalCall("DittoEngine.Light::GetLightColor", (void*)Internal_Light_GetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Light::SetLightColor", (void*)Internal_Light_SetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Light::GetIntensity", (void*)Internal_Light_GetIntensity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Light::SetIntensity", (void*)Internal_Light_SetIntensity);
+    
+    // 注册 Rigidbody 相关函数
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetBodyType", (void*)Internal_Rigidbody_GetBodyType);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetBodyType", (void*)Internal_Rigidbody_SetBodyType);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetMass", (void*)Internal_Rigidbody_GetMass);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetMass", (void*)Internal_Rigidbody_SetMass);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetUseGravity", (void*)Internal_Rigidbody_GetUseGravity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetUseGravity", (void*)Internal_Rigidbody_SetUseGravity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetLinearDamping", (void*)Internal_Rigidbody_GetLinearDamping);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetLinearDamping", (void*)Internal_Rigidbody_SetLinearDamping);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetAngularDamping", (void*)Internal_Rigidbody_GetAngularDamping);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetAngularDamping", (void*)Internal_Rigidbody_SetAngularDamping);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetVelocity", (void*)Internal_Rigidbody_GetVelocity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetVelocity", (void*)Internal_Rigidbody_SetVelocity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetAngularVelocity", (void*)Internal_Rigidbody_GetAngularVelocity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetAngularVelocity", (void*)Internal_Rigidbody_SetAngularVelocity);
     
     // 注册 Time 相关函数
     ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetDeltaTime", (void*)Internal_Time_GetDeltaTime);
@@ -915,26 +939,27 @@ extern "C" {
         std::string typeStr = MonoRuntime::GetStringFromMono((MonoString*)typeName);
         GameObject* go = static_cast<GameObject*>(gameObject);
         
-        std::cout << "[Internal] GetComponentByType: " << typeStr << " on GameObject: " << go->name << std::endl;
-        
         if (typeStr == "Transform")
         {
             for (Component* comp : go->components)
-            {
-                if (comp && comp->index == (1 << 0))
-                    return comp;
-            }
+                if (comp && comp->index == (1 << 0)) return comp;
+        }
+        else if (typeStr == "Light")
+        {
+            for (Component* comp : go->components)
+                if (comp && comp->index == (1 << 1)) return comp;
         }
         else if (typeStr == "Renderer")
         {
             for (Component* comp : go->components)
-            {
-                if (comp && comp->index == (1 << 2))
-                    return comp;
-            }
+                if (comp && comp->index == (1 << 2)) return comp;
+        }
+        else if (typeStr == "Rigidbody")
+        {
+            for (Component* comp : go->components)
+                if (comp && comp->index == (1 << 3)) return comp;
         }
         
-        std::cerr << "[Internal] Component not found: " << typeStr << std::endl;
         return nullptr;
     }
     
@@ -969,7 +994,157 @@ extern "C" {
         rend->color.g = g;
         rend->color.b = b;
         rend->color.a = a;
-        
-        std::cout << "[Internal] Renderer_SetColor: (" << r << ", " << g << ", " << b << ", " << a << ")" << std::endl;
+    }
+    
+    int Internal_Renderer_GetShapeType(void* renderer)
+    {
+        if (!renderer) return 0;
+        RendererComponent* rend = static_cast<RendererComponent*>(renderer);
+        return static_cast<int>(rend->type);
+    }
+    
+    void Internal_Renderer_SetShapeType(void* renderer, int type)
+    {
+        if (!renderer) return;
+        RendererComponent* rend = static_cast<RendererComponent*>(renderer);
+        rend->type = static_cast<RendererComponent::Type>(type);
+    }
+    
+    void Internal_Light_GetColor(void* light, float* outColor)
+    {
+        if (!light || !outColor) return;
+        LightComponent* l = static_cast<LightComponent*>(light);
+        outColor[0] = l->color.r;
+        outColor[1] = l->color.g;
+        outColor[2] = l->color.b;
+    }
+    
+    void Internal_Light_SetColor(void* light, float r, float g, float b)
+    {
+        if (!light) return;
+        LightComponent* l = static_cast<LightComponent*>(light);
+        l->color.r = r;
+        l->color.g = g;
+        l->color.b = b;
+    }
+    
+    float Internal_Light_GetIntensity(void* light)
+    {
+        if (!light) return 1.0f;
+        LightComponent* l = static_cast<LightComponent*>(light);
+        return l->intensity;
+    }
+    
+    void Internal_Light_SetIntensity(void* light, float intensity)
+    {
+        if (!light) return;
+        LightComponent* l = static_cast<LightComponent*>(light);
+        l->intensity = intensity;
+    }
+    
+    int Internal_Rigidbody_GetBodyType(void* rigidbody)
+    {
+        if (!rigidbody) return 0;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        return static_cast<int>(rb->type);
+    }
+    
+    void Internal_Rigidbody_SetBodyType(void* rigidbody, int type)
+    {
+        if (!rigidbody) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        rb->type = static_cast<RigidbodyComponent::Type>(type);
+    }
+    
+    float Internal_Rigidbody_GetMass(void* rigidbody)
+    {
+        if (!rigidbody) return 1.0f;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        return rb->mass;
+    }
+    
+    void Internal_Rigidbody_SetMass(void* rigidbody, float mass)
+    {
+        if (!rigidbody) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        rb->mass = mass;
+    }
+    
+    int Internal_Rigidbody_GetUseGravity(void* rigidbody)
+    {
+        if (!rigidbody) return 0;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        return rb->useGravity ? 1 : 0;
+    }
+    
+    void Internal_Rigidbody_SetUseGravity(void* rigidbody, int useGravity)
+    {
+        if (!rigidbody) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        rb->useGravity = (useGravity != 0);
+    }
+    
+    float Internal_Rigidbody_GetLinearDamping(void* rigidbody)
+    {
+        if (!rigidbody) return 0.0f;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        return rb->damp;
+    }
+    
+    void Internal_Rigidbody_SetLinearDamping(void* rigidbody, float damp)
+    {
+        if (!rigidbody) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        rb->damp = damp;
+    }
+    
+    float Internal_Rigidbody_GetAngularDamping(void* rigidbody)
+    {
+        if (!rigidbody) return 0.0f;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        return rb->angularDamp;
+    }
+    
+    void Internal_Rigidbody_SetAngularDamping(void* rigidbody, float damp)
+    {
+        if (!rigidbody) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        rb->angularDamp = damp;
+    }
+    
+    void Internal_Rigidbody_GetVelocity(void* rigidbody, float* outVel)
+    {
+        if (!rigidbody || !outVel) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        outVel[0] = rb->velocity.x;
+        outVel[1] = rb->velocity.y;
+        outVel[2] = rb->velocity.z;
+    }
+    
+    void Internal_Rigidbody_SetVelocity(void* rigidbody, float x, float y, float z)
+    {
+        if (!rigidbody) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        rb->velocity.x = x;
+        rb->velocity.y = y;
+        rb->velocity.z = z;
+    }
+    
+    void Internal_Rigidbody_GetAngularVelocity(void* rigidbody, float* outVel)
+    {
+        if (!rigidbody || !outVel) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        outVel[0] = rb->angularVelocity.x;
+        outVel[1] = rb->angularVelocity.y;
+        outVel[2] = rb->angularVelocity.z;
+    }
+    
+    void Internal_Rigidbody_SetAngularVelocity(void* rigidbody, float x, float y, float z)
+    {
+        if (!rigidbody) return;
+        RigidbodyComponent* rb = static_cast<RigidbodyComponent*>(rigidbody);
+        rb->angularVelocity.x = x;
+        rb->angularVelocity.y = y;
+        rb->angularVelocity.z = z;
     }
 }
