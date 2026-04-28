@@ -336,6 +336,7 @@
     <ClInclude Include="Engine\Core\GameObject.h" />
     <ClInclude Include="Engine\Core\ProjectManager.h" />
     <ClInclude Include="Engine\Core\Scene.h" />
+    <ClInclude Include="Engine\Core\ScriptFileWatcher.h" />
     <ClInclude Include="Engine\Graphics\Camera.h" />
     <ClInclude Include="Engine\Graphics\Shader.h" />
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
@@ -523,6 +524,7 @@
     <ClCompile Include="Engine\Core\GameObject.cpp" />
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />
     <ClCompile Include="Engine\Core\Scene.cpp" />
+    <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp" />
     <ClCompile Include="Engine\Graphics\Camera.cpp" />
     <ClCompile Include="Engine\Graphics\Shader.cpp" />
     <ClCompile Include="Engine\Main.cpp" />

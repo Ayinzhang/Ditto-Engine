@@ -31,7 +31,7 @@ bool LayoutManager::SaveLayout(const std::string& layoutName)
     
     std::string filePath = GetLayoutFilePath(layoutName);
     
-    // 使用ImGui内置函数获取当前INI配置
+    // Use ImGui built-in function to get current INI configuration
     size_t iniSize = 0;
     const char* iniData = ImGui::SaveIniSettingsToMemory(&iniSize);
     
@@ -41,7 +41,7 @@ bool LayoutManager::SaveLayout(const std::string& layoutName)
         return false;
     }
     
-    // 写入文件
+    // Write to file
     std::ofstream file(filePath, std::ios::binary);
     if (!file.is_open())
     {
@@ -60,7 +60,7 @@ bool LayoutManager::LoadLayout(const std::string& layoutName)
 {
     std::string filePath = GetLayoutFilePath(layoutName);
     
-    // 读取文件
+    // Read file
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
@@ -79,10 +79,10 @@ bool LayoutManager::LoadLayout(const std::string& layoutName)
     }
     file.close();
     
-    // 使用ImGui内置函数加载INI配置
+    // Use ImGui built-in function to load INI configuration
     ImGui::LoadIniSettingsFromMemory(buffer.data(), size);
     
-    // 标记需要重新初始化Dock
+    // Mark needs reinitialization of Dock
     needsReloadDock = true;
     
     std::cout << "Layout loaded: " << filePath << " (" << size << " bytes)" << std::endl;

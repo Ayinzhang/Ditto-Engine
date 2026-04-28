@@ -42,7 +42,6 @@ struct Scene
     
     Resource* resource = nullptr;
 
-    // 场景修改回调（用于通知 Editor 标记 dirty）
     std::function<void()> onModified;
 
     Scene();
@@ -52,7 +51,6 @@ struct Scene
     bool SaveScene(const std::string& filepath);
     bool LoadScene(const std::string& filepath);
 
-    // 标记场景已修改
     void MarkDirty() { if (onModified) onModified(); }
 
     void CollectRenderData();

@@ -193,6 +193,11 @@ void Engine::Run()
                     {
                         CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
                         script->Update();
+
+                        if (script->ShouldReload())
+                        {
+                            script->HotReloadScript();
+                        }
                     }
                 }
             });

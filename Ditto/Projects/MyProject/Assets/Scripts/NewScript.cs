@@ -16,7 +16,7 @@ public class NewScript : MonoBehaviour
             Vector3 pos = gameObject.transform.position;
             Debug.Log("Current position: " + pos.x + ", " + pos.y + ", " + pos.z);
             
-            gameObject.transform.position = new Vector3(0, 5, 0);
+            gameObject.transform.position = new Vector3(0, 1, 0);
             Debug.Log("Set position to: 0, 5, 0");
         }
         
@@ -26,7 +26,7 @@ public class NewScript : MonoBehaviour
         
         if (renderer != null)
         {
-            renderer.color = new Vector4(1, 0, 0, 1);
+            renderer.color = new Vector4(0, 0, 1, 1);
             Debug.Log("Set renderer color to red");
         }
     }

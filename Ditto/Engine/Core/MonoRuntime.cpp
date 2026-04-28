@@ -105,7 +105,6 @@ namespace MonoRuntime
         p_mono_class_get_name = (mono_class_get_name_t)GetProcAddress(g_monoDll, "mono_class_get_name");
         p_mono_class_get_namespace = (mono_class_get_namespace_t)GetProcAddress(g_monoDll, "mono_class_get_namespace");
 
-        // Check critical function pointers
         if (!p_mono_runtime_invoke) std::cerr << "[MonoRuntime] Failed to load mono_runtime_invoke" << std::endl;
         if (!p_mono_thread_attach) std::cerr << "[MonoRuntime] Failed to load mono_thread_attach" << std::endl;
         if (!p_mono_object_get_class) std::cerr << "[MonoRuntime] Failed to load mono_object_get_class" << std::endl;
@@ -117,20 +116,45 @@ namespace MonoRuntime
     {
         if (g_initialized) return true;
 
-        // Try loading from project 3rdParty first, then system Mono
-        std::vector<std::string> tryPaths = {
-            "3rdParty/Mono/mono-2.0-sgen.dll",
-            "../../3rdParty/Mono/mono-2.0-sgen.dll",
-            "../3rdParty/Mono/mono-2.0-sgen.dll",
-            "C:/Program Files/Mono/bin/mono-2.0-sgen.dll",
-            "C:/Program Files (x86)/Mono/bin/mono-2.0-sgen.dll",
+        static const char* monoRegKeys[] = {
+            "SOFTWARE\\Mono",
+            "SOFTWARE\\Ximian",
+            "SOFTWARE\\Novell"
         };
-        
-        // If custom path provided, try it first
+
+        std::vector<std::string> tryPaths;
+
         if (!monoLibPath.empty())
         {
-            tryPaths.insert(tryPaths.begin(), monoLibPath + "/mono-2.0-sgen.dll");
+            tryPaths.push_back(monoLibPath + "/mono-2.0-sgen.dll");
         }
+
+        char* monoPathEnv = nullptr;
+        size_t monoPathLen = 0;
+        if (_dupenv_s(&monoPathEnv, &monoPathLen, "MONO_PATH") == 0 && monoPathEnv)
+        {
+            tryPaths.push_back(std::string(monoPathEnv) + "/bin/mono-2.0-sgen.dll");
+            free(monoPathEnv);
+        }
+
+        for (auto& regKey : monoRegKeys)
+        {
+            HKEY hKey = nullptr;
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+            {
+                char installRoot[MAX_PATH];
+                DWORD size = MAX_PATH;
+                if (RegQueryValueExA(hKey, "InstallRoot", nullptr, nullptr, (LPBYTE)installRoot, &size) == ERROR_SUCCESS)
+                {
+                    tryPaths.push_back(std::string(installRoot) + "/bin/mono-2.0-sgen.dll");
+                }
+                RegCloseKey(hKey);
+            }
+        }
+
+        tryPaths.push_back("3rdParty/Mono/mono-2.0-sgen.dll");
+        tryPaths.push_back("../../3rdParty/Mono/mono-2.0-sgen.dll");
+        tryPaths.push_back("../3rdParty/Mono/mono-2.0-sgen.dll");
 
         for (const auto& path : tryPaths)
         {
@@ -157,11 +181,10 @@ namespace MonoRuntime
             return false;
         }
 
-        // Set Mono assemblies path
         if (p_mono_set_assemblies_path)
         {
             std::vector<std::string> assemblyPaths;
-            
+
             char exePathBuf[MAX_PATH];
             DWORD exeLen = GetModuleFileNameA(NULL, exePathBuf, MAX_PATH);
             if (exeLen > 0 && exeLen < MAX_PATH)
@@ -175,13 +198,34 @@ namespace MonoRuntime
                     assemblyPaths.push_back(dir + "/Mono");
                 }
             }
-            
+
             assemblyPaths.push_back("3rdParty/Mono");
             assemblyPaths.push_back("../../3rdParty/Mono");
             assemblyPaths.push_back("../3rdParty/Mono");
-            assemblyPaths.push_back("C:/Program Files/Mono/lib/mono/4.5");
-            assemblyPaths.push_back("C:/Program Files (x86)/Mono/lib/mono/4.5");
-            
+
+            char* monoPathEnv = nullptr;
+            size_t monoPathLen = 0;
+            if (_dupenv_s(&monoPathEnv, &monoPathLen, "MONO_PATH") == 0 && monoPathEnv)
+            {
+                assemblyPaths.push_back(std::string(monoPathEnv) + "/lib/mono/4.5");
+                free(monoPathEnv);
+            }
+
+            for (auto& regKey : monoRegKeys)
+            {
+                HKEY hKey = nullptr;
+                if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+                {
+                    char installRoot[MAX_PATH];
+                    DWORD size = MAX_PATH;
+                    if (RegQueryValueExA(hKey, "InstallRoot", nullptr, nullptr, (LPBYTE)installRoot, &size) == ERROR_SUCCESS)
+                    {
+                        assemblyPaths.push_back(std::string(installRoot) + "/lib/mono/4.5");
+                    }
+                    RegCloseKey(hKey);
+                }
+            }
+
             std::string combinedPath;
             for (const auto& path : assemblyPaths)
             {
@@ -191,7 +235,7 @@ namespace MonoRuntime
                     combinedPath += path;
                 }
             }
-            
+
             if (!combinedPath.empty())
             {
                 p_mono_set_assemblies_path(combinedPath.c_str());
@@ -211,12 +255,12 @@ namespace MonoRuntime
         }
 
         g_initialized = true;
-        
+
         if (p_mono_get_version)
         {
             std::cout << "[MonoRuntime] Mono version: " << p_mono_get_version() << std::endl;
         }
-        
+
         std::cout << "[MonoRuntime] Initialized successfully" << std::endl;
         return true;
     }
@@ -252,7 +296,7 @@ namespace MonoRuntime
 
         std::string absPath = fs::absolute(path).string();
         MonoAssembly* assembly = p_mono_domain_assembly_open(g_domain, absPath.c_str());
-        
+
         if (!assembly)
         {
             std::cerr << "[MonoRuntime] Failed to load assembly: " << path << std::endl;
@@ -308,15 +352,13 @@ namespace MonoRuntime
     MonoObject* InvokeMethod(MonoObject* instance, MonoMethod* method, void** params)
     {
         if (!g_initialized || !method) return nullptr;
-        
-        // Check if p_mono_runtime_invoke is valid
+
         if (!p_mono_runtime_invoke)
         {
             std::cerr << "[MonoRuntime] InvokeMethod: p_mono_runtime_invoke is null!" << std::endl;
             return nullptr;
         }
 
-        // Ensure current thread is attached to Mono domain
         if (p_mono_thread_attach && g_domain)
         {
             p_mono_thread_attach(g_domain);
@@ -354,7 +396,7 @@ namespace MonoRuntime
         script->className = className;
         script->assemblyPath = dllPath;
 
-        // 先加载 DittoEngine.dll，确保基类 MonoBehaviour 可被解析
+        // Pre-load DittoEngine.dll so base class MonoBehaviour can be resolved
         {
             const std::vector<std::string> enginePaths = {
                 "3rdParty/Mono/DittoEngine.dll",
@@ -383,13 +425,15 @@ namespace MonoRuntime
         if (!image) return nullptr;
 
         MonoClass* klass = nullptr;
-        
+
         klass = GetClass(image, "", className);
         if (!klass) klass = GetClass(image, "DittoEngine", className);
         if (!klass) klass = GetClass(image, "MyProject", className);
         if (!klass) klass = GetClass(image, "Scripts", className);
         if (!klass) klass = GetClass(image, "Assets", className);
-        
+
+        // Fallback: enumerate TypeDef table to find class by name
+        // Mono 4.6 has a bug where mono_class_from_name fails for Roslyn-compiled classes
         if (!klass && p_mono_image_get_table_rows && p_mono_class_get && p_mono_class_get_name)
         {
             int typeCount = p_mono_image_get_table_rows(image, 0x02);
@@ -411,7 +455,7 @@ namespace MonoRuntime
                 }
             }
         }
-        
+
         if (!klass)
         {
             std::cerr << "[MonoRuntime] Class not found: " << className << std::endl;
@@ -422,8 +466,7 @@ namespace MonoRuntime
         if (!script->instance)
         {
             std::cerr << "[MonoRuntime] Failed to create instance of: " << className << std::endl;
-            
-            // 尝试诊断：检查基类是否可解析
+
             MonoClass* parent = p_mono_class_get_parent ? p_mono_class_get_parent(klass) : nullptr;
             if (parent)
             {
@@ -441,10 +484,9 @@ namespace MonoRuntime
         script->updateMethod = GetMethod(klass, "Update", 0);
         script->onDestroyMethod = GetMethod(klass, "OnDestroy", 0);
 
-        // Create GC handle to prevent object from being collected
         if (p_mono_gchandle_new && script->instance)
         {
-            script->gcHandle = p_mono_gchandle_new(script->instance, 0);  // 0 = normal handle, not pinned
+            script->gcHandle = p_mono_gchandle_new(script->instance, 0);
             std::cout << "[MonoRuntime] Created GC handle for script: " << className << std::endl;
         }
 
@@ -455,16 +497,15 @@ namespace MonoRuntime
     void UnloadScript(std::shared_ptr<ScriptInstance> script)
     {
         if (!script) return;
-        
+
         CallOnDestroy(script);
-        
-        // Free GC handle
+
         if (p_mono_gchandle_free && script->gcHandle)
         {
             p_mono_gchandle_free(script->gcHandle);
             script->gcHandle = 0;
         }
-        
+
         script->instance = nullptr;
     }
 
@@ -500,7 +541,7 @@ namespace MonoRuntime
 
         MonoClass* klass = p_mono_object_get_class(obj);
         MonoClassField* field = p_mono_class_get_field_from_name(klass, fieldName.c_str());
-        
+
         if (field && p_mono_field_set_value)
         {
             p_mono_field_set_value(obj, field, value);
@@ -513,7 +554,7 @@ namespace MonoRuntime
 
         MonoClass* klass = p_mono_object_get_class(obj);
         MonoClassField* field = p_mono_class_get_field_from_name(klass, fieldName.c_str());
-        
+
         if (field && p_mono_field_get_value)
         {
             p_mono_field_get_value(obj, field, value);
@@ -526,7 +567,7 @@ namespace MonoRuntime
 
         char* utf8 = p_mono_string_to_utf8(str);
         std::string result(utf8);
-        
+
         if (p_mono_free)
         {
             p_mono_free(utf8);

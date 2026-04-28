@@ -7,7 +7,6 @@
 #include <windows.h>
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/gtc/matrix_transform.hpp"
-using namespace glm;
 #include "Editor.h"
 #include "LayoutManager.h"
 #include "ProjectWindow.h"
@@ -27,7 +26,7 @@ using namespace glm;
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
 #define STB_IMAGE_IMPLEMENTATION
 #include "../3rdParty/stb_image.h"
-
+using namespace glm;
 namespace fs = std::filesystem;
 
 // Helper function to find editor assets directory
@@ -36,15 +35,14 @@ static std::string FindEditorAssetsPath()
     const std::vector<std::string> possiblePaths = {
         "Assets",
         "Ditto/Assets",
-        "../../Ditto/Ditto/Assets",
-        "../Ditto/Assets",
         "Ditto/Ditto/Assets",
+        "../Ditto/Assets",
+        "../../Ditto/Ditto/Assets",
     };
     
     for (const auto& path : possiblePaths)
     {
-        if (fs::exists(path + "/Settings") || fs::exists(path + "/Icon"))
-            return path;
+        if (fs::exists(path + "/Settings") || fs::exists(path + "/Icon")) return path;
     }
     
     std::cerr << "[Editor] Warning: Editor assets not found, using default" << std::endl;
@@ -52,41 +50,76 @@ static std::string FindEditorAssetsPath()
 }
 
 // Helper function to find VS vcvars64.bat
-static std::string FindVCVarsPath()
+static std::string FindVCVarsInVSInstallDir()
 {
-    // Check environment variable first
     char* vsPath = nullptr;
     size_t vsPathLen = 0;
-    _dupenv_s(&vsPath, &vsPathLen, "VSINSTALLDIR");
-    if (vsPath)
+    if (_dupenv_s(&vsPath, &vsPathLen, "VSINSTALLDIR") == 0 && vsPath)
     {
         std::string vcvarsPath = std::string(vsPath) + "VC\\Auxiliary\\Build\\vcvars64.bat";
         free(vsPath);
         if (fs::exists(vcvarsPath))
             return vcvarsPath;
     }
-    
-    // Check common installation paths
-    const std::vector<std::string> possiblePaths = {
-        "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat",
-        "C:/Program Files/Microsoft Visual Studio/2022/Professional/VC/Auxiliary/Build/vcvars64.bat",
-        "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
-        "D:/Visual Studio 2022/VC/Auxiliary/Build/vcvars64.bat",
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Auxiliary/Build/vcvars64.bat",
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Professional/VC/Auxiliary/Build/vcvars64.bat",
-    };
-    
-    for (const auto& path : possiblePaths)
+    return "";
+}
+
+static std::string FindVCVarsViaVsWhere()
+{
+    const char* regKey = "SOFTWARE\\Microsoft\\VisualStudio\\Setup\\Instances";
+    HKEY hKey = nullptr;
+
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
     {
-        if (fs::exists(path))
-            return path;
+        char name[MAX_PATH];
+        DWORD index = 0;
+        DWORD nameSize = MAX_PATH;
+
+        while (RegEnumKeyExA(hKey, index++, name, &nameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
+        {
+            std::string instanceKey = std::string(regKey) + "\\" + name;
+            HKEY hInstKey = nullptr;
+
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, instanceKey.c_str(), 0, KEY_READ, &hInstKey) == ERROR_SUCCESS)
+            {
+                char installPath[MAX_PATH];
+                DWORD size = MAX_PATH;
+                DWORD type = REG_SZ;
+
+                if (RegQueryValueExA(hInstKey, "InstallLocation", nullptr, &type, (LPBYTE)installPath, &size) == ERROR_SUCCESS)
+                {
+                    std::string vcvarsPath = std::string(installPath) + "VC\\Auxiliary\\Build\\vcvars64.bat";
+                    if (fs::exists(vcvarsPath))
+                    {
+                        RegCloseKey(hInstKey);
+                        RegCloseKey(hKey);
+                        return vcvarsPath;
+                    }
+                }
+                RegCloseKey(hInstKey);
+            }
+            nameSize = MAX_PATH;
+        }
+        RegCloseKey(hKey);
     }
-    
+    return "";
+}
+
+static std::string FindVCVarsPath()
+{
+    std::string result = FindVCVarsInVSInstallDir();
+    if (!result.empty())
+        return result;
+
+    result = FindVCVarsViaVsWhere();
+    if (!result.empty())
+        return result;
+
     std::cerr << "[Editor] Warning: vcvars64.bat not found, compilation may fail" << std::endl;
     return "";
 }
 
-// 全局 Editor 指针定义
+// Global Editor pointer
 Editor* g_editor = nullptr;
 
 static ImRect GetCurrentViewportRect()
@@ -101,10 +134,10 @@ static ImRect GetCurrentViewportRect()
 
 Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
 {
-    // 设置全局 Editor 指针
+    // Set global Editor pointer
     g_editor = this;
     
-    // 初始化选择状态
+    // Initialize selection state
     activeSelection = nullptr;
     this->gameMode = gameMode;
     this->gameProjectPath = projectPath;
@@ -112,13 +145,13 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
-    // 启用Docking功能
+    // Enable Docking
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     ImGui::StyleColorsDark();
 
-    // 设置全局透明背景 - 针对Docking系统
+    // Set transparent background for Docking system
     ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0, 0, 0, 0);
     ImGui::GetStyle().Colors[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
     ImGui::GetStyle().Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0, 0, 0, 0);
@@ -133,31 +166,31 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     dockingInitialized = false;
     frame = deltaTime = 0;
 
-    // 初始化项目管理器
+    // Initialize ProjectManager
     ProjectManager::GetInstance().Initialize("../../Ditto/Ditto/Projects");
     
-    // 初始化布局管理器
+    // Initialize LayoutManager
     std::string editorAssetsPath = FindEditorAssetsPath();
     LayoutManager::GetInstance().Initialize(editorAssetsPath + "/Settings");
     
-    // 显示项目选择界面（仅在非游戏模式下）
+    // Show project selector (only when not in game mode)
     showProjectSelector = !gameMode;
 
-    // 初始化 3D 模型预览
+    // Initialize 3D model preview
     InitModelPreview();
     
-    // 初始化文件图标
+    // Initialize file icons
     InitFileIcons();
 
-    // 初始化窗口组件
+    // Initialize window components
     m_projectWindow = new ProjectWindow(this);
     m_inspectorWindow = new InspectorWindow(this);
     m_sceneWindow = new SceneWindow(this);
     
-    // 设置脚本日志回调
+    // Set script log callback
     CSharpScriptSystem::SetEditor(this);
 
-    // 设置场景修改回调（自动标记 dirty）
+    // Set scene modified callback (auto mark dirty)
     if (engine && engine->scene)
     {
         engine->scene->onModified = [this]() {
@@ -171,7 +204,7 @@ Editor::~Editor()
     CleanupModelPreview();
     CleanupFileIcons();
 
-    // 清理窗口组件
+    // Cleanup window components
     delete m_projectWindow;
     delete m_inspectorWindow;
 
@@ -186,18 +219,18 @@ void Editor::Draw()
     
     ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
     
-    // 全局 Ctrl+S 快捷键 - 保存当前场景
+    // Global Ctrl+S shortcut - save current scene
     if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_S))
     {
         SaveCurrentScene();
     }
 
-    // 如果项目未加载，显示项目选择界面
+    // If project not loaded, show project selector
     if (showProjectSelector)
     {
         DrawProjectSelector();
         
-        // 新建项目弹窗
+        // New project popup
         if (showNewProjectPopup)
         {
             ImGui::OpenPopup("Create Project");
@@ -230,7 +263,7 @@ void Editor::Draw()
             ImGui::EndPopup();
         }
         
-        // 重命名项目弹窗
+        // Rename project popup
         if (showRenameProjectPopup)
         {
             ImGui::OpenPopup("Rename Project");
@@ -273,7 +306,7 @@ void Editor::Draw()
         return;
     }
 
-    // 设置全屏DockSpace
+    // Setup fullscreen DockSpace
     SetupDocking();
 
     DrawToolbar();
@@ -285,7 +318,7 @@ void Editor::Draw()
     DrawPopups();
     DrawBuildSettingsWindow();
 
-    // DockSpace结束
+    // DockSpace end
     ImGui::End();
 
     ImGui::Render(); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -296,11 +329,11 @@ void Editor::SetupDocking()
 {
     ImGuiIO& io = ImGui::GetIO();
 
-    // 获取当前窗口大小
+    // Get current window size
     float menuBarHeight = ImGui::GetFrameHeight();
     ImVec2 displaySize = io.DisplaySize;
 
-    // 全屏窗口作为DockSpace宿主 - 动态适应窗口大小变化
+    // Fullscreen window as DockSpace host - dynamically adapt to window size changes
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(displaySize.x, displaySize.y - menuBarHeight));
 
@@ -318,24 +351,24 @@ void Editor::SetupDocking()
 
     ImGui::PopStyleVar(3);
 
-    // 创建DockSpace
+    // Create DockSpace
     ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
     dockSpaceID = dockspace_id;
 
-    // 使用NoSplit标志防止手动分割，或使用Dockspace的默认行为
+    // Use NoSplit flag to prevent manual splitting, or use DockSpace default behavior
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
-    // 只在首次运行时初始化默认布局
+    // Initialize default layout only on first run
     if (!dockingInitialized)
     {
-        // 加载INI后需要先应用Ini设置再构建Dock
+        // After loading INI, need to apply Ini settings before building Dock
         LayoutManager& lm = LayoutManager::GetInstance();
         if (lm.GetNeedsReloadDock())
         {
-            // 加载了新的布局，不需要重建Dock，ImGui已经恢复了状态
+            // Loaded new layout, no need to rebuild Dock, ImGui has already restored state
             lm.ClearNeedsReloadDock();
 
-            // 必须Finish DockSpace
+            // Must Finish DockSpace
             ImGui::DockBuilderFinish(dockspace_id);
             ImGui::End();
             return;
@@ -343,29 +376,29 @@ void Editor::SetupDocking()
 
         dockingInitialized = true;
 
-        // 清除现有的dock布局以重新构建
+        // Clear existing dock layout to rebuild
         ImGui::DockBuilderRemoveNode(dockspace_id);
         ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_None);
         ImGui::DockBuilderSetNodeSize(dockspace_id, ImVec2(displaySize.x, displaySize.y - menuBarHeight));
 
-        // 分割DockSpace - 使用相对比例而不是固定大小
+        // Split DockSpace - use relative ratios instead of fixed sizes
         ImGuiID dock_id_left, dock_id_right, dock_id_center;
 
-        // 左侧面板占30%
+        // Left panel 30%
         ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.3f, &dock_id_left, &dock_id_center);
-        // 右侧面板占30%（从剩余空间计算）
+        // Right panel 30% (calculated from remaining space)
         ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Right, 0.42f, &dock_id_right, &dock_id_center);
-        // 注意：现在dock_id_center是中间40%的区域
+        // Note: now dock_id_center is the middle 40% region
 
-        // 左侧面板再分割为上下两个（各50%）
+        // Left panel split into top and bottom (50% each)
         ImGuiID dock_id_left_top, dock_id_left_bottom;
         ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Up, 0.5f, &dock_id_left_top, &dock_id_left_bottom);
 
-        // 中间面板再分割为上下两个（各50%）
+        // Center panel split into top and bottom (50% each)
         ImGuiID dock_id_center_top, dock_id_center_bottom;
         ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Down, 0.5f, &dock_id_center_bottom, &dock_id_center_top);
 
-        // 将窗口附加到Dock节点
+        // Attach windows to Dock nodes
         ImGui::DockBuilderDockWindow("Scene", dock_id_left_top);
         ImGui::DockBuilderDockWindow("Hierarchy", dock_id_left_bottom);
         ImGui::DockBuilderDockWindow("Game", dock_id_center_top);
@@ -385,7 +418,7 @@ void Editor::DrawToolbar()
             if (ImGui::MenuItem("Build Settings..."))
             {
                 showBuildSettingsWindow = true;
-                // 初始化构建设置
+                // Initialize build settings
                 Project* proj = ProjectManager::GetInstance().GetCurrentProject();
                 if (proj)
                 {
@@ -426,7 +459,7 @@ void Editor::DrawToolbar()
             }
             if (ImGui::MenuItem("Create Light"))
             {
-                // TODO: 实现创建光源
+                // TODO: Implement light creation
             }
             ImGui::EndMenu();
         }
@@ -453,20 +486,20 @@ void Editor::DrawToolbar()
 
         ImGui::SetCursorPosX(startX);
 
-        // Play/Pause 按钮
+        // Play/Pause button
         if (engine->state == Engine::Edit)
         {
-            // Edit 模式：显示绿色 Play 按钮
+            // Edit mode: show green Play button
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.3f, 1.0f));
             if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
             {
-                // 保存当前场景到临时文件
+                // Save current scene to temp file
                 m_tempScenePath = "../../Ditto/Ditto/Temp/PlayModeScene.scene";
                 std::filesystem::create_directories("../../Ditto/Ditto/Temp");
                 engine->scene->SaveScene(m_tempScenePath);
                 
-                // 开始 Play 模式
+                // Start Play mode
                 m_isPlaying = true;
                 engine->SetEngineState(Engine::Play);
             }
@@ -474,7 +507,7 @@ void Editor::DrawToolbar()
         }
         else if (engine->state == Engine::Play)
         {
-            // Play 模式：显示蓝色 Pause 按钮
+            // Play mode: show blue Pause button
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.9f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.5f, 1.0f, 1.0f));
             if (ImGui::Button("Pause", ImVec2(buttonWidth, 0)))
@@ -485,7 +518,7 @@ void Editor::DrawToolbar()
         }
         else if (engine->state == Engine::Pause)
         {
-            // Pause 模式：显示绿色 Play 按钮（继续）
+            // Pause mode: show green Play button (resume)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.3f, 1.0f));
             if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
@@ -498,10 +531,10 @@ void Editor::DrawToolbar()
         ImGui::SameLine();
         ImGui::SetCursorPosX(startX + buttonWidth + spacing);
 
-        // Stop 按钮（仅在 Play 或 Pause 模式下可用）
+        // Stop button (only available in Play or Pause mode)
         if (engine->state == Engine::Edit)
         {
-            // Edit 模式：Stop 按钮灰色不可用
+            // Edit mode: Stop button is grayed out and disabled
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
             ImGui::Button("Stop", ImVec2(buttonWidth, 0));
@@ -509,28 +542,28 @@ void Editor::DrawToolbar()
         }
         else
         {
-            // Play/Pause 模式：显示红色 Stop 按钮
+            // Play/Pause mode: show red Stop button
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.9f, 0.2f, 0.2f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
             if (ImGui::Button("Stop", ImVec2(buttonWidth, 0)))
             {
-                // 先停止物理模拟
+                // First stop physics simulation
                 engine->SetEngineState(Engine::Stop);
                 
-                // 加载临时场景文件（恢复到 Play 前的状态）
+                // Load temp scene file (restore to state before Play)
                 if (!m_tempScenePath.empty() && std::filesystem::exists(m_tempScenePath))
                 {
                     engine->scene->LoadScene(m_tempScenePath);
                     
-                    // 场景重新加载后，所有旧的 GameObject 指针都失效了
-                    // 重置选择状态
+                    // After scene reload, all old GameObject pointers are invalidated
+                    // Reset selection state
                     selectedObject = nullptr;
                     activeSelection = nullptr;
                     selectedFile.Clear();
                     m_expandedGameObjects.clear();
                 }
                 
-                // 结束 Play 模式，回到 Edit 状态
+                // End Play mode, return to Edit state
                 m_isPlaying = false;
                 engine->state = Engine::Edit;
             }
@@ -553,7 +586,7 @@ void Editor::DrawLayoutMenu()
 
         ImGui::Separator();
 
-        // Load Layout 子菜单
+        // Load Layout submenu
         if (ImGui::BeginMenu("Load Layout"))
         {
             std::vector<std::string> layouts = GetSavedLayouts();
@@ -581,18 +614,18 @@ void Editor::DrawLayoutMenu()
 
 void Editor::SaveCurrentLayout()
 {
-    // 将当前窗口状态保存到LayoutManager
-    // 这里我们只需要触发保存，实际内容在Draw函数中已经更新
+    // Save current window state to LayoutManager
+    // We only need to trigger save, the actual content has been updated in Draw function
 }
 
 void Editor::LoadLayout(const std::string& layoutName)
 {
-    // 加载布局 - 使用ImGui内置INI机制
+    // Load layout - use ImGui built-in INI mechanism
     if (LayoutManager::GetInstance().LoadLayout(layoutName))
     {
-        // 清除所有Dock节点，让ImGui可以重新应用INI中的布局
-        ImGui::DockContextClearNodes(GImGui, 0, true); // root_id==0 表示清除所有节点，true 清除 settings 引用
-        // 标记需要重建Dock
+        // Clear all Dock nodes so ImGui can reapply layout from INI
+        ImGui::DockContextClearNodes(GImGui, 0, true); // root_id==0 means clear all nodes, true clears settings references
+        // Mark dock for rebuild
         dockingInitialized = false;
     }
 }
@@ -610,13 +643,13 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
     
     unsigned int icon = isRoot ? GetDittoIcon() : GetGameObjectIcon();
     
-    // 计算缩进：每层 18px
+    // Calculate indent: 18px per level
     float indent = depth * 18.0f;
     
     if (hasChildren) {
         bool isExpanded = m_expandedGameObjects.find(obj) != m_expandedGameObjects.end();
         
-        // 箭头按钮（12px）
+        // Arrow button (12px)
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         if (ImGui::ArrowButton(("##arrow_" + std::to_string((uintptr_t)obj)).c_str(), isExpanded ? ImGuiDir_Down : ImGuiDir_Right)) {
@@ -625,20 +658,20 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         }
         ImGui::PopStyleVar();
         
-        // 图标
+        // Icon
         if (icon) {
             ImGui::SameLine();
             ImGui::Image((void*)(intptr_t)icon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
         }
         
-        // 名称
+        // Name
         ImGui::SameLine();
         
         if (isRoot) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
         }
         
-        // 构建显示名称：根节点且有修改时添加星号
+        // Build display name: add asterisk for root node when modified
         std::string displayName = obj->name;
         if (isRoot && sceneDirty) {
             displayName += " *";
@@ -656,7 +689,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::PopStyleColor();
         }
         
-        // 拖动源（必须在Selectable之后）
+        // Drag source (must be after Selectable)
         if (ImGui::BeginDragDropSource())
         {
             ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
@@ -664,7 +697,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::EndDragDropSource();
         }
 
-        // 拖动目标
+        // Drag target
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
@@ -686,13 +719,13 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::EndDragDropTarget();
         }
         
-        // 子物体
+        // Children
         if (isExpanded) {
             for (auto child : obj->children)
                 DrawGameObjectNode(child, false, depth + 1);
         }
     } else {
-        // 叶子节点：留出箭头位置（20px = 12px箭头 + 8px间距）+ 深度缩进
+        // Leaf node: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
         
         if (icon) {
@@ -704,7 +737,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
         }
         
-        // 构建显示名称：根节点且有修改时添加星号
+        // Build display name: add asterisk for root node when modified
         std::string displayName = obj->name;
         if (isRoot && sceneDirty) {
             displayName += " *";
@@ -722,7 +755,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::PopStyleColor();
         }
         
-        // 拖动源（必须在Selectable之后）
+        // Drag source (must be after Selectable)
         if (ImGui::BeginDragDropSource())
         {
             ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
@@ -730,7 +763,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::EndDragDropSource();
         }
 
-        // 拖动目标
+        // Drag target
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
@@ -753,10 +786,10 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         }
     }
     
-    // 对象右键菜单 - 根据当前选中的对象显示不同选项
+    // Object right-click menu - show different options based on current selection
     if (ImGui::BeginPopupContextItem(("GameObjectContext_" + std::to_string((uintptr_t)obj)).c_str()))
     {
-        // 只有当选中的是场景根物体时才显示保存选项
+        // Only show save option when scene root object is selected
         bool isSelectedRoot = (selectedObject == engine->scene->rootGameObject);
         if (isSelectedRoot)
         {
@@ -789,7 +822,7 @@ void Editor::DrawHierarchy()
     
     ImGui::BeginChild("HierarchyContent", ImVec2(0, 0), true);
 
-    // 空白处右键菜单 - 创建物体
+    // Right-click context menu on empty space - create objects
     if (ImGui::BeginPopupContextWindow("HierarchyContextWindow"))
     {
         if (ImGui::MenuItem("Create Directional Light"))
@@ -888,7 +921,7 @@ void Editor::DrawHierarchy()
         for (GameObject* obj : engine->scene->gameObjects) DrawGameObjectNode(obj, false);
     }
 
-    // 保存窗口状态
+    // Save window state
     {
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
@@ -908,7 +941,7 @@ void Editor::DrawScene()
 
 void Editor::DrawGame()
 {
-    // 设置透明背景 - 确保在Begin之前设置
+    // Set transparent background - ensure this is set before Begin
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     ImGui::SetNextWindowBgAlpha(0.0f);
 
@@ -921,13 +954,13 @@ void Editor::DrawGame()
         return;
     }
 
-    // 获取窗口渲染区域并调用引擎渲染Game视图（游戏运行视角）
+    // Get window render area and call engine to render Game view (game running perspective)
     ImRect gameViewportRect = GetCurrentViewportRect();
     ImGui::GetWindowDrawList()->PushClipRect(gameViewportRect.Min, gameViewportRect.Max, true);
     engine->RenderSceneToViewport(gameViewportRect, true);
     ImGui::GetWindowDrawList()->PopClipRect();
 
-    // 保存窗口状态
+    // Save window state
     {
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
@@ -939,8 +972,8 @@ void Editor::DrawGame()
     ImGui::PopStyleColor();
 }
 
-// DrawProject 和 DrawInspector 已移至 ProjectWindow.cpp 和 InspectorWindow.cpp
-// 保留空实现以保持 API 兼容
+// DrawProject and DrawInspector have been moved to ProjectWindow.cpp and InspectorWindow.cpp
+// Keep empty implementation to maintain API compatibility
 
 void Editor::DrawPopups()
 {
@@ -976,7 +1009,7 @@ void Editor::DrawPopups()
     if (ImGui::BeginPopupModal("Load Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         selectedObject = nullptr;
-        selectedFile.Clear();  // 清除文件选中
+        selectedFile.Clear();  // Clear file selection
         ImGui::Text("Path"); ImGui::SameLine();
         static char loadPathBuffer[256] = "Assets/Scenes/scene.bin";
         ImGui::InputText("##Path", loadPathBuffer, sizeof(loadPathBuffer));
@@ -986,7 +1019,7 @@ void Editor::DrawPopups()
             if (engine && engine->scene && engine->scene->LoadScene(loadPathBuffer))
             {
                 strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
-                sceneDirty = false;  // 新加载的场景没有修改
+                sceneDirty = false;  // Newly loaded scene has no modifications
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -1012,7 +1045,7 @@ void Editor::DrawPopups()
         {
             if (strlen(layoutNameBuffer) > 0)
             {
-                // 保存到文件 - 使用ImGui内置INI保存
+                // Save to file - use ImGui built-in INI save
                 if (LayoutManager::GetInstance().SaveLayout(layoutNameBuffer))
                 {
                     ImGui::CloseCurrentPopup();
@@ -1029,7 +1062,7 @@ void Editor::DrawPopups()
         ImGui::EndPopup();
     }
 
-    // Build Popup - 打包发布
+    // Build Popup - Build and publish
     if (showBuildPopup)
     {
         ImGui::OpenPopup("Build Project");
@@ -1095,7 +1128,7 @@ void Editor::DrawBuildSettingsWindow()
             return;
         }
         
-        // 平台选择
+        // Platform selection
         ImGui::Text("Platform:");
         const char* platforms[] = { "Windows" };
         int currentPlatform = (int)buildSettings.platform;
@@ -1104,7 +1137,7 @@ void Editor::DrawBuildSettingsWindow()
             buildSettings.platform = (BuildPlatform)currentPlatform;
         }
         
-        // 配置选择
+        // Configuration selection
         ImGui::Text("Configuration:");
         const char* configs[] = { "Debug", "Release" };
         int currentConfig = (int)buildSettings.configuration;
@@ -1115,7 +1148,7 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::Separator();
         
-        // 产品信息
+        // Product info
         ImGui::Text("Product Settings:");
         
         char productName[256];
@@ -1144,10 +1177,10 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::Separator();
         
-        // 场景列表
+        // Scene list
         ImGui::Text("Scenes In Build:");
         
-        // 刷新场景列表按钮
+        // Refresh scene list button
         ImGui::SameLine();
         if (ImGui::Button("Refresh"))
         {
@@ -1167,7 +1200,7 @@ void Editor::DrawBuildSettingsWindow()
                 std::string sceneName = fs::path(buildSettings.scenes[i]).stem().string();
                 bool isSelected = (buildSettings.startupScene == sceneName);
                 
-                // 显示场景索引和名称
+                // Show scene index and name
                 ImGui::Text("%d", (int)i);
                 ImGui::SameLine(30);
                 
@@ -1176,7 +1209,7 @@ void Editor::DrawBuildSettingsWindow()
                     buildSettings.startupScene = sceneName;
                 }
                 
-                // 显示是否为启动场景
+                // Show if it's the startup scene
                 if (isSelected)
                 {
                     ImGui::SameLine();
@@ -1187,12 +1220,12 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::EndChild();
         
-        // 启动场景显示
+        // Startup scene display
         ImGui::Text("Startup Scene: %s", buildSettings.startupScene.empty() ? "None" : buildSettings.startupScene.c_str());
         
         ImGui::Separator();
         
-        // 输出路径
+        // Output path
         ImGui::Text("Output Path:");
         char outputPath[512];
         strcpy_s(outputPath, buildSettings.outputPath.c_str());
@@ -1203,10 +1236,10 @@ void Editor::DrawBuildSettingsWindow()
         ImGui::SameLine();
         if (ImGui::Button("Browse##Output"))
         {
-            // TODO: 打开文件夹选择对话框
+            // TODO: Open folder selection dialog
         }
         
-        // 开发构建设置
+        // Development build settings
         ImGui::Checkbox("Development Build", &buildSettings.developmentBuild);
         if (buildSettings.developmentBuild)
         {
@@ -1215,14 +1248,14 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::Separator();
         
-        // 构建进度
+        // Build progress
         if (isBuilding)
         {
             ImGui::Text("Building: %s", buildStatus.c_str());
             ImGui::ProgressBar(buildProgress, ImVec2(-1, 0));
         }
         
-        // 构建按钮
+        // Build button
         ImGui::BeginDisabled(isBuilding);
         
         if (ImGui::Button("Build", ImVec2(120, 30)))
@@ -1234,7 +1267,7 @@ void Editor::DrawBuildSettingsWindow()
                 buildProgress = 0.0f;
                 buildStatus = "Starting...";
                 
-                // 执行构建
+                // Execute build
                 bool success = BuildSystem::Build(buildSettings, 
                     [this](const std::string& stage, float progress)
                     {
@@ -1246,7 +1279,7 @@ void Editor::DrawBuildSettingsWindow()
                 if (success)
                 {
                     buildStatus = "Build completed successfully!";
-                    // 打开输出目录 - 使用绝对路径
+                    // Open output directory - use absolute path
                     std::wstring outputDirW = fs::absolute(buildSettings.outputPath).wstring();
                     ShellExecuteW(NULL, L"open", outputDirW.c_str(), NULL, NULL, SW_SHOWNORMAL);
                 }
@@ -1270,7 +1303,7 @@ void Editor::DrawBuildSettingsWindow()
             showBuildSettingsWindow = false;
         }
         
-        // 显示状态信息
+        // Display status info
         if (!buildStatus.empty())
         {
             ImGui::Separator();
@@ -1290,7 +1323,7 @@ void Editor::CopySelectedObject()
     else
         engine->scene->gameObjects.push_back(newObj);
     selectedObject = newObj;
-    engine->scene->MarkDirty();  // 标记场景已修改
+    engine->scene->MarkDirty();  // Mark scene as modified
 }
 
 void Editor::DeleteSelectedObject()
@@ -1323,7 +1356,7 @@ void Editor::DeleteSelectedObject()
     else
         selectedObject = nullptr;
     
-    engine->scene->MarkDirty();  // 标记场景已修改
+    engine->scene->MarkDirty();  // Mark scene as modified
 }
 
 void Editor::DeleteSelectedFile()
@@ -1343,7 +1376,7 @@ void Editor::DuplicateSelectedFile()
 {
     if (!selectedFile.IsValid()) return;
 
-    // 构建新文件名：name_copy.ext
+    // Build new filename: name_copy.ext
     std::string newName = selectedFile.name + "_copy" + selectedFile.extension;
     std::string newPath = selectedFile.path;
     size_t pos = newPath.rfind(selectedFile.name + selectedFile.extension);
@@ -1353,7 +1386,7 @@ void Editor::DuplicateSelectedFile()
 
     try {
         fs::copy_file(selectedFile.path, newPath, fs::copy_options::overwrite_existing);
-        // 选中新复制的文件
+        // Select newly copied file
         selectedFile.path = newPath;
         selectedFile.name = selectedFile.name + "_copy";
     }
@@ -1362,7 +1395,7 @@ void Editor::DuplicateSelectedFile()
     }
 }
 
-// 项目选择界面
+// Project selection interface
 void Editor::DrawProjectSelector()
 {
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -1373,7 +1406,7 @@ void Editor::DrawProjectSelector()
 
     ImGui::Begin("ProjectSelector", nullptr, flags);
 
-    // 标题 - 居中
+    // Title - centered
     float windowWidth = ImGui::GetIO().DisplaySize.x;
     float windowHeight = ImGui::GetIO().DisplaySize.y;
     
@@ -1383,7 +1416,7 @@ void Editor::DrawProjectSelector()
     ImGui::Text("Ditto Engine");
     ImGui::SetWindowFontScale(1.0f);
 
-    // 项目列表 - 居中
+    // Project list - centered
     ProjectManager& pm = ProjectManager::GetInstance();
     auto projects = pm.GetAllProjects();
     static int selectedProject = -1;
@@ -1414,7 +1447,7 @@ void Editor::DrawProjectSelector()
     
     ImGui::EndChild();
 
-    // 按钮 - 居中，一字排列，与列表框对齐
+    // Buttons - centered, in a row, aligned with list box
     float buttonWidth = listWidth / 4 - 10;
     float buttonSpacing = 10;
     float buttonsWidth = buttonWidth * 4 + buttonSpacing * 3;
@@ -1467,7 +1500,7 @@ void Editor::DrawProjectSelector()
         }
     }
 
-    // 保存选中的项目索引
+    // Save selected project index
     static int lastSelectedProject = -1;
     if (lastSelectedProject != selectedProject)
     {
@@ -1485,7 +1518,7 @@ void Editor::OpenProject(const std::string& projectPath)
         projectLoaded = true;
         showProjectSelector = false;
 
-        // 加载上次场景（如果有）
+        // Load last scene (if any)
         Project* proj = pm.GetCurrentProject();
         if (proj && !proj->lastScene.empty())
         {
@@ -1506,17 +1539,17 @@ void Editor::OpenProject(const std::string& projectPath)
                 else
                 {
                     std::cerr << "[Editor] Failed to load scene: " << fullPath << std::endl;
-                    // 创建默认场景
+                    // Create default scene
                     engine->scene->ClearScene();
                     engine->scene->name = "Default";
                     engine->scene->rootGameObject = new GameObject("Default");
                 }
                 
-                // 更新 UI
+                // Update UI
                 strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
-                sceneDirty = false;  // 新加载的场景没有修改
+                sceneDirty = false;  // Newly loaded scene has no modifications
                 
-                // 重新设置场景修改回调
+                // Re-setup scene modified callback
                 engine->scene->onModified = [this]() {
                     this->sceneDirty = true;
                 };
@@ -1525,7 +1558,7 @@ void Editor::OpenProject(const std::string& projectPath)
         else
         {
             std::cout << "[Editor] No last scene to load, creating default scene" << std::endl;
-            // 创建默认场景
+            // Create default scene
             if (engine && engine->scene)
             {
                 engine->scene->ClearScene();
@@ -1547,28 +1580,28 @@ void Editor::LoadSceneFromProject(const std::string& scenePath)
     {
         engine->scene->LoadScene(scenePath.c_str());
         
-        // 更新 UI
+        // Update UI
         strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
-        sceneDirty = false;  // 新加载的场景没有修改
+        sceneDirty = false;  // Newly loaded scene has no modifications
         
-        // 重新设置场景修改回调
+        // Re-setup scene modified callback
         engine->scene->onModified = [this]() {
             this->sceneDirty = true;
         };
 
-        // 保存到项目配置
+        // Save to project config
         Project* proj = ProjectManager::GetInstance().GetCurrentProject();
         if (proj)
         {
-            // 提取相对路径
+            // Extract relative path
             size_t pos = scenePath.find("/Assets/");
             if (pos != std::string::npos)
             {
                 proj->lastScene = scenePath.substr(pos + 1);
 
-                // 保存到project.json
+                // Save to project.json
                 std::string projectFile = proj->path + "/project.json";
-                // TODO: 更新project.json中的lastScene
+                // TODO: Update lastScene in project.json
             }
         }
     }
@@ -1620,7 +1653,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
         return;
     }
 
-    // 检查文件类型
+    // Check file type
     fs::path p(scriptPath);
     std::string ext = p.extension().string();
     std::string scriptName = p.stem().string();
@@ -1629,7 +1662,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
     
     if (ext == ".cs")
     {
-        // C# 脚本 - 创建 CSharpScriptComponent
+        // C# script - create CSharpScriptComponent
         CSharpScriptComponent* csScript = new CSharpScriptComponent();
         csScript->scriptPath = scriptPath;
         csScript->scriptName = std::filesystem::path(scriptPath).filename().stem().string();
@@ -1640,7 +1673,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
         obj->compMask += csScript->index;
         std::cout << "[Editor] C# script added: " << csScript->scriptName << std::endl;
         
-        // 标记场景为已修改
+        // Mark scene as modified
         sceneDirty = true;
     }
 }
@@ -1653,18 +1686,18 @@ void Editor::SaveCurrentScene()
         return;
     }
 
-    // 获取当前项目路径
+    // Get current project path
     Project* proj = ProjectManager::GetInstance().GetCurrentProject();
     std::string savePath;
     
     if (proj)
     {
-        // 保存到项目目录下的 Assets/Scenes/
+        // Save to project directory under Assets/Scenes/
         savePath = proj->path + "/Assets/Scenes/" + engine->scene->name + ".bin";
     }
     else
     {
-        // 没有项目时，使用相对路径
+        // When no project, use relative path
         savePath = "Assets/Scenes/" + engine->scene->name + ".bin";
     }
     
@@ -1673,12 +1706,12 @@ void Editor::SaveCurrentScene()
     if (engine->scene->SaveScene(savePath.c_str()))
     {
         std::cout << "[Editor] Scene saved successfully" << std::endl;
-        sceneDirty = false;  // 清除修改标记
+        sceneDirty = false;  // Clear modification flag
         
-        // 更新项目配置
+        // Update project config
         if (proj)
         {
-            // 保存相对路径到项目配置
+            // Save relative path to project config
             proj->lastScene = "Assets/Scenes/" + engine->scene->name + ".bin";
         }
     }
@@ -1703,39 +1736,39 @@ void Editor::BuildProject()
         return;
     }
 
-    // 输出目录：项目目录下的 Build/Windows
+    // Output directory: Build/Windows under project directory
     std::string projectPath = proj->path;
     std::replace(projectPath.begin(), projectPath.end(), '\\', '/');
     std::string outputDir = projectPath + "/Build/Windows";
     
     try
     {
-        // 创建输出目录
+        // Create output directory
         if (!fs::exists(outputDir))
         {
             fs::create_directories(outputDir);
         }
 
-        // 1. 复制 Assets 目录内容到根目录
+        // 1. Copy Assets directory contents to root directory
         std::string assetsSrc = projectPath + "/Assets";
         
         if (fs::exists(assetsSrc))
         {
-            // 复制整个 Assets 目录
+            // Copy entire Assets directory
             std::string assetsDst = outputDir;
             fs::remove_all(assetsDst + "/Assets");
             fs::copy(assetsSrc, assetsDst + "/Assets", fs::copy_options::recursive);
             std::cout << "[Editor] Copied Assets to " << assetsDst << std::endl;
         }
 
-        // 2. 保存当前场景
+        // 2. Save current scene
         std::string sceneName = engine->scene->name;
         std::string sceneSrc = projectPath + "/Assets/Scenes/" + sceneName + ".bin";
         
-        // 确保目录存在
+        // Ensure directory exists
         fs::create_directories(outputDir + "/Assets/Scenes");
         
-        // 保存并复制场景
+        // Save and copy scene
         engine->scene->SaveScene(sceneSrc.c_str());
         if (fs::exists(sceneSrc))
         {
@@ -1744,7 +1777,7 @@ void Editor::BuildProject()
             std::cout << "[Editor] Copied scene: " << sceneDst << std::endl;
         }
 
-        // 复制 project.json 到根目录
+        // Copy project.json to root directory
         std::string projectJsonSrc = projectPath + "/project.json";
         if (fs::exists(projectJsonSrc))
         {
@@ -1752,7 +1785,7 @@ void Editor::BuildProject()
             std::cout << "[Editor] Copied project.json to " << outputDir << std::endl;
         }
 
-        // 3. 复制可执行文件
+        // 3. Copy executable
         std::string exeSrc = projectPath + "/../../x64/Debug/Ditto.exe";
         std::string exeDst = outputDir + "/" + proj->name + ".exe";
         if (fs::exists(exeSrc))
@@ -1779,7 +1812,7 @@ void Editor::BuildProject()
             }
         }
 
-        // 4. 复制 3rdParty DLL
+        // 4. Copy 3rdParty DLL
         std::string thirdPartySrc = projectPath + "/../../Ditto/3rdParty/GLFW";
         if (!fs::exists(thirdPartySrc))
         {
@@ -1792,7 +1825,7 @@ void Editor::BuildProject()
         
         if (fs::exists(thirdPartySrc))
         {
-            // 复制 glfw3.dll
+            // Copy glfw3.dll
             for (const auto& entry : fs::directory_iterator(thirdPartySrc))
             {
                 if (entry.is_regular_file() && entry.path().extension() == ".dll")
@@ -1804,7 +1837,7 @@ void Editor::BuildProject()
             }
         }
 
-        // 5. 创建启动脚本（Run.bat）
+        // 5. Create startup script (Run.bat)
         std::string batPath = outputDir + "/Run.bat";
         std::ofstream batFile(batPath);
         batFile << "@echo off\n";
@@ -1817,7 +1850,7 @@ void Editor::BuildProject()
         
         std::cout << "[Editor] Build completed: " << outputDir << std::endl;
         
-        // 6. 在资源管理器中打开输出目录
+        // 6. Open output directory in Explorer
         std::wstring outputDirW = fs::absolute(outputDir).wstring();
         ShellExecuteW(NULL, L"open", outputDirW.c_str(), NULL, NULL, SW_SHOWNORMAL);
     }
@@ -1836,7 +1869,7 @@ void Editor::BuildScripts()
         return;
     }
     
-    // 脚本目录
+    // Script directory
     std::string scriptsDir = proj->path + "/Assets/Scripts";
     std::string outputDll = proj->path + "/Scripts.dll";
     
@@ -1846,7 +1879,7 @@ void Editor::BuildScripts()
         return;
     }
     
-    // 收集所有 .cpp 文件
+    // Collect all .cpp files
     std::vector<std::string> cppFiles;
     for (const auto& entry : fs::directory_iterator(scriptsDir))
     {
@@ -1864,20 +1897,20 @@ void Editor::BuildScripts()
     
     std::cout << "[Editor] Building " << cppFiles.size() << " script(s)..." << std::endl;
     
-    // 转换为绝对路径
+    // Convert to absolute paths
     fs::path projPathAbs = fs::absolute(proj->path);
     // E:\Engine Source\Ditto\Ditto\Projects\MyProject -> ../.. = E:\Engine Source\Ditto\Ditto
     fs::path enginePathAbs = fs::absolute(proj->path + "/../..");
     fs::path outputDllAbs = fs::absolute(outputDll);
     
-    // 直接使用原始脚本文件（用户需要手动修改 include 路径）
+    // Use raw script files directly (user needs to manually modify include paths)
     std::string compileFiles;
     for (const auto& f : cppFiles)
     {
         compileFiles += "\"" + fs::absolute(f).string() + "\" ";
     }
     
-    // 创建编译脚本
+    // Create compilation script
     std::string batPath = proj->path + "/build_scripts.bat";
     std::ofstream batFile(batPath);
     
@@ -1889,7 +1922,7 @@ void Editor::BuildScripts()
     else
         batFile << "echo Warning: vcvars64.bat not found, compilation may fail\n";
     
-    // 使用绝对路径，添加 C++20 和更多头文件路径
+    // Use absolute paths, add C++20 and more header paths
     std::string clCmd = "cl /LD /EHsc /std:c++latest /I\"" + enginePathAbs.string() + "\\3rdParty\\GLM\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\\include\" /I\"" + enginePathAbs.string() + "\\3rdParty\\ImGui\" /I\"" + enginePathAbs.string() + "\\Engine\\Core\" /I\"" + enginePathAbs.string() + "\\Engine\\Graphics\" /I\"" + enginePathAbs.string() + "\\Engine\\Physics\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\" /I\"" + enginePathAbs.string() + "\" /D\"SCRIPT_DLL\" /O2 /MD " + compileFiles + "/Fe:\"" + outputDllAbs.string() + "\"";
     
     batFile << clCmd << "\n";
@@ -1900,7 +1933,7 @@ void Editor::BuildScripts()
     std::cout << "[Editor] Please run: " << batPath << std::endl;
     std::cout << "[Editor] Or manually compile your scripts and place DLL at: " << outputDll << std::endl;
     
-    // 尝试直接执行
+    // Try to execute directly
     STARTUPINFOA si = {sizeof(si)};
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_SHOW;
@@ -1913,7 +1946,7 @@ void Editor::BuildScripts()
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
         
-        // 检查 DLL 是否生成
+        // Check if DLL was generated
         if (fs::exists(outputDll))
         {
             std::cout << "[Editor] DLL built: " << outputDll << std::endl;
@@ -1926,8 +1959,8 @@ void Editor::BuildScripts()
 }
 
 
-// 模型预览已移至 InspectorWindow.cpp
-// 文件图标相关函数
+// Model preview has been moved to InspectorWindow.cpp
+// File icon related functions
 static const char* s_iconFiles[] = {
     "Default.png", "Cs.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Folder.png"
 };
@@ -1936,26 +1969,26 @@ void Editor::InitFileIcons()
 {
     if (m_fileIconsInitialized) return;
     
-    // 获取图标目录路径
+    // Get icon directory path
     m_assetsPath = FindEditorAssetsPath() + "/Icon";
     std::cout << "[FileIcon] Initializing from: " << m_assetsPath << std::endl;
     
-    // 加载文件图标
+    // Load file icons
     for (int i = 0; i < 7; i++) {
         std::string path = m_assetsPath + "/" + s_iconFiles[i];
         m_icons[i] = LoadIcon(path);
     }
     
-    // 加载文件夹图标
+    // Load folder icons
     m_folderIcon = LoadIcon(m_assetsPath + "/Folder.png");
     m_folderEmptyIcon = LoadIcon(m_assetsPath + "/FolderEmpty.png");
     m_folderOpenedIcon = LoadIcon(m_assetsPath + "/FolderOpened Icon.png");
     
-    // 加载特殊图标
+    // Load special icons
     m_dittoIcon = LoadIcon(m_assetsPath + "/Scene.png");
     m_gameObjectIcon = LoadIcon(m_assetsPath + "/GameObject.png");
     
-    // 加载锁定图标
+    // Load lock icons
     m_lockIcon = LoadIcon(m_assetsPath + "/Lock.png");
     m_unlockIcon = LoadIcon(m_assetsPath + "/UnLock.png");
     
@@ -2000,12 +2033,12 @@ unsigned int Editor::LoadIcon(const std::string& iconPath)
 int Editor::GetIconIndex(const std::string& ext)
 {
     if (ext == ".cs") return 1;  // Cs.png
-    if (ext == ".obj") return 2;  // Prefab.png (模型)
-    if (ext == ".prefab") return 3;  // Text.png (材质)
+    if (ext == ".obj") return 2;  // Prefab.png (model)
+    if (ext == ".prefab") return 3;  // Text.png (material)
     if (ext == ".shader") return 4;  // Shader.png
     if (ext == ".bin") return 5;  // Scene.png
-    if (ext == ".tga") return 6;  // Folder.png (纹理)
-    return 0;  // 默认 Default.png
+    if (ext == ".tga") return 6;  // Folder.png (texture)
+    return 0;  // Default Default.png
 }
 
 unsigned int Editor::GetIconByExtension(const std::string& extension)
@@ -2016,7 +2049,7 @@ unsigned int Editor::GetIconByExtension(const std::string& extension)
     }
     
     int idx = GetIconIndex(extension);
-    return m_icons[idx];  // GetIconIndex 已经返回 0-6 范围
+    return m_icons[idx];  // GetIconIndex already returns 0-6 range
 }
 
 void Editor::CleanupFileIcons()

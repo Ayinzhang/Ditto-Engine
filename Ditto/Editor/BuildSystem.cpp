@@ -534,18 +534,73 @@ bool BuildSystem::CompileScripts(const std::string& projectPath, const std::stri
 
         if (msbuildPath.empty())
         {
-            std::vector<std::string> roslynPaths = {
-                "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/Roslyn",
-                "C:/Program Files/Microsoft Visual Studio/2022/Professional/MSBuild/Current/Bin/Roslyn",
-                "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/MSBuild/Current/Bin/Roslyn",
-                "D:/Visual Studio 2022/MSBuild/Current/Bin/Roslyn",
-            };
-            for (const auto& p : roslynPaths)
+            const char* regKey = "SOFTWARE\\Microsoft\\VisualStudio\\Setup\\Instances";
+            HKEY hKey = nullptr;
+
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
             {
-                if (fs::exists(p))
+                char name[MAX_PATH];
+                DWORD index = 0;
+                DWORD nameSize = MAX_PATH;
+
+                while (RegEnumKeyExA(hKey, index++, name, &nameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
                 {
-                    msbuildPath = p;
-                    break;
+                    std::string instanceKey = std::string(regKey) + "\\" + name;
+                    HKEY hInstKey = nullptr;
+
+                    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, instanceKey.c_str(), 0, KEY_READ, &hInstKey) == ERROR_SUCCESS)
+                    {
+                        char installPath[MAX_PATH];
+                        DWORD size = MAX_PATH;
+                        DWORD type = REG_SZ;
+
+                        if (RegQueryValueExA(hInstKey, "InstallLocation", nullptr, &type, (LPBYTE)installPath, &size) == ERROR_SUCCESS)
+                        {
+                            std::string roslynPath = std::string(installPath) + "MSBuild\\Current\\Bin\\Roslyn";
+                            if (fs::exists(roslynPath))
+                            {
+                                msbuildPath = roslynPath;
+                                RegCloseKey(hInstKey);
+                                RegCloseKey(hKey);
+                                break;
+                            }
+                        }
+                        RegCloseKey(hInstKey);
+                    }
+                    nameSize = MAX_PATH;
+                }
+                RegCloseKey(hKey);
+            }
+        }
+
+        if (msbuildPath.empty())
+        {
+            char* pathEnv = nullptr;
+            size_t pathLen = 0;
+            if (_dupenv_s(&pathEnv, &pathLen, "PATH") == 0 && pathEnv)
+            {
+                std::string pathStr(pathEnv);
+                free(pathEnv);
+
+                size_t pos = 0;
+                while ((pos = pathStr.find(';')) != std::string::npos)
+                {
+                    std::string dir = pathStr.substr(0, pos);
+                    std::string cscPath = dir + "\\csc.exe";
+                    if (fs::exists(cscPath))
+                    {
+                        size_t lastSlash = dir.find_last_of("\\/");
+                        if (lastSlash != std::string::npos)
+                        {
+                            std::string roslynDir = dir.substr(0, lastSlash);
+                            if (roslynDir.find("Roslyn") != std::string::npos)
+                            {
+                                msbuildPath = roslynDir;
+                                break;
+                            }
+                        }
+                    }
+                    pathStr.erase(0, pos + 1);
                 }
             }
         }

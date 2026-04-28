@@ -10,7 +10,7 @@
 #include <fstream>
 #include <algorithm>
 
-// 组件索引定义
+// Component index definitions
 constexpr int TRANSFORM_INDEX = 1 << 0;
 constexpr int LIGHT_INDEX = 1 << 1;
 constexpr int RENDERER_INDEX = 1 << 2;
@@ -134,7 +134,7 @@ void GameObject::ProcessRemovals()
         {
             delete* it;
             components.erase(it);
-            compMask &= ~comp->index;  // 使用位清除而不是减法
+            compMask &= ~comp->index;
         }
     }
     removeComps.clear();
@@ -155,7 +155,7 @@ void GameObject::OnInspectorGUI()
     }
     ImGui::PopID();
     
-    // 锁定按钮（在名称后面）
+    // Lock button (after name)
     ImGui::SameLine();
     extern Editor* g_editor;
     if (g_editor)
@@ -170,7 +170,6 @@ void GameObject::OnInspectorGUI()
             {
                 locked = !locked;
                 g_editor->lockingSelection = locked;
-                // 锁定时也更新 activeSelection，保持 Hierarchy 高亮
                 if (locked) g_editor->activeSelection = this;
             }
         }
@@ -260,7 +259,7 @@ void GameObject::Deserialize(std::ifstream& file)
     std::cout << "[GameObject::Deserialize] Reading childCount: " << childCount << " for " << name << std::endl;
     for (uint32_t i = 0; i < childCount; i++)
     {
-        GameObject* child = new GameObject(false);  // 不自动添加组件
+        GameObject* child = new GameObject(false);
         child->Deserialize(file);
         child->parent = this;
         children.push_back(child);
@@ -362,7 +361,7 @@ void TransformComponent::OnInspectorGUI()
         lastScale = scale;
         UpdateTransform();
         
-        // 标记场景已修改
+        // Mark scene as modified
         if (g_currentScene) g_currentScene->MarkDirty();
     }
 }

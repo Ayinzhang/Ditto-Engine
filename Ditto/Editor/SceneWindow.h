@@ -5,13 +5,13 @@
 
 struct Editor;
 
-enum class ToolMode { Translate, Rotate, Scale };
-enum class HandleAxis { None, X, Y, Z, XY, XZ, YZ };
+enum ToolMode { Translate, Rotate, Scale };
+enum HandleAxis { None, X, Y, Z, XY, XZ, YZ };
 
 struct ImRect2D { float MinX, MinY, MaxX, MaxY; };
 struct ImVec2D { float x, y; ImVec2D() : x(0), y(0) {} ImVec2D(float _x, float _y) : x(_x), y(_y) {} };
 
-class SceneWindow
+struct SceneWindow
 {
 public:
     SceneWindow(Editor* editor);

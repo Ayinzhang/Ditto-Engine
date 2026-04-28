@@ -6,9 +6,9 @@
 
 struct GameObject;
 struct Scene;
-struct Editor;  // 前向声明
+struct Editor;  // Forward declaration
 
-// 全局 Editor 指针（用于 GameObject 访问 Editor 功能）
+// Global Editor pointer (for GameObject to access Editor functionality)
 extern Editor* g_editor;
 
 struct Component
@@ -29,7 +29,7 @@ concept DerivedFromComponent = std::derived_from<T, Component>;
 struct GameObject
 {
     bool enabled = true;
-    bool locked = false;  // 锁定状态
+    bool locked = false;
     int compMask = 0;
     std::string name;
 
@@ -40,7 +40,7 @@ struct GameObject
     std::vector<Component*> removeComps;
 
     GameObject(const std::string _name = "New GameObject");
-    explicit GameObject(bool createComponents);  // 用于反序列化，不自动添加组件
+    explicit GameObject(bool createComponents);
     GameObject(GameObject* other);
     ~GameObject();
 
@@ -77,7 +77,7 @@ struct GameObject
 };
 
 
-// 全局当前场景指针（用于组件修改时标记 dirty）
+// Global current scene pointer (used to mark dirty when components are modified)
 extern Scene* g_currentScene;
 
 struct TransformComponent : Component

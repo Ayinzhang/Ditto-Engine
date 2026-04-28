@@ -1044,14 +1044,17 @@
     <ClInclude Include="Engine\Core\CSharpScript.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\BuildSystem.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\SceneWindow.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="Engine\Core\MonoRuntime.h">
       <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\BuildSystem.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\SceneWindow.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Core\ScriptFileWatcher.h">
+      <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -1593,14 +1596,17 @@
     <ClCompile Include="Engine\Core\CSharpScript.cpp">
       <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\BuildSystem.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="Editor\SceneWindow.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="Engine\Core\MonoRuntime.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\BuildSystem.cpp">
+      <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\SceneWindow.cpp">
+      <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp">
+      <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

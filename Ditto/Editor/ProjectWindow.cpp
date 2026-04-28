@@ -23,7 +23,7 @@ ProjectWindow::ProjectWindow(Editor* editor)
 
 void ProjectWindow::OnLoadScene(const std::string& scenePath)
 {
-    // 转发�?Editor
+    // Forward to Editor
     if (m_editor) {
         m_editor->LoadSceneFromProject(scenePath);
     }
@@ -33,7 +33,7 @@ void ProjectWindow::OnFileSelected(const std::string& path, const std::string& n
                                    const std::string& ext, const std::string& folder)
 {
     if (m_editor) {
-        // 如果 Inspector 锁定选择，不切换文件
+        // If Inspector locks selection, don't switch files
         if (m_editor->lockingSelection) return;
         
         m_editor->selectedFile.path = path;
@@ -60,11 +60,11 @@ void ProjectWindow::Draw()
 
     ImGui::Begin("Project");
 
-    // 顶部路径�?
+    // Top path bar
     ImGui::Text("Project");
     ImGui::SameLine();
 
-    // 后退按钮
+    // Back button
     if (m_currentFolder != "Assets") {
         if (ImGui::Button("<")) {
             size_t lastSlash = m_currentFolder.find_last_of('/');
@@ -87,7 +87,7 @@ void ProjectWindow::Draw()
     if (m_splitterPos < 100) m_splitterPos = 100;
     if (m_splitterPos > panelWidth - 100) m_splitterPos = panelWidth - 100;
 
-    // 左侧 - 文件夹树
+    // Left side - folder tree
     ImGui::BeginChild("Folders", ImVec2(m_splitterPos, panelHeight), true);
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
 
@@ -114,7 +114,7 @@ void ProjectWindow::Draw()
                             }
                         }
 
-                        // 计算缩进：每�?18px
+                        // Calculate indent: 18px per level
                         float indent = depth * 18.0f;
 
                         if (hasSubfolders) {
@@ -122,7 +122,7 @@ void ProjectWindow::Draw()
                             
                             bool isOpen = IsFolderExpanded(fullPath);
                             
-                            // 箭头按钮�?2px�?
+                            // Arrow button (12px)
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
                             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
                             if (ImGui::ArrowButton(("##arrow_" + fullPath).c_str(), isOpen ? ImGuiDir_Down : ImGuiDir_Right)) {
@@ -130,7 +130,7 @@ void ProjectWindow::Draw()
                             }
                             ImGui::PopStyleVar();
                             
-                            // 图标
+                            // Icon
                             unsigned int folderIcon = 0;
                             if (m_editor) {
                                 folderIcon = isOpen ? m_editor->GetFolderOpenedIcon() : m_editor->GetFolderIcon();
@@ -141,7 +141,7 @@ void ProjectWindow::Draw()
                                 ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
                             }
                             
-                            // 名称 - 使用 Selectable 来检测点击（�?Hierarchy 一样）
+                            // Name - use Selectable to detect clicks (same as Hierarchy)
                             ImGui::SameLine();
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
@@ -151,7 +151,7 @@ void ProjectWindow::Draw()
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
                             
-                            // 右键菜单
+                            // Right-click menu
                             if (ImGui::BeginPopupContextItem())
                             {
                                 if (ImGui::MenuItem("Open in Explorer"))
@@ -162,7 +162,7 @@ void ProjectWindow::Draw()
                                 ImGui::EndPopup();
                             }
                             
-                            // 子文件夹
+                            // Sub-folders
                             if (isOpen) {
                                 DrawFolderTree(fullFsPath, fullPath, depth + 1);
                             }
@@ -171,7 +171,7 @@ void ProjectWindow::Draw()
                         } else if (hasFiles) {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // 无子文件夹但有文件：留出箭头位置�?0px = 12px箭头 + 8px间距�? 深度缩进
+                            // No sub-folders but has files: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             unsigned int folderIcon = 0;
@@ -184,7 +184,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名�?- 使用 Selectable
+                            // Folder name - use Selectable
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -193,7 +193,7 @@ void ProjectWindow::Draw()
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
                             
-                            // 右键菜单
+                            // Right-click menu
                             if (ImGui::BeginPopupContextItem())
                             {
                                 if (ImGui::MenuItem("Open in Explorer"))
@@ -208,7 +208,7 @@ void ProjectWindow::Draw()
                         } else {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // 空文件夹：留出箭头位置（20px = 12px箭头 + 8px间距�? 深度缩进
+                            // Empty folder: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             unsigned int folderIcon = 0;
@@ -221,7 +221,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名�?- 使用 Selectable
+                            // Folder name - use Selectable
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -230,7 +230,7 @@ void ProjectWindow::Draw()
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
                             
-                            // 右键菜单
+                            // Right-click menu
                             if (ImGui::BeginPopupContextItem())
                             {
                                 if (ImGui::MenuItem("Open in Explorer"))
@@ -259,7 +259,7 @@ void ProjectWindow::Draw()
     ImGui::PopStyleColor();
     ImGui::EndChild();
 
-    // 分隔�?
+    // Splitter
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 0.5f));
     ImGui::Button("##splitter", ImVec2(1, panelHeight));
@@ -279,7 +279,7 @@ void ProjectWindow::Draw()
 
     ImGui::SameLine();
 
-    // 右侧 - 文件视图
+    // Right side - file view
     ImGui::BeginChild("View", ImVec2(0, panelHeight), true);
 
     std::string folderPath = assetsPath;
@@ -289,7 +289,7 @@ void ProjectWindow::Draw()
         folderPath = assetsPath + "/" + m_currentFolder.substr(pos + 1);
     }
 
-    // 右键菜单
+    // Right-click menu
     if (ImGui::BeginPopupContextWindow("ProjectContext"))
     {
         if (!m_editor || !m_editor->selectedFile.IsValid())
@@ -322,7 +322,7 @@ void ProjectWindow::Draw()
     {
         if (fs::exists(folderPath))
         {
-            // 先显示文件夹
+            // Show folders first
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
                 if (entry.is_directory())
@@ -360,13 +360,13 @@ void ProjectWindow::Draw()
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     {
-                        // 双击进入文件�?
+                        // Double-click to enter folder
                         std::string newFolder = m_currentFolder + "/" + folderName;
                         m_currentFolder = newFolder;
                     }
                     else if (ImGui::IsItemClicked(0))
                     {
-                        // 单击选中文件�?
+                        // Single-click to select folder
                         if (m_editor) m_editor->selectedFile.Clear();
                     }
 
@@ -376,7 +376,7 @@ void ProjectWindow::Draw()
                 }
             }
 
-            // 再显示文�?
+            // Then show files
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
                 if (entry.is_regular_file())
@@ -456,10 +456,10 @@ void ProjectWindow::Draw()
                         }
                     }
 
-                    // 右键菜单
+                    // Right-click menu
                     if (ImGui::BeginPopupContextItem())
                     {
-                        // 所有文件都可以 Rename
+                        // All files can be renamed
                         if (ImGui::MenuItem("Rename"))
                         {
                             m_renameTargetPath = entry.path().string();
@@ -492,7 +492,7 @@ void ProjectWindow::Draw()
                         ImGui::EndPopup();
                     }
 
-                    // 设置拖拽源（.cs 文件可拖�?Inspector�?
+                    // Set drag source (.cs files can be dragged to Inspector)
                     if (ext == ".cs" && ImGui::BeginDragDropSource())
                     {
                         ImGui::SetDragDropPayload("CS_SCRIPT", entry.path().string().c_str(), 
@@ -500,7 +500,7 @@ void ProjectWindow::Draw()
                         ImGui::EndDragDropSource();
                     }
 
-                    // 双击检测已在上面的 IsItemClicked 中处�?
+                    // Double-click detection is already handled in IsItemClicked above
 
                     currentX += itemWidth;
                     ImGui::EndGroup();
@@ -513,7 +513,7 @@ void ProjectWindow::Draw()
 
     ImGui::EndChild();
 
-    // 绘制弹窗
+    // Draw popups
     DrawPopups();
 
     ImGui::End();
@@ -521,13 +521,13 @@ void ProjectWindow::Draw()
 
 void ProjectWindow::OnScriptDropped(const std::string& scriptPath)
 {
-    // TODO: 将脚本附加到当前选中�?GameObject
-    // 需要和 Inspector/Editor 协调
+    // TODO: Attach script to currently selected GameObject
+    // Need to coordinate with Inspector/Editor
     std::cout << "[ProjectWindow] Script dropped: " << scriptPath << std::endl;
     
     if (m_editor && m_editor->selectedObject)
     {
-        // 通知 Editor 添加脚本组件
+        // Notify Editor to add script component
         m_editor->OnScriptComponentDropped(scriptPath);
     }
 }
@@ -664,7 +664,7 @@ void ProjectWindow::RenameFile(const std::string& oldPath, const std::string& ne
 
 void ProjectWindow::DrawPopups()
 {
-    // 创建文件夹弹�?
+    // Create folder popup
     if (m_showCreateFolderPopup)
     {
         ImGui::OpenPopup("Create Folder");
@@ -692,7 +692,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // 创建场景弹窗
+    // Create scene popup
     if (m_showCreateScenePopup)
     {
         ImGui::OpenPopup("Create Scene");
@@ -720,7 +720,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // 创建脚本弹窗
+    // Create script popup
     if (m_showCreateScriptPopup)
     {
         ImGui::OpenPopup("Create Script");
@@ -748,7 +748,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // 重命名弹�?
+    // Rename popup
     if (m_showRenamePopup)
     {
         ImGui::OpenPopup("Rename");
@@ -1215,11 +1215,11 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
 
 bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, const std::string& projectName)
 {
-    // 查找 DittoEngine.dll 路径 - 从项目目录向上搜索引擎根目录
+    // Find DittoEngine.dll path - search upward from project directory to engine root
     std::string dittoEnginePath;
     fs::path currentPath = fs::absolute(projectPath);
     
-    // 向上遍历目录树，查找包含 Ditto/ditto 目录的地�?
+    // Traverse directory tree upward to find Ditto/ditto directory
     while (!currentPath.empty() && currentPath.has_parent_path())
     {
         std::vector<std::string> searchPaths = {
@@ -1243,7 +1243,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     
     if (dittoEnginePath.empty())
     {
-        // 回退到相对路径搜索（从项目目录）
+        // Fallback to relative path search (from project directory)
         std::vector<std::string> searchPaths = {
             projectPath + "\\..\\..\\Ditto\\3rdParty\\Mono\\DittoEngine.dll",
             projectPath + "\\..\\..\\ditto\\3rdParty\\Mono\\DittoEngine.dll",
@@ -1260,7 +1260,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
         }
     }
     
-    // 创建 .csproj 文件
+    // Create .csproj file
     std::string csprojPath = projectPath + "/" + projectName + ".csproj";
     std::ofstream csprojFile(csprojPath);
     if (!csprojFile.is_open())
@@ -1312,7 +1312,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     csprojFile << "</Project>\n";
     csprojFile.close();
     
-    // 创建 .sln 文件
+    // Create .sln file
     std::string slnPath = projectPath + "/" + projectName + ".sln";
     std::ofstream slnFile(slnPath);
     if (!slnFile.is_open())
@@ -1321,7 +1321,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
         return false;
     }
     
-    // 生成 GUID
+    // Generate GUID
     GUID guid;
     CoCreateGuid(&guid);
     char guidStr[40];
@@ -1354,12 +1354,75 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     return true;
 }
 
+std::string FindDevEnvViaVsWhere()
+{
+    std::string result;
+    const char* regKey = "SOFTWARE\\Microsoft\\VisualStudio\\Setup\\Instances";
+    HKEY hKey = nullptr;
+
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        char name[MAX_PATH];
+        DWORD index = 0;
+        DWORD nameSize = MAX_PATH;
+
+        while (RegEnumKeyExA(hKey, index++, name, &nameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
+        {
+            std::string instanceKey = std::string(regKey) + "\\" + name;
+            HKEY hInstKey = nullptr;
+
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, instanceKey.c_str(), 0, KEY_READ, &hInstKey) == ERROR_SUCCESS)
+            {
+                char installPath[MAX_PATH];
+                DWORD size = MAX_PATH;
+                DWORD type = REG_SZ;
+
+                if (RegQueryValueExA(hInstKey, "InstallLocation", nullptr, &type, (LPBYTE)installPath, &size) == ERROR_SUCCESS)
+                {
+                    std::string devenvPath = std::string(installPath) + "Common7\\IDE\\devenv.exe";
+                    if (fs::exists(devenvPath))
+                    {
+                        result = devenvPath;
+                        RegCloseKey(hInstKey);
+                        break;
+                    }
+                }
+                RegCloseKey(hInstKey);
+            }
+            nameSize = MAX_PATH;
+        }
+        RegCloseKey(hKey);
+    }
+    return result;
+}
+
+std::string FindDevEnvInPATH()
+{
+    char* pathEnv = nullptr;
+    size_t len = 0;
+    if (_dupenv_s(&pathEnv, &len, "PATH") != 0 || !pathEnv)
+        return "";
+
+    std::string pathStr(pathEnv);
+    free(pathEnv);
+
+    size_t pos = 0;
+    while ((pos = pathStr.find(';')) != std::string::npos)
+    {
+        std::string dir = pathStr.substr(0, pos);
+        std::string devenvPath = dir + "\\devenv.exe";
+        if (fs::exists(devenvPath))
+            return devenvPath;
+        pathStr.erase(0, pos + 1);
+    }
+    return "";
+}
+
 std::string ProjectWindow::GetVisualStudioPath()
 {
-    // 尝试从注册表获取 Visual Studio 路径
-    HKEY hKey;
+    HKEY hKey = nullptr;
     const char* subKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\devenv.exe";
-    
+
     if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
     {
         char path[MAX_PATH];
@@ -1367,46 +1430,19 @@ std::string ProjectWindow::GetVisualStudioPath()
         if (RegQueryValueExA(hKey, NULL, NULL, NULL, (LPBYTE)path, &pathSize) == ERROR_SUCCESS)
         {
             RegCloseKey(hKey);
-            return std::string(path);
+            if (fs::exists(path))
+                return std::string(path);
         }
         RegCloseKey(hKey);
     }
-    
-    // 尝试常见路径
-    std::vector<std::string> possiblePaths = {
-        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\devenv.exe",
-        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\IDE\\devenv.exe",
-        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\Common7\\IDE\\devenv.exe",
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\devenv.exe",
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\Common7\\IDE\\devenv.exe",
-        "D:\\Visual Studio 2022\\Common7\\IDE\\devenv.exe"
-    };
-    
-    for (const auto& path : possiblePaths)
-    {
-        if (fs::exists(path))
-        {
-            return path;
-        }
-    }
-    
-    // 最后尝试在 PATH 中查�?
-    char pathEnv[MAX_PATH];
-    if (GetEnvironmentVariableA("PATH", pathEnv, MAX_PATH) > 0)
-    {
-        std::string pathStr(pathEnv);
-        size_t pos = 0;
-        while ((pos = pathStr.find(';')) != std::string::npos)
-        {
-            std::string dir = pathStr.substr(0, pos);
-            std::string devenvPath = dir + "\\devenv.exe";
-            if (fs::exists(devenvPath))
-            {
-                return devenvPath;
-            }
-            pathStr.erase(0, pos + 1);
-        }
-    }
-    
+
+    std::string vswhereResult = FindDevEnvViaVsWhere();
+    if (!vswhereResult.empty())
+        return vswhereResult;
+
+    std::string pathResult = FindDevEnvInPATH();
+    if (!pathResult.empty())
+        return pathResult;
+
     return "";
 }

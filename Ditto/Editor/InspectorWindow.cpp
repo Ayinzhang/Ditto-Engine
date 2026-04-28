@@ -56,23 +56,23 @@ void InspectorWindow::Draw()
 {
     ImGui::Begin("Inspector");
 
-    // 设置当前显示的物体（如果 Inspector 锁定，则显示锁定的物体）
+    // Set current object to display (if Inspector is locked, show locked object)
     m_currentObject = nullptr;
     if (m_editor)
     {
         if (m_editor->selectedFile.IsValid())
         {
-            // 显示文件信息时，没有关联的 GameObject
+            // When showing file info, there is no associated GameObject
             m_currentObject = nullptr;
         }
         else
         {
-            // 如果 Inspector 锁定（lockingSelection = true），显示锁定的物体
-            // 否则显示当前选中的物体
+            // If Inspector is locked (lockingSelection = true), show locked object
+            // Otherwise show currently selected object
             if (m_editor->lockingSelection && m_editor->selectedObject && m_editor->selectedObject->locked)
             {
-                // 找到锁定的物体 - 需要遍历场景
-                // 简化：使用 selectedObject，因为锁定时它就是锁定的物体
+                // Found locked object - need to traverse scene
+                // Simplified: use selectedObject because when locked it is the locked object
                 m_currentObject = m_editor->selectedObject;
             }
             else
@@ -82,7 +82,7 @@ void InspectorWindow::Draw()
         }
     }
 
-    // 处理拖拽脚本（拖拽不受锁定影响）
+    // Handle script drag-drop (drag-drop is not affected by lock)
     if (ImGui::BeginDragDropTarget())
     {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CS_SCRIPT"))
@@ -90,7 +90,7 @@ void InspectorWindow::Draw()
             const char* scriptPath = (const char*)payload->Data;
             std::cout << "[Inspector] Received script: " << scriptPath << std::endl;
             
-            // 使用 m_currentObject 而不是 selectedObject，允许拖拽添加脚本
+            // Use m_currentObject instead of selectedObject to allow dragging to add scripts
             if (m_currentObject)
             {
                 m_editor->OnScriptComponentDroppedToObject(m_currentObject, scriptPath);
@@ -99,7 +99,7 @@ void InspectorWindow::Draw()
         ImGui::EndDragDropTarget();
     }
 
-    // 优先显示文件信息（如果选中了文件）
+    // Prefer showing file info (if a file is selected)
     if (m_editor && m_editor->selectedFile.IsValid())
     {
         ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "File");
@@ -111,7 +111,7 @@ void InspectorWindow::Draw()
         ImGui::Text("Path: "); ImGui::SameLine();
         ImGui::TextDisabled(m_editor->selectedFile.path.c_str());
 
-        // 如果是模型文件，显示模型信息
+        // If it's a model file, show model info
         if (m_editor->selectedFile.extension == ".obj" || m_editor->selectedFile.extension == ".fbx")
         {
             ImGui::Separator();
@@ -145,7 +145,7 @@ void InspectorWindow::Draw()
                 ImGui::Image((void*)(intptr_t)m_previewTexture, ImVec2(btnWidth, btnHeight),
                     ImVec2(0, 1), ImVec2(1, 0));
 
-                // 鼠标拖拽旋转
+                // Mouse drag to rotate
                 if (!m_modelInitialized || (ImGui::IsItemHovered() && ImGui::IsMouseDown(0)))
                 {
                     m_modelInitialized = true;
@@ -181,22 +181,22 @@ void InspectorWindow::Draw()
         return;
     }
 
-    // 没有选中文件时，显示 GameObject 信息
+    // When no file is selected, show GameObject info
     if (!m_editor || !m_editor->selectedObject) {
         ImGui::TextDisabled("Select an object to view its properties");
         ImGui::End();
         return;
     }
 
-    // 使用 m_currentObject 而不是 selectedObject（支持锁定显示）
+    // Use m_currentObject instead of selectedObject (supports lock display)
     if (m_currentObject)
     {
         if (m_editor->engine && m_editor->engine->state == Engine::State::Play) ImGui::BeginDisabled();
         
-        // 显示 GameObject UI
+        // Show GameObject UI
         m_currentObject->OnInspectorGUI();
         
-        // 统一的添加组件区域 - 支持点击展开菜单和拖拽脚本
+        // Unified Add Component area - supports click to expand menu and drag scripts
         ImGui::Separator();
         ImVec4 prevColor = ImGui::GetStyle().Colors[ImGuiCol_Button];
         ImGui::GetStyle().Colors[ImGuiCol_Button] = ImVec4(0.2f, 0.2f, 0.2f, 0.5f);
@@ -206,7 +206,7 @@ void InspectorWindow::Draw()
         }
         ImGui::GetStyle().Colors[ImGuiCol_Button] = prevColor;
         
-        // 拖拽接收
+        // Drag-drop receiver
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CS_SCRIPT"))
@@ -218,13 +218,13 @@ void InspectorWindow::Draw()
             ImGui::EndDragDropTarget();
         }
         
-        // 组件选择弹出菜单
+        // Component selection popup menu
         if (ImGui::BeginPopup("AddComponentPopup"))
         {
             ImGui::TextUnformatted("Components");
             ImGui::Separator();
             
-            // 内置组件
+            // Built-in components
             if (!(m_currentObject->compMask >> 1 & 1) && ImGui::MenuItem("Light"))
                 m_currentObject->AddComponent<LightComponent>();
             if (!(m_currentObject->compMask >> 2 & 1) && ImGui::MenuItem("Renderer"))
@@ -236,7 +236,7 @@ void InspectorWindow::Draw()
             ImGui::TextUnformatted("Scripts");
             ImGui::Separator();
             
-            // 从项目 Scripts 目录读取可用脚本
+            // Load available scripts from project Scripts directory
             Project* project = ProjectManager::GetInstance().GetCurrentProject();
             if (project)
             {
@@ -280,7 +280,7 @@ void InspectorWindow::Draw()
 }
 
 // ============================================================================
-// 模型预览实现
+// Model Preview Implementation
 // ============================================================================
 
 void InspectorWindow::InitModelPreview()
