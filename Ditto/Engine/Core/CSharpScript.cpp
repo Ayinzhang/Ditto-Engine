@@ -603,17 +603,79 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
     std::string dllPath = dllAbsPath.string();
     
     std::string dittoEngineDll = FindDittoEngineDll();
-    std::string msbuildPath = FindMSBuildPath();
     
-    std::string pathCmd;
-    if (!msbuildPath.empty())
-        pathCmd = "set PATH=" + msbuildPath + ";%PATH%&";
+    // 查找 Mono 的 mscorlib.dll
+    std::string monoMscorlib;
+    {
+        const std::vector<std::string> mscorlibPaths = {
+            "3rdParty/Mono/mscorlib.dll",
+            "../../3rdParty/Mono/mscorlib.dll",
+            "../3rdParty/Mono/mscorlib.dll",
+            "Ditto/3rdParty/Mono/mscorlib.dll",
+            "../../Ditto/3rdParty/Mono/mscorlib.dll",
+        };
+        for (const auto& path : mscorlibPaths)
+        {
+            if (fs::exists(path))
+            {
+                monoMscorlib = fs::absolute(path).string();
+                break;
+            }
+        }
+    }
     
-    std::string cmd = pathCmd + "cd /d \"" + dir + "\" && csc /target:library /reference:\"" + dittoEngineDll + "\" /out:\"" + dllPath + "\" \"" + absScriptPath.filename().string() + "\"";
-    std::cout << "[CSharpScriptSystem] Compile cmd: " << cmd << std::endl;
+    if (monoMscorlib.empty())
+    {
+        std::cerr << "[CSharpScriptSystem] mscorlib.dll not found!" << std::endl;
+        return false;
+    }
+    
+    // 查找 csc.exe (优先使用 Roslyn 编译器以支持现代 C# 语法)
+    std::string cscPath;
+    {
+        const std::vector<std::string> cscPaths = {
+            "D:\\Visual Studio 2022\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+            "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+            "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+            "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+            "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+            "C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe",
+        };
+        for (const auto& path : cscPaths)
+        {
+            if (fs::exists(path))
+            {
+                cscPath = path;
+                break;
+            }
+        }
+    }
+    
+    if (cscPath.empty())
+    {
+        std::cerr << "[CSharpScriptSystem] csc.exe not found!" << std::endl;
+        return false;
+    }
+    
+    std::cout << "[CSharpScriptSystem] Using csc: " << cscPath << std::endl;
+    std::cout << "[CSharpScriptSystem] Using mscorlib: " << monoMscorlib << std::endl;
+    std::cout << "[CSharpScriptSystem] Using DittoEngine: " << dittoEngineDll << std::endl;
+    
+    // 使用 csc 编译，引用 Mono 的 mscorlib.dll（确保与运行时兼容）
+    // 注意：system() 通过 cmd.exe 执行，路径含空格需要额外引号
+    std::string cmd = "\"\"" + cscPath + "\""
+        + " /target:library"
+        + " /nostdlib+"
+        + " /reference:\"" + monoMscorlib + "\""
+        + " /reference:\"" + dittoEngineDll + "\""
+        + " /out:\"" + dllPath + "\""
+        + " \"" + absScriptPath.string() + "\""
+        + "\" 2>&1";
+    
+    std::cout << "[CSharpScriptSystem] Compile cmd: csc" << std::endl;
     int result = system(cmd.c_str());
     
-    if (result != 0)
+    if (result != 0 || !fs::exists(dllPath))
     {
         std::cerr << "[CSharpScriptSystem] Compile failed: " << csPath << std::endl;
         return false;
@@ -878,8 +940,9 @@ extern "C" {
         trans->position.y = y;
         trans->position.z = z;
         trans->localDirty = true;
+        trans->UpdateTransform();
         
-        std::cout << "[Internal] Position set successfully" << std::endl;
+        std::cout << "[Internal] Position set successfully to (" << x << ", " << y << ", " << z << ")" << std::endl;
     }
     
     // 通过 GameObject 指针获取 Transform 组件指针

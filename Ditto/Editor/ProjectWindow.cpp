@@ -23,7 +23,7 @@ ProjectWindow::ProjectWindow(Editor* editor)
 
 void ProjectWindow::OnLoadScene(const std::string& scenePath)
 {
-    // 转发�?Editor
+    // 转发�?Editor
     if (m_editor) {
         m_editor->LoadSceneFromProject(scenePath);
     }
@@ -60,7 +60,7 @@ void ProjectWindow::Draw()
 
     ImGui::Begin("Project");
 
-    // 顶部路径�?
+    // 顶部路径�?
     ImGui::Text("Project");
     ImGui::SameLine();
 
@@ -114,7 +114,7 @@ void ProjectWindow::Draw()
                             }
                         }
 
-                        // 计算缩进：每�?18px
+                        // 计算缩进：每�?18px
                         float indent = depth * 18.0f;
 
                         if (hasSubfolders) {
@@ -122,7 +122,7 @@ void ProjectWindow::Draw()
                             
                             bool isOpen = IsFolderExpanded(fullPath);
                             
-                            // 箭头按钮�?2px�?
+                            // 箭头按钮�?2px�?
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
                             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
                             if (ImGui::ArrowButton(("##arrow_" + fullPath).c_str(), isOpen ? ImGuiDir_Down : ImGuiDir_Right)) {
@@ -141,7 +141,7 @@ void ProjectWindow::Draw()
                                 ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
                             }
                             
-                            // 名称 - 使用 Selectable 来检测点击（�?Hierarchy 一样）
+                            // 名称 - 使用 Selectable 来检测点击（�?Hierarchy 一样）
                             ImGui::SameLine();
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
@@ -171,7 +171,7 @@ void ProjectWindow::Draw()
                         } else if (hasFiles) {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // 无子文件夹但有文件：留出箭头位置�?0px = 12px箭头 + 8px间距�? 深度缩进
+                            // 无子文件夹但有文件：留出箭头位置�?0px = 12px箭头 + 8px间距�? 深度缩进
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             unsigned int folderIcon = 0;
@@ -184,7 +184,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名�?- 使用 Selectable
+                            // 文件夹名�?- 使用 Selectable
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -208,7 +208,7 @@ void ProjectWindow::Draw()
                         } else {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // 空文件夹：留出箭头位置（20px = 12px箭头 + 8px间距�? 深度缩进
+                            // 空文件夹：留出箭头位置（20px = 12px箭头 + 8px间距�? 深度缩进
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             unsigned int folderIcon = 0;
@@ -221,7 +221,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // 文件夹名�?- 使用 Selectable
+                            // 文件夹名�?- 使用 Selectable
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -259,7 +259,7 @@ void ProjectWindow::Draw()
     ImGui::PopStyleColor();
     ImGui::EndChild();
 
-    // 分隔�?
+    // 分隔�?
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 0.5f));
     ImGui::Button("##splitter", ImVec2(1, panelHeight));
@@ -360,13 +360,13 @@ void ProjectWindow::Draw()
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     {
-                        // 双击进入文件�?
+                        // 双击进入文件�?
                         std::string newFolder = m_currentFolder + "/" + folderName;
                         m_currentFolder = newFolder;
                     }
                     else if (ImGui::IsItemClicked(0))
                     {
-                        // 单击选中文件�?
+                        // 单击选中文件�?
                         if (m_editor) m_editor->selectedFile.Clear();
                     }
 
@@ -376,7 +376,7 @@ void ProjectWindow::Draw()
                 }
             }
 
-            // 再显示文�?
+            // 再显示文�?
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
                 if (entry.is_regular_file())
@@ -492,7 +492,7 @@ void ProjectWindow::Draw()
                         ImGui::EndPopup();
                     }
 
-                    // 设置拖拽源（.cs 文件可拖�?Inspector�?
+                    // 设置拖拽源（.cs 文件可拖�?Inspector�?
                     if (ext == ".cs" && ImGui::BeginDragDropSource())
                     {
                         ImGui::SetDragDropPayload("CS_SCRIPT", entry.path().string().c_str(), 
@@ -500,7 +500,7 @@ void ProjectWindow::Draw()
                         ImGui::EndDragDropSource();
                     }
 
-                    // 双击检测已在上面的 IsItemClicked 中处�?
+                    // 双击检测已在上面的 IsItemClicked 中处�?
 
                     currentX += itemWidth;
                     ImGui::EndGroup();
@@ -521,7 +521,7 @@ void ProjectWindow::Draw()
 
 void ProjectWindow::OnScriptDropped(const std::string& scriptPath)
 {
-    // TODO: 将脚本附加到当前选中�?GameObject
+    // TODO: 将脚本附加到当前选中�?GameObject
     // 需要和 Inspector/Editor 协调
     std::cout << "[ProjectWindow] Script dropped: " << scriptPath << std::endl;
     
@@ -664,7 +664,7 @@ void ProjectWindow::RenameFile(const std::string& oldPath, const std::string& ne
 
 void ProjectWindow::DrawPopups()
 {
-    // 创建文件夹弹�?
+    // 创建文件夹弹�?
     if (m_showCreateFolderPopup)
     {
         ImGui::OpenPopup("Create Folder");
@@ -748,7 +748,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // 重命名弹�?
+    // 重命名弹�?
     if (m_showRenamePopup)
     {
         ImGui::OpenPopup("Rename");
@@ -1219,7 +1219,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     std::string dittoEnginePath;
     fs::path currentPath = fs::absolute(projectPath);
     
-    // 向上遍历目录树，查找包含 Ditto/ditto 目录的地�?
+    // 向上遍历目录树，查找包含 Ditto/ditto 目录的地�?
     while (!currentPath.empty() && currentPath.has_parent_path())
     {
         std::vector<std::string> searchPaths = {
@@ -1390,7 +1390,7 @@ std::string ProjectWindow::GetVisualStudioPath()
         }
     }
     
-    // 最后尝试在 PATH 中查�?
+    // 最后尝试在 PATH 中查�?
     char pathEnv[MAX_PATH];
     if (GetEnvironmentVariableA("PATH", pathEnv, MAX_PATH) > 0)
     {

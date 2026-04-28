@@ -29,6 +29,11 @@ typedef MonoThread* (*mono_thread_attach_t)(MonoDomain*);
 typedef void (*mono_thread_detach_t)(MonoThread*);
 typedef uint32_t (*mono_gchandle_new_t)(MonoObject*, int);
 typedef void (*mono_gchandle_free_t)(uint32_t);
+typedef const char* (*mono_get_version_t)(void);
+typedef int (*mono_image_get_table_rows_t)(MonoImage*, int);
+typedef MonoClass* (*mono_class_get_t)(MonoImage*, uint32_t);
+typedef const char* (*mono_class_get_name_t)(MonoClass*);
+typedef const char* (*mono_class_get_namespace_t)(MonoClass*);
 
 namespace MonoRuntime
 {
@@ -60,6 +65,11 @@ namespace MonoRuntime
     static mono_thread_detach_t p_mono_thread_detach = nullptr;
     static mono_gchandle_new_t p_mono_gchandle_new = nullptr;
     static mono_gchandle_free_t p_mono_gchandle_free = nullptr;
+    static mono_get_version_t p_mono_get_version = nullptr;
+    static mono_image_get_table_rows_t p_mono_image_get_table_rows = nullptr;
+    static mono_class_get_t p_mono_class_get = nullptr;
+    static mono_class_get_name_t p_mono_class_get_name = nullptr;
+    static mono_class_get_namespace_t p_mono_class_get_namespace = nullptr;
 
     static bool LoadMonoFunctions()
     {
@@ -89,6 +99,11 @@ namespace MonoRuntime
         p_mono_thread_detach = (mono_thread_detach_t)GetProcAddress(g_monoDll, "mono_thread_detach");
         p_mono_gchandle_new = (mono_gchandle_new_t)GetProcAddress(g_monoDll, "mono_gchandle_new");
         p_mono_gchandle_free = (mono_gchandle_free_t)GetProcAddress(g_monoDll, "mono_gchandle_free");
+        p_mono_get_version = (mono_get_version_t)GetProcAddress(g_monoDll, "mono_get_version");
+        p_mono_image_get_table_rows = (mono_image_get_table_rows_t)GetProcAddress(g_monoDll, "mono_image_get_table_rows");
+        p_mono_class_get = (mono_class_get_t)GetProcAddress(g_monoDll, "mono_class_get");
+        p_mono_class_get_name = (mono_class_get_name_t)GetProcAddress(g_monoDll, "mono_class_get_name");
+        p_mono_class_get_namespace = (mono_class_get_namespace_t)GetProcAddress(g_monoDll, "mono_class_get_namespace");
 
         // Check critical function pointers
         if (!p_mono_runtime_invoke) std::cerr << "[MonoRuntime] Failed to load mono_runtime_invoke" << std::endl;
@@ -196,6 +211,12 @@ namespace MonoRuntime
         }
 
         g_initialized = true;
+        
+        if (p_mono_get_version)
+        {
+            std::cout << "[MonoRuntime] Mono version: " << p_mono_get_version() << std::endl;
+        }
+        
         std::cout << "[MonoRuntime] Initialized successfully" << std::endl;
         return true;
     }
@@ -333,13 +354,64 @@ namespace MonoRuntime
         script->className = className;
         script->assemblyPath = dllPath;
 
+        // 先加载 DittoEngine.dll，确保基类 MonoBehaviour 可被解析
+        {
+            const std::vector<std::string> enginePaths = {
+                "3rdParty/Mono/DittoEngine.dll",
+                "../../3rdParty/Mono/DittoEngine.dll",
+                "../3rdParty/Mono/DittoEngine.dll",
+                "Ditto/3rdParty/Mono/DittoEngine.dll",
+                "../../Ditto/3rdParty/Mono/DittoEngine.dll",
+            };
+            for (const auto& path : enginePaths)
+            {
+                if (fs::exists(path))
+                {
+                    std::string absPath = fs::absolute(path).string();
+                    MonoAssembly* engineAssembly = p_mono_domain_assembly_open(g_domain, absPath.c_str());
+                    if (engineAssembly)
+                        std::cout << "[MonoRuntime] Pre-loaded DittoEngine assembly: " << path << std::endl;
+                    break;
+                }
+            }
+        }
+
         MonoAssembly* assembly = LoadAssembly(dllPath);
         if (!assembly) return nullptr;
 
         MonoImage* image = GetAssemblyImage(assembly);
         if (!image) return nullptr;
 
-        MonoClass* klass = GetClass(image, "", className);
+        MonoClass* klass = nullptr;
+        
+        klass = GetClass(image, "", className);
+        if (!klass) klass = GetClass(image, "DittoEngine", className);
+        if (!klass) klass = GetClass(image, "MyProject", className);
+        if (!klass) klass = GetClass(image, "Scripts", className);
+        if (!klass) klass = GetClass(image, "Assets", className);
+        
+        if (!klass && p_mono_image_get_table_rows && p_mono_class_get && p_mono_class_get_name)
+        {
+            int typeCount = p_mono_image_get_table_rows(image, 0x02);
+            std::cout << "[MonoRuntime] mono_class_from_name failed, enumerating " << typeCount << " types..." << std::endl;
+            for (int i = 1; i <= typeCount; i++)
+            {
+                uint32_t token = (0x02 << 24) | i;
+                MonoClass* cls = p_mono_class_get(image, token);
+                if (cls)
+                {
+                    const char* name = p_mono_class_get_name(cls);
+                    if (name && className == name)
+                    {
+                        klass = cls;
+                        const char* ns = p_mono_class_get_namespace ? p_mono_class_get_namespace(cls) : "";
+                        std::cout << "[MonoRuntime] Found class '" << className << "' via enumeration, namespace: '" << (ns ? ns : "") << "'" << std::endl;
+                        break;
+                    }
+                }
+            }
+        }
+        
         if (!klass)
         {
             std::cerr << "[MonoRuntime] Class not found: " << className << std::endl;
@@ -350,6 +422,18 @@ namespace MonoRuntime
         if (!script->instance)
         {
             std::cerr << "[MonoRuntime] Failed to create instance of: " << className << std::endl;
+            
+            // 尝试诊断：检查基类是否可解析
+            MonoClass* parent = p_mono_class_get_parent ? p_mono_class_get_parent(klass) : nullptr;
+            if (parent)
+            {
+                const char* parentName = p_mono_class_get_name ? p_mono_class_get_name(parent) : "?";
+                std::cerr << "[MonoRuntime] Parent class: " << parentName << std::endl;
+            }
+            else
+            {
+                std::cerr << "[MonoRuntime] Parent class is null - base type resolution failed!" << std::endl;
+            }
             return nullptr;
         }
 

@@ -1,1 +1,1 @@
-csc /target:library /out:DittoEngine.dll DittoEngine.cs && pause
+"D:\Visual Studio 2022\MSBuild\Current\Bin\Roslyn\csc.exe" /target:library /nostdlib+ /reference:mscorlib.dll /out:DittoEngine.dll DittoEngine.cs && pause
