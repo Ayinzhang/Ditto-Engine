@@ -1418,6 +1418,81 @@ std::string FindDevEnvInPATH()
     return "";
 }
 
+static bool CheckDevEnvInDirectory(const std::string& baseDir)
+{
+    std::vector<std::string> subDirs = {
+        "Common7\\IDE",
+        "Enterprise\\Common7\\IDE",
+        "Professional\\Common7\\IDE",
+        "Community\\Common7\\IDE",
+    };
+    for (const auto& sub : subDirs)
+    {
+        std::string path = baseDir + "\\" + sub + "\\devenv.exe";
+        if (fs::exists(path))
+            return true;
+    }
+    return false;
+}
+
+std::string SearchDevEnvInCommonLocations()
+{
+    const char* drives[] = { "C:", "D:", "E:", "F:" };
+    const char* progFiles[] = { "Program Files", "Program Files (x86)" };
+
+    for (const auto& drive : drives)
+    {
+        for (const auto& pf : progFiles)
+        {
+            std::string vsBase = std::string(drive) + "\\" + pf + "\\Microsoft Visual Studio";
+            if (!fs::exists(vsBase))
+                continue;
+
+            try
+            {
+                for (const auto& entry : fs::directory_iterator(vsBase))
+                {
+                    if (!entry.is_directory())
+                        continue;
+                    std::string yearDir = entry.path().string();
+                    if (CheckDevEnvInDirectory(yearDir))
+                    {
+                        for (const auto& subEntry : fs::directory_iterator(entry.path()))
+                        {
+                            if (!subEntry.is_directory())
+                                continue;
+                            std::string candidate = subEntry.path().string() + "\\Common7\\IDE\\devenv.exe";
+                            if (fs::exists(candidate))
+                                return candidate;
+                        }
+                    }
+                }
+            }
+            catch (const fs::filesystem_error&)
+            {
+            }
+        }
+
+        std::string customPath = std::string(drive) + "\\Visual Studio 2022\\Common7\\IDE\\devenv.exe";
+        if (fs::exists(customPath))
+            return customPath;
+
+        std::string vs2022Base = std::string(drive) + "\\Visual Studio 2022";
+        if (fs::exists(vs2022Base) && CheckDevEnvInDirectory(vs2022Base))
+        {
+            for (const auto& entry : fs::directory_iterator(vs2022Base))
+            {
+                if (!entry.is_directory())
+                    continue;
+                std::string candidate = entry.path().string() + "\\Common7\\IDE\\devenv.exe";
+                if (fs::exists(candidate))
+                    return candidate;
+            }
+        }
+    }
+    return "";
+}
+
 std::string ProjectWindow::GetVisualStudioPath()
 {
     HKEY hKey = nullptr;
@@ -1443,6 +1518,10 @@ std::string ProjectWindow::GetVisualStudioPath()
     std::string pathResult = FindDevEnvInPATH();
     if (!pathResult.empty())
         return pathResult;
+
+    std::string commonResult = SearchDevEnvInCommonLocations();
+    if (!commonResult.empty())
+        return commonResult;
 
     return "";
 }

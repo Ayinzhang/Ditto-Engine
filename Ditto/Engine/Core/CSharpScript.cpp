@@ -27,60 +27,118 @@ static std::string FindDittoEngineDll()
         if (fs::exists(path)) return fs::absolute(path).string();
     }
 
-    std::cerr << "[CSharpScript] Warning: DittoEngine.dll not found in standard locations" << std::endl;
     return "3rdParty/Mono/DittoEngine.dll";
 }
 
 static std::string FindMSBuildPath()
 {
-    char* vsPathEnv = nullptr; size_t vsPathLen = 0;
-    _dupenv_s(&vsPathEnv, &vsPathLen, "VSINSTALLDIR");
-    if (vsPathEnv)
+    char* vsPathEnv = nullptr;
+    size_t vsPathLen = 0;
+    if (_dupenv_s(&vsPathEnv, &vsPathLen, "VSINSTALLDIR") == 0 && vsPathEnv)
     {
-        std::string roslynPath = std::string(vsPathEnv) + "MSBuild\\Current\\Bin\\Roslyn"; free(vsPathEnv);
-        if (fs::exists(roslynPath)) return roslynPath;
+        std::string roslynPath = std::string(vsPathEnv) + "MSBuild\\Current\\Bin\\Roslyn";
+        free(vsPathEnv);
+        if (fs::exists(roslynPath))
+            return roslynPath;
     }
 
-    auto getVSWherePath = []() -> std::string {
-        HKEY hKey = nullptr; std::string vswherePath;
-        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\VisualStudio\\Setup", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
-        {
-            char buffer[MAX_PATH] = { 0 };
-            DWORD size = sizeof(buffer), type = REG_SZ;
-            if (RegQueryValueExA(hKey, "InstallationPath", nullptr, &type, (LPBYTE)buffer, &size) == ERROR_SUCCESS)
-                vswherePath = std::string(buffer) + "\\vswhere.exe";
-            RegCloseKey(hKey);
-        }
-        return vswherePath;
-        };
+    const char* regKey = "SOFTWARE\\Microsoft\\VisualStudio\\Setup\\Instances";
+    HKEY hKey = nullptr;
 
-    auto execAndGetOutput = [](const std::string& cmd) -> std::string {
-        std::string result; FILE* pipe = _popen(cmd.c_str(), "r");
-        if (!pipe) return result;
-        char line[512];
-        if (fgets(line, sizeof(line), pipe) != nullptr)
-        {
-            result = line;
-            result.erase(std::remove(result.begin(), result.end(), '\n'), result.end());
-            result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());
-        }
-        _pclose(pipe);
-        return result;
-        };
-
-    std::string vswhere = getVSWherePath();
-    if (!vswhere.empty())
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
     {
-        std::string cmd = "\"" + vswhere + "\" -latest -requires Microsoft.Component.MSBuild -property installationPath";
-        std::string vsInstallPath = execAndGetOutput(cmd);
-        if (!vsInstallPath.empty())
+        char name[MAX_PATH];
+        DWORD index = 0;
+        DWORD nameSize = MAX_PATH;
+
+        while (RegEnumKeyExA(hKey, index++, name, &nameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
         {
-            std::string roslynPath = vsInstallPath + "\\MSBuild\\Current\\Bin\\Roslyn";
-            if (fs::exists(roslynPath)) return roslynPath;
+            std::string instanceKey = std::string(regKey) + "\\" + name;
+            HKEY hInstKey = nullptr;
+
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, instanceKey.c_str(), 0, KEY_READ, &hInstKey) == ERROR_SUCCESS)
+            {
+                char installPath[MAX_PATH];
+                DWORD size = MAX_PATH;
+                DWORD type = REG_SZ;
+
+                if (RegQueryValueExA(hInstKey, "InstallLocation", nullptr, &type, (LPBYTE)installPath, &size) == ERROR_SUCCESS)
+                {
+                    std::string roslynPath = std::string(installPath) + "MSBuild\\Current\\Bin\\Roslyn";
+                    if (fs::exists(roslynPath))
+                    {
+                        RegCloseKey(hInstKey);
+                        RegCloseKey(hKey);
+                        return roslynPath;
+                    }
+                }
+                RegCloseKey(hInstKey);
+            }
+            nameSize = MAX_PATH;
+        }
+        RegCloseKey(hKey);
+    }
+
+    char* pathEnv = nullptr;
+    size_t pathLen = 0;
+    if (_dupenv_s(&pathEnv, &pathLen, "PATH") == 0 && pathEnv)
+    {
+        std::string pathStr(pathEnv);
+        free(pathEnv);
+
+        size_t pos = 0;
+        while ((pos = pathStr.find(';')) != std::string::npos)
+        {
+            std::string dir = pathStr.substr(0, pos);
+            std::string cscPath = dir + "\\csc.exe";
+            if (fs::exists(cscPath))
+            {
+                size_t lastSlash = dir.find_last_of("\\/");
+                if (lastSlash != std::string::npos)
+                {
+                    std::string roslynDir = dir.substr(0, lastSlash);
+                    if (roslynDir.find("Roslyn") != std::string::npos)
+                        return roslynDir;
+                }
+            }
+            pathStr.erase(0, pos + 1);
         }
     }
 
-    std::cerr << "[CSharpScript] Warning: MSBuild Roslyn not found, relying on PATH" << std::endl;
+    const char* drives[] = { "D:", "C:", "E:", "F:" };
+    for (const auto& drive : drives)
+    {
+        std::string vsBase = std::string(drive) + "\\Visual Studio 2022";
+        if (fs::exists(vsBase))
+        {
+            std::string roslynPath = vsBase + "\\MSBuild\\Current\\Bin\\Roslyn";
+            if (fs::exists(roslynPath))
+                return roslynPath;
+
+            for (const auto& entry : fs::directory_iterator(vsBase))
+            {
+                if (!entry.is_directory())
+                    continue;
+                roslynPath = entry.path().string() + "\\MSBuild\\Current\\Bin\\Roslyn";
+                if (fs::exists(roslynPath))
+                    return roslynPath;
+            }
+        }
+
+        std::string progFiles = std::string(drive) + "\\Program Files\\Microsoft Visual Studio\\2022";
+        if (fs::exists(progFiles))
+        {
+            for (const auto& entry : fs::directory_iterator(progFiles))
+            {
+                if (!entry.is_directory())
+                    continue;
+                std::string roslynPath = entry.path().string() + "\\MSBuild\\Current\\Bin\\Roslyn";
+                if (fs::exists(roslynPath))
+                    return roslynPath;
+            }
+        }
+    }
+
     return "";
 }
 
@@ -100,11 +158,7 @@ void CSharpScriptComponent::ParseScriptFields()
     if (scriptPath.empty()) return;
 
     std::ifstream file(scriptPath);
-    if (!file.is_open())
-    {
-        std::cerr << "[CSharpScript] Cannot open file: " << scriptPath << std::endl;
-        return;
-    }
+    if (!file.is_open()) return;
 
     std::string line;
 
@@ -167,41 +221,35 @@ void CSharpScriptComponent::ParseScriptFields()
             fields.push_back(field);
         }
     }
-
-    std::cout << "[CSharpScript] Parsed " << fields.size() << " fields from " << scriptName << std::endl;
 }
 
 void CSharpScriptComponent::Start()
 {
-    std::cout << "[CSharpScript] Start called, started=" << started << " enabled=" << enabled
-              << " scriptInstance=" << (scriptInstance ? "valid" : "null") << std::endl;
-
     if (!started && enabled)
     {
-        CSharpScriptSystem::LogToConsole("[CSharpScript] Start: " + scriptName);
-
         if (!scriptInstance)
         {
             if (!scriptPath.empty() && fs::exists(scriptPath))
             {
-                std::cout << "[CSharpScript] Loading script from source: " << scriptPath << std::endl;
                 CSharpScriptSystem::LoadScript(scriptPath, this);
             }
             else if (!scriptName.empty())
             {
-                std::cout << "[CSharpScript] Script source not found, trying precompiled DLL for: " << scriptName << std::endl;
                 CSharpScriptSystem::LoadPrecompiledScript(scriptName, this);
             }
         }
 
         if (scriptInstance)
         {
-            std::cout << "[CSharpScript] Calling MonoRuntime::CallStart" << std::endl;
             MonoRuntime::CallStart(scriptInstance);
-        }
-        else
-        {
-            std::cerr << "[CSharpScript] scriptInstance is null after load attempt!" << std::endl;
+
+            try
+            {
+                m_lastWriteTime = fs::last_write_time(scriptPath);
+            }
+            catch (const fs::filesystem_error&)
+            {
+            }
         }
 
         started = true;
@@ -210,14 +258,6 @@ void CSharpScriptComponent::Start()
 
 void CSharpScriptComponent::Update()
 {
-    static int updateCount = 0;
-    if (++updateCount < 5)
-    {
-        std::cout << "[CSharpScript] Update called, enabled=" << enabled
-                  << " gameObject=" << gameObject
-                  << " scriptInstance=" << (scriptInstance ? "valid" : "null") << std::endl;
-    }
-
     if (enabled && gameObject && scriptInstance)
     {
         MonoRuntime::CallUpdate(scriptInstance);
@@ -226,8 +266,6 @@ void CSharpScriptComponent::Update()
 
 void CSharpScriptComponent::OnDestroy()
 {
-    CSharpScriptSystem::LogToConsole("[CSharpScript] Destroy: " + scriptName);
-
     if (scriptInstance) MonoRuntime::CallOnDestroy(scriptInstance);
 }
 
@@ -526,24 +564,56 @@ void CSharpScriptComponent::OnInspectorGUI()
 void CSharpScriptSystem::Initialize()
 {
     if (s_initialized) return;
-    std::cout << "[CSharpScriptSystem] Initializing..." << std::endl;
+
+    CleanOldCompiledDLLs();
 
     if (!MonoRuntime::Initialize(""))
     {
-        std::cerr << "[CSharpScriptSystem] Failed to initialize Mono runtime" << std::endl;
         return;
     }
 
     RegisterInternalCalls();
 
     s_initialized = true;
-    std::cout << "[CSharpScriptSystem] Initialized" << std::endl;
+}
+
+void CSharpScriptSystem::CleanOldCompiledDLLs()
+{
+    fs::path currentDir = fs::absolute(".");
+    fs::path projectsRoot = currentDir / "Projects";
+    if (!fs::exists(projectsRoot)) return;
+
+    try
+    {
+        for (auto& entry : fs::directory_iterator(projectsRoot))
+        {
+            if (!entry.is_directory()) continue;
+            fs::path projectDir = entry.path();
+            fs::path tempDir = projectDir / "Temp";
+            if (!fs::exists(tempDir)) continue;
+
+            for (auto& tempEntry : fs::directory_iterator(tempDir))
+            {
+                if (tempEntry.is_regular_file() && tempEntry.path().extension() == ".dll")
+                {
+                    std::string name = tempEntry.path().stem().string();
+                    size_t underscorePos = name.find('_');
+                    if (underscorePos != std::string::npos)
+                    {
+                        fs::remove(tempEntry.path());
+                    }
+                }
+            }
+        }
+    }
+    catch (const fs::filesystem_error&)
+    {
+    }
 }
 
 void CSharpScriptSystem::Shutdown()
 {
     if (!s_initialized) return;
-    std::cout << "[CSharpScriptSystem] Shutting down..." << std::endl;
 
     MonoRuntime::Shutdown();
     s_initialized = false;
@@ -573,150 +643,60 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
     component->scriptName = fileName;
     component->scriptPath = csPath;
 
-    std::cout << "[CSharpScriptSystem] Loading: " << fileName << " from " << csPath << std::endl;
-
     fs::path scriptPath(csPath);
     fs::path absScriptPath = fs::absolute(scriptPath);
-    std::string dir = absScriptPath.parent_path().string();
-    fs::path dllAbsPath = absScriptPath.parent_path() / (absScriptPath.stem().string() + ".dll");
-    std::string dllPath = dllAbsPath.string();
+    fs::path projectRoot = absScriptPath.parent_path().parent_path();
+    fs::path tempDir = projectRoot / "Temp";
+    fs::create_directories(tempDir);
 
-    std::string dittoEngineDll = FindDittoEngineDll();
+    static int s_loadCounter = 0;
+    s_loadCounter++;
+    std::string uniqueName = fileName + "_" + std::to_string(s_loadCounter);
+    fs::path dllPath = tempDir / (uniqueName + ".dll");
 
-    std::string monoMscorlib;
+    if (!component->m_currentDllPath.empty())
     {
-        const std::vector<std::string> mscorlibPaths = {
-            "3rdParty/Mono/mscorlib.dll",
-            "../../3rdParty/Mono/mscorlib.dll",
-            "../3rdParty/Mono/mscorlib.dll",
-            "Ditto/3rdParty/Mono/mscorlib.dll",
-            "../../Ditto/3rdParty/Mono/mscorlib.dll",
-        };
-        for (const auto& path : mscorlibPaths)
-        {
-            if (fs::exists(path))
-            {
-                monoMscorlib = fs::absolute(path).string();
-                break;
-            }
-        }
+        std::error_code ec;
+        fs::remove(component->m_currentDllPath, ec);
     }
 
-    if (monoMscorlib.empty())
-    {
-        std::cerr << "[CSharpScriptSystem] mscorlib.dll not found!" << std::endl;
-        return false;
-    }
+    std::string dllPathStr = dllPath.string();
 
-    std::string cscPath;
-    {
-        auto execAndGetFirstLine = [](const std::string& cmd) -> std::string {
-            std::string result;
-            FILE* pipe = _popen(cmd.c_str(), "r");
-            if (!pipe) return result;
-            char line[512];
-            if (fgets(line, sizeof(line), pipe))
-                result = line;
-            _pclose(pipe);
-            if (!result.empty() && result.back() == '\n') result.pop_back();
-            if (!result.empty() && result.back() == '\r') result.pop_back();
-            return result;
-            };
-
-        HKEY hKey;
-        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-            char netPath[MAX_PATH] = { 0 };
-            DWORD size = sizeof(netPath);
-            DWORD type = REG_SZ;
-            if (RegQueryValueExA(hKey, "InstallPath", nullptr, &type, (LPBYTE)netPath, &size) == ERROR_SUCCESS) {
-                std::string candidate = std::string(netPath) + "csc.exe";
-                if (fs::exists(candidate)) cscPath = candidate;
-            }
-            RegCloseKey(hKey);
-        }
-    }
-
-    if (cscPath.empty())
-    {
-        std::cerr << "[CSharpScriptSystem] csc.exe not found!" << std::endl;
-        return false;
-    }
-
-    std::cout << "[CSharpScriptSystem] Using csc: " << cscPath << std::endl;
-    std::cout << "[CSharpScriptSystem] Using mscorlib: " << monoMscorlib << std::endl;
-    std::cout << "[CSharpScriptSystem] Using DittoEngine: " << dittoEngineDll << std::endl;
-
-    std::string cmd = "\"\"" + cscPath + "\""
-        + " /target:library"
-        + " /nostdlib+"
-        + " /reference:\"" + monoMscorlib + "\""
-        + " /reference:\"" + dittoEngineDll + "\""
-        + " /out:\"" + dllPath + "\""
-        + " \"" + absScriptPath.string() + "\""
-        + "\" 2>&1";
-
-    std::cout << "[CSharpScriptSystem] Compile cmd: csc" << std::endl;
-    int result = system(cmd.c_str());
-
-    if (result != 0 || !fs::exists(dllPath))
-    {
-        std::cerr << "[CSharpScriptSystem] Compile failed: " << csPath << std::endl;
-        return false;
-    }
-
-    std::cout << "[CSharpScriptSystem] Compiled: " << dllPath << std::endl;
-    std::cout << "[CSharpScriptSystem] s_initialized=" << s_initialized
-              << " MonoRuntime::IsInitialized()=" << MonoRuntime::IsInitialized() << std::endl;
+    if (!CompileScript(csPath, dllPathStr)) return false;
 
     if (CSharpScriptSystem::IsInitialized() && MonoRuntime::IsInitialized())
     {
-        std::cout << "[CSharpScriptSystem] Loading script into Mono runtime..." << std::endl;
-        component->scriptInstance = MonoRuntime::LoadScript(dllPath, fileName);
-        if (component->scriptInstance)
+        component->scriptInstance = MonoRuntime::LoadScript(dllPathStr, fileName);
+        if (component->scriptInstance && component->gameObject)
         {
-            std::cout << "[CSharpScriptSystem] Script loaded into Mono runtime: " << fileName << std::endl;
+            MonoClass* klass = MonoRuntime::GetClassFromObject(component->scriptInstance->instance);
+            MonoMethod* setNativeMethod = nullptr;
 
-            if (component->gameObject && component->scriptInstance->instance)
+            while (klass && !setNativeMethod)
             {
-                MonoClass* klass = MonoRuntime::GetClassFromObject(component->scriptInstance->instance);
-                MonoMethod* setNativeMethod = nullptr;
+                setNativeMethod = MonoRuntime::GetMethod(klass, "SetNativeGameObject", 1);
+                if (!setNativeMethod) klass = MonoRuntime::GetParentClass(klass);
+            }
 
-                while (klass && !setNativeMethod)
-                {
-                    setNativeMethod = MonoRuntime::GetMethod(klass, "SetNativeGameObject", 1);
-                    if (!setNativeMethod)
-                    {
-                        klass = MonoRuntime::GetParentClass(klass);
-                    }
-                }
-
-                if (setNativeMethod)
-                {
-                    void* goPtr = component->gameObject;
-                    void* args[1] = { &goPtr };
-                    MonoRuntime::InvokeMethod(component->scriptInstance->instance, setNativeMethod, args);
-                    std::cout << "[CSharpScriptSystem] Set gameObject pointer: " << goPtr << std::endl;
-                }
-                else
-                {
-                    std::cerr << "[CSharpScriptSystem] SetNativeGameObject method not found in class hierarchy!" << std::endl;
-                }
+            if (setNativeMethod)
+            {
+                void* goPtr = component->gameObject;
+                void* args[1] = { &goPtr };
+                MonoRuntime::InvokeMethod(component->scriptInstance->instance, setNativeMethod, args);
             }
         }
-        else
-        {
-            std::cerr << "[CSharpScriptSystem] Failed to load script into Mono runtime: " << fileName << std::endl;
-        }
-    }
-    else
-    {
-        std::cerr << "[CSharpScriptSystem] Mono runtime not initialized!"
-                  << " s_initialized=" << s_initialized << " MonoInitialized=" << MonoRuntime::IsInitialized() << std::endl;
     }
 
+    component->m_currentDllPath = dllPathStr;
     component->ParseScriptFields();
 
-    component->m_lastWriteTime = fs::last_write_time(csPath);
+    try
+    {
+        component->m_lastWriteTime = fs::last_write_time(csPath);
+    }
+    catch (const fs::filesystem_error&)
+    {
+    }
 
     return true;
 }
@@ -724,11 +704,7 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
 bool CSharpScriptSystem::LoadPrecompiledScript(const std::string& className, CSharpScriptComponent* component)
 {
     if (!component) return false;
-    if (!s_initialized || !MonoRuntime::IsInitialized())
-    {
-        std::cerr << "[CSharpScriptSystem] Mono runtime not initialized for precompiled loading" << std::endl;
-        return false;
-    }
+    if (!s_initialized || !MonoRuntime::IsInitialized()) return false;
 
     std::vector<std::string> searchPaths = {
         "GameScripts.dll",
@@ -759,22 +735,10 @@ bool CSharpScriptSystem::LoadPrecompiledScript(const std::string& className, CSh
         }
     }
 
-    if (dllPath.empty())
-    {
-        std::cerr << "[CSharpScriptSystem] GameScripts.dll not found" << std::endl;
-        return false;
-    }
-
-    std::cout << "[CSharpScriptSystem] Loading precompiled script: " << className << " from " << dllPath << std::endl;
+    if (dllPath.empty()) return false;
 
     component->scriptInstance = MonoRuntime::LoadScript(dllPath, className);
-    if (!component->scriptInstance)
-    {
-        std::cerr << "[CSharpScriptSystem] Failed to load precompiled script: " << className << std::endl;
-        return false;
-    }
-
-    std::cout << "[CSharpScriptSystem] Precompiled script loaded: " << className << std::endl;
+    if (!component->scriptInstance) return false;
 
     if (component->gameObject && component->scriptInstance->instance)
     {
@@ -793,11 +757,6 @@ bool CSharpScriptSystem::LoadPrecompiledScript(const std::string& className, CSh
             void* goPtr = component->gameObject;
             void* args[1] = { &goPtr };
             MonoRuntime::InvokeMethod(component->scriptInstance->instance, setNativeMethod, args);
-            std::cout << "[CSharpScriptSystem] Set gameObject pointer for precompiled: " << goPtr << std::endl;
-        }
-        else
-        {
-            std::cerr << "[CSharpScriptSystem] SetNativeGameObject method not found!" << std::endl;
         }
     }
 
@@ -806,7 +765,6 @@ bool CSharpScriptSystem::LoadPrecompiledScript(const std::string& className, CSh
 
 void CSharpScriptSystem::ReloadAll()
 {
-    std::cout << "[CSharpScriptSystem] Reloading..." << std::endl;
 }
 
 bool CSharpScriptComponent::ShouldReload()
@@ -818,7 +776,6 @@ bool CSharpScriptComponent::ShouldReload()
         fs::file_time_type currentTime = fs::last_write_time(scriptPath);
         if (currentTime > m_lastWriteTime)
         {
-            m_lastWriteTime = currentTime;
             return true;
         }
     }
@@ -830,13 +787,9 @@ bool CSharpScriptComponent::ShouldReload()
 
 void CSharpScriptComponent::HotReloadScript()
 {
-    if (scriptPath.empty())
-    {
-        std::cerr << "[CSharpScriptComponent] Cannot hot reload: scriptPath is empty" << std::endl;
-        return;
-    }
+    if (scriptPath.empty()) return;
 
-    std::cout << "[CSharpScriptComponent] Hot reloading script: " << scriptName << std::endl;
+    std::cerr << "[CSharpScript] HotReload: " << scriptPath << std::endl;
 
     if (scriptInstance)
     {
@@ -844,17 +797,43 @@ void CSharpScriptComponent::HotReloadScript()
         scriptInstance.reset();
     }
 
-    std::string newDllPath;
+    fs::path scriptPathObj(scriptPath);
+    fs::path absScriptPath = fs::absolute(scriptPathObj);
+    fs::path projectRoot = absScriptPath.parent_path().parent_path();
+    fs::path tempDir = projectRoot / "Temp";
+    fs::create_directories(tempDir);
+
+    static int s_reloadCounter = 0;
+    s_reloadCounter++;
+    std::string uniqueName = absScriptPath.stem().string() + "_" + std::to_string(s_reloadCounter);
+    fs::path dllPath = tempDir / (uniqueName + ".dll");
+
+    if (!m_currentDllPath.empty())
+    {
+        std::error_code ec;
+        fs::remove(m_currentDllPath, ec);
+    }
+
+    std::string newDllPath = dllPath.string();
     if (!CSharpScriptSystem::CompileScript(scriptPath, newDllPath))
     {
-        std::cerr << "[CSharpScriptComponent] Hot reload failed: compilation error" << std::endl;
+        std::cerr << "[CSharpScript] HotReload compile failed" << std::endl;
         return;
     }
+
+    std::cerr << "[CSharpScript] HotReload compiled to: " << newDllPath << std::endl;
 
     if (CSharpScriptSystem::IsInitialized() && MonoRuntime::IsInitialized())
     {
         scriptInstance = MonoRuntime::LoadScript(newDllPath, scriptName);
-        if (scriptInstance && gameObject)
+        if (!scriptInstance)
+        {
+            std::cerr << "[CSharpScript] HotReload LoadScript failed" << std::endl;
+            return;
+        }
+        std::cerr << "[CSharpScript] HotReload loaded, calling SetNativeGameObject" << std::endl;
+
+        if (gameObject)
         {
             MonoClass* klass = MonoRuntime::GetClassFromObject(scriptInstance->instance);
             MonoMethod* setNativeMethod = nullptr;
@@ -862,8 +841,7 @@ void CSharpScriptComponent::HotReloadScript()
             while (klass && !setNativeMethod)
             {
                 setNativeMethod = MonoRuntime::GetMethod(klass, "SetNativeGameObject", 1);
-                if (!setNativeMethod)
-                    klass = MonoRuntime::GetParentClass(klass);
+                if (!setNativeMethod) klass = MonoRuntime::GetParentClass(klass);
             }
 
             if (setNativeMethod)
@@ -875,26 +853,33 @@ void CSharpScriptComponent::HotReloadScript()
         }
     }
 
+    m_currentDllPath = newDllPath;
     ParseScriptFields();
     started = false;
 
-    std::cout << "[CSharpScriptComponent] Hot reload complete: " << scriptName << std::endl;
+    try
+    {
+        m_lastWriteTime = fs::last_write_time(scriptPath);
+    }
+    catch (const fs::filesystem_error&)
+    {
+    }
 }
 
 bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& outDllPath)
 {
-    if (!fs::exists(csPath))
-    {
-        std::cerr << "[CSharpScriptSystem] Script file not found: " << csPath << std::endl;
-        return false;
-    }
+    if (!fs::exists(csPath)) return false;
 
     fs::path scriptPath(csPath);
     fs::path absScriptPath = fs::absolute(scriptPath);
-    fs::path dllAbsPath = absScriptPath.parent_path() / (absScriptPath.stem().string() + ".dll");
-    outDllPath = dllAbsPath.string();
+    if (outDllPath.empty())
+    {
+        fs::path dllAbsPath = absScriptPath.parent_path() / (absScriptPath.stem().string() + ".dll");
+        outDllPath = dllAbsPath.string();
+    }
 
     std::string dittoEngineDll = FindDittoEngineDll();
+    if (dittoEngineDll.empty()) return false;
 
     std::string monoMscorlib;
     {
@@ -915,51 +900,38 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
         }
     }
 
-    if (monoMscorlib.empty())
-    {
-        std::cerr << "[CSharpScriptSystem] mscorlib.dll not found!" << std::endl;
-        return false;
-    }
+    if (monoMscorlib.empty()) return false;
 
-    std::string cscPath;
+    std::string roslynPath = FindMSBuildPath();
+    if (roslynPath.empty()) return false;
+
+    std::string cscPath = roslynPath + "\\csc.exe";
+    if (!fs::exists(cscPath)) return false;
+
+    if (fs::exists(outDllPath))
     {
-        HKEY hKey;
-        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-            char netPath[MAX_PATH] = { 0 };
-            DWORD size = sizeof(netPath);
-            DWORD type = REG_SZ;
-            if (RegQueryValueExA(hKey, "InstallPath", nullptr, &type, (LPBYTE)netPath, &size) == ERROR_SUCCESS) {
-                std::string candidate = std::string(netPath) + "csc.exe";
-                if (fs::exists(candidate)) cscPath = candidate;
-            }
-            RegCloseKey(hKey);
+        try { fs::remove(outDllPath); }
+        catch (const fs::filesystem_error&)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            try { fs::remove(outDllPath); } catch (...) {}
         }
     }
 
-    if (cscPath.empty())
-    {
-        std::cerr << "[CSharpScriptSystem] csc.exe not found!" << std::endl;
-        return false;
-    }
-
-    std::string cmd = "\"\"" + cscPath + "\""
+    size_t lastSlash = cscPath.find_last_of("\\/");
+    std::string cscDir = cscPath.substr(0, lastSlash);
+    std::string cmd = "cmd /c cd /d \"" + cscDir + "\" && csc.exe"
         + " /target:library"
         + " /nostdlib+"
         + " /reference:\"" + monoMscorlib + "\""
         + " /reference:\"" + dittoEngineDll + "\""
         + " /out:\"" + outDllPath + "\""
         + " \"" + absScriptPath.string() + "\""
-        + "\" 2>&1";
+        + " 2>&1";
 
     int result = system(cmd.c_str());
+    if (result != 0 || !fs::exists(outDllPath)) return false;
 
-    if (result != 0 || !fs::exists(outDllPath))
-    {
-        std::cerr << "[CSharpScriptSystem] Compile failed: " << csPath << std::endl;
-        return false;
-    }
-
-    std::cout << "[CSharpScriptSystem] Compiled: " << outDllPath << std::endl;
     return true;
 }
 
@@ -1024,25 +996,15 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetDeltaTime", (void*)Internal_Time_GetDeltaTime);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Debug::Log", (void*)Internal_Debug_Log);
-
-    std::cout << "[CSharpScriptSystem] Internal calls registered" << std::endl;
 }
 
 extern "C" {
 
 void Internal_Transform_GetPosition(void* transform, float* outPos)
 {
-    std::cout << "[Internal] GetPosition called with transform: " << transform << std::endl;
-
-    if (!transform || !outPos)
-    {
-        std::cerr << "[Internal] transform or outPos is null!" << std::endl;
-        return;
-    }
+    if (!transform || !outPos) return;
 
     TransformComponent* trans = static_cast<TransformComponent*>(transform);
-    std::cout << "[Internal] Transform position: (" << trans->position.x << ", " << trans->position.y << ", " << trans->position.z << ")" << std::endl;
-
     outPos[0] = trans->position.x;
     outPos[1] = trans->position.y;
     outPos[2] = trans->position.z;
@@ -1050,13 +1012,7 @@ void Internal_Transform_GetPosition(void* transform, float* outPos)
 
 void Internal_Transform_SetPosition(void* transform, float x, float y, float z)
 {
-    std::cout << "[Internal] SetPosition called with transform: " << transform << " pos: (" << x << ", " << y << ", " << z << ")" << std::endl;
-
-    if (!transform)
-    {
-        std::cerr << "[Internal] transform is null!" << std::endl;
-        return;
-    }
+    if (!transform) return;
 
     TransformComponent* trans = static_cast<TransformComponent*>(transform);
     trans->position.x = x;
@@ -1064,42 +1020,24 @@ void Internal_Transform_SetPosition(void* transform, float x, float y, float z)
     trans->position.z = z;
     trans->localDirty = true;
     trans->UpdateTransform();
-
-    std::cout << "[Internal] Position set successfully to (" << x << ", " << y << ", " << z << ")" << std::endl;
 }
 
 void* Internal_GameObject_GetTransform(void* gameObject)
 {
-    std::cout << "[Internal] GetTransform called with gameObject: " << gameObject << std::endl;
-
-    if (!gameObject)
-    {
-        std::cerr << "[Internal] gameObject is null!" << std::endl;
-        return nullptr;
-    }
+    if (!gameObject) return nullptr;
 
     GameObject* go = static_cast<GameObject*>(gameObject);
-    std::cout << "[Internal] GameObject name: " << (go->name.empty() ? "<empty>" : go->name) << std::endl;
-    std::cout << "[Internal] GameObject components count: " << go->components.size() << std::endl;
 
     for (Component* comp : go->components)
     {
-        if (!comp)
-        {
-            std::cerr << "[Internal] Found null component!" << std::endl;
-            continue;
-        }
-
-        std::cout << "[Internal] Checking component with index: " << comp->index << std::endl;
+        if (!comp) continue;
 
         if (comp->index == (1 << 0))
         {
-            std::cout << "[Internal] Found Transform component: " << comp << std::endl;
             return comp;
         }
     }
 
-    std::cerr << "[Internal] Transform component not found!" << std::endl;
     return nullptr;
 }
 
@@ -1148,28 +1086,18 @@ void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName)
 
 void Internal_Renderer_GetColor(void* renderer, float* outColor)
 {
-    if (!renderer || !outColor)
-    {
-        std::cerr << "[Internal] Renderer_GetColor: null pointer!" << std::endl;
-        return;
-    }
+    if (!renderer || !outColor) return;
 
     RendererComponent* rend = static_cast<RendererComponent*>(renderer);
     outColor[0] = rend->color.r;
     outColor[1] = rend->color.g;
     outColor[2] = rend->color.b;
     outColor[3] = rend->color.a;
-
-    std::cout << "[Internal] Renderer_GetColor: (" << outColor[0] << ", " << outColor[1] << ", " << outColor[2] << ", " << outColor[3] << ")" << std::endl;
 }
 
 void Internal_Renderer_SetColor(void* renderer, float r, float g, float b, float a)
 {
-    if (!renderer)
-    {
-        std::cerr << "[Internal] Renderer_SetColor: null pointer!" << std::endl;
-        return;
-    }
+    if (!renderer) return;
 
     RendererComponent* rend = static_cast<RendererComponent*>(renderer);
     rend->color.r = r;

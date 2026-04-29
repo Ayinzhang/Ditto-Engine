@@ -1,5 +1,6 @@
 #include "MonoRuntime.h"
 #include <iostream>
+#include <fstream>
 #include <filesystem>
 #include <sstream>
 
@@ -34,6 +35,8 @@ typedef int (*mono_image_get_table_rows_t)(MonoImage*, int);
 typedef MonoClass* (*mono_class_get_t)(MonoImage*, uint32_t);
 typedef const char* (*mono_class_get_name_t)(MonoClass*);
 typedef const char* (*mono_class_get_namespace_t)(MonoClass*);
+typedef MonoImage* (*mono_image_open_from_data_t)(char*, uint32_t, int*, int);
+typedef MonoAssembly* (*mono_assembly_load_from_t)(MonoImage*, const char*, int*);
 
 namespace MonoRuntime
 {
@@ -70,6 +73,8 @@ namespace MonoRuntime
     static mono_class_get_t p_mono_class_get = nullptr;
     static mono_class_get_name_t p_mono_class_get_name = nullptr;
     static mono_class_get_namespace_t p_mono_class_get_namespace = nullptr;
+    static mono_image_open_from_data_t p_mono_image_open_from_data = nullptr;
+    static mono_assembly_load_from_t p_mono_assembly_load_from = nullptr;
 
     static bool LoadMonoFunctions()
     {
@@ -104,10 +109,8 @@ namespace MonoRuntime
         p_mono_class_get = (mono_class_get_t)GetProcAddress(g_monoDll, "mono_class_get");
         p_mono_class_get_name = (mono_class_get_name_t)GetProcAddress(g_monoDll, "mono_class_get_name");
         p_mono_class_get_namespace = (mono_class_get_namespace_t)GetProcAddress(g_monoDll, "mono_class_get_namespace");
-
-        if (!p_mono_runtime_invoke) std::cerr << "[MonoRuntime] Failed to load mono_runtime_invoke" << std::endl;
-        if (!p_mono_thread_attach) std::cerr << "[MonoRuntime] Failed to load mono_thread_attach" << std::endl;
-        if (!p_mono_object_get_class) std::cerr << "[MonoRuntime] Failed to load mono_object_get_class" << std::endl;
+        p_mono_image_open_from_data = (mono_image_open_from_data_t)GetProcAddress(g_monoDll, "mono_image_open_from_data");
+        p_mono_assembly_load_from = (mono_assembly_load_from_t)GetProcAddress(g_monoDll, "mono_assembly_load_from");
 
         return p_mono_jit_init && p_mono_jit_cleanup && p_mono_domain_assembly_open;
     }
@@ -161,21 +164,17 @@ namespace MonoRuntime
             g_monoDll = LoadLibraryA(path.c_str());
             if (g_monoDll)
             {
-                std::cout << "[MonoRuntime] Loaded mono.dll from: " << path << std::endl;
                 break;
             }
         }
 
         if (!g_monoDll)
         {
-            std::cerr << "[MonoRuntime] Failed to load mono.dll" << std::endl;
-            std::cerr << "[MonoRuntime] Please install Mono from https://www.mono-project.com/download/" << std::endl;
             return false;
         }
 
         if (!LoadMonoFunctions())
         {
-            std::cerr << "[MonoRuntime] Failed to load Mono functions" << std::endl;
             FreeLibrary(g_monoDll);
             g_monoDll = nullptr;
             return false;
@@ -239,7 +238,6 @@ namespace MonoRuntime
             if (!combinedPath.empty())
             {
                 p_mono_set_assemblies_path(combinedPath.c_str());
-                std::cout << "[MonoRuntime] Set assemblies path: " << combinedPath << std::endl;
             }
         }
 
@@ -248,20 +246,12 @@ namespace MonoRuntime
         g_domain = p_mono_jit_init("DittoEngine");
         if (!g_domain)
         {
-            std::cerr << "[MonoRuntime] Failed to initialize JIT" << std::endl;
             FreeLibrary(g_monoDll);
             g_monoDll = nullptr;
             return false;
         }
 
         g_initialized = true;
-
-        if (p_mono_get_version)
-        {
-            std::cout << "[MonoRuntime] Mono version: " << p_mono_get_version() << std::endl;
-        }
-
-        std::cout << "[MonoRuntime] Initialized successfully" << std::endl;
         return true;
     }
 
@@ -282,7 +272,6 @@ namespace MonoRuntime
         }
 
         g_initialized = false;
-        std::cout << "[MonoRuntime] Shutdown" << std::endl;
     }
 
     bool IsInitialized()
@@ -297,13 +286,48 @@ namespace MonoRuntime
         std::string absPath = fs::absolute(path).string();
         MonoAssembly* assembly = p_mono_domain_assembly_open(g_domain, absPath.c_str());
 
-        if (!assembly)
+        if (!assembly) return nullptr;
+
+        return assembly;
+    }
+
+    static int s_loadCounter = 0;
+
+    MonoAssembly* LoadAssemblyFromMemory(const std::string& path)
+    {
+        if (!g_initialized || !g_domain) return nullptr;
+
+        std::string absPath = fs::absolute(path).string();
+        if (!fs::exists(absPath))
         {
-            std::cerr << "[MonoRuntime] Failed to load assembly: " << path << std::endl;
+            std::cerr << "[Mono] LoadFresh: file not found: " << absPath << std::endl;
             return nullptr;
         }
 
-        std::cout << "[MonoRuntime] Loaded assembly: " << path << std::endl;
+        s_loadCounter++;
+        fs::path srcPath(absPath);
+        fs::path dstPath = srcPath.parent_path() / (srcPath.stem().string() + "_" + std::to_string(s_loadCounter) + srcPath.extension().string());
+
+        std::error_code ec;
+        fs::copy_file(srcPath, dstPath, fs::copy_options::overwrite_existing, ec);
+        if (ec)
+        {
+            std::cerr << "[Mono] LoadFresh: copy failed: " << ec.message() << std::endl;
+            return nullptr;
+        }
+
+        std::string dstStr = dstPath.string();
+        MonoAssembly* assembly = p_mono_domain_assembly_open(g_domain, dstStr.c_str());
+        if (!assembly)
+        {
+            std::cerr << "[Mono] LoadFresh: assembly open failed for " << dstStr << std::endl;
+            return nullptr;
+        }
+
+        std::cerr << "[Mono] LoadFresh: loaded " << dstStr << std::endl;
+
+        fs::remove(dstPath, ec);
+
         return assembly;
     }
 
@@ -353,11 +377,7 @@ namespace MonoRuntime
     {
         if (!g_initialized || !method) return nullptr;
 
-        if (!p_mono_runtime_invoke)
-        {
-            std::cerr << "[MonoRuntime] InvokeMethod: p_mono_runtime_invoke is null!" << std::endl;
-            return nullptr;
-        }
+        if (!p_mono_runtime_invoke || !instance) return nullptr;
 
         if (p_mono_thread_attach && g_domain)
         {
@@ -411,8 +431,6 @@ namespace MonoRuntime
                 {
                     std::string absPath = fs::absolute(path).string();
                     MonoAssembly* engineAssembly = p_mono_domain_assembly_open(g_domain, absPath.c_str());
-                    if (engineAssembly)
-                        std::cout << "[MonoRuntime] Pre-loaded DittoEngine assembly: " << path << std::endl;
                     break;
                 }
             }
@@ -432,12 +450,9 @@ namespace MonoRuntime
         if (!klass) klass = GetClass(image, "Scripts", className);
         if (!klass) klass = GetClass(image, "Assets", className);
 
-        // Fallback: enumerate TypeDef table to find class by name
-        // Mono 4.6 has a bug where mono_class_from_name fails for Roslyn-compiled classes
         if (!klass && p_mono_image_get_table_rows && p_mono_class_get && p_mono_class_get_name)
         {
             int typeCount = p_mono_image_get_table_rows(image, 0x02);
-            std::cout << "[MonoRuntime] mono_class_from_name failed, enumerating " << typeCount << " types..." << std::endl;
             for (int i = 1; i <= typeCount; i++)
             {
                 uint32_t token = (0x02 << 24) | i;
@@ -448,49 +463,32 @@ namespace MonoRuntime
                     if (name && className == name)
                     {
                         klass = cls;
-                        const char* ns = p_mono_class_get_namespace ? p_mono_class_get_namespace(cls) : "";
-                        std::cout << "[MonoRuntime] Found class '" << className << "' via enumeration, namespace: '" << (ns ? ns : "") << "'" << std::endl;
                         break;
                     }
                 }
             }
         }
 
-        if (!klass)
-        {
-            std::cerr << "[MonoRuntime] Class not found: " << className << std::endl;
-            return nullptr;
-        }
+        if (!klass) return nullptr;
 
         script->instance = CreateInstance(klass);
-        if (!script->instance)
-        {
-            std::cerr << "[MonoRuntime] Failed to create instance of: " << className << std::endl;
-
-            MonoClass* parent = p_mono_class_get_parent ? p_mono_class_get_parent(klass) : nullptr;
-            if (parent)
-            {
-                const char* parentName = p_mono_class_get_name ? p_mono_class_get_name(parent) : "?";
-                std::cerr << "[MonoRuntime] Parent class: " << parentName << std::endl;
-            }
-            else
-            {
-                std::cerr << "[MonoRuntime] Parent class is null - base type resolution failed!" << std::endl;
-            }
-            return nullptr;
-        }
+        if (!script->instance) return nullptr;
 
         script->startMethod = GetMethod(klass, "Start", 0);
         script->updateMethod = GetMethod(klass, "Update", 0);
         script->onDestroyMethod = GetMethod(klass, "OnDestroy", 0);
 
+        std::cerr << "[Mono] LoadScript: klass=" << klass
+                  << " instance=" << script->instance
+                  << " start=" << script->startMethod
+                  << " update=" << script->updateMethod
+                  << std::endl;
+
         if (p_mono_gchandle_new && script->instance)
         {
             script->gcHandle = p_mono_gchandle_new(script->instance, 0);
-            std::cout << "[MonoRuntime] Created GC handle for script: " << className << std::endl;
         }
 
-        std::cout << "[MonoRuntime] Script loaded: " << className << std::endl;
         return script;
     }
 
@@ -524,6 +522,14 @@ namespace MonoRuntime
         if (!script->started)
         {
             CallStart(script);
+        }
+
+        static int logCount = 0;
+        if (logCount < 5)
+        {
+            std::cerr << "[Mono] CallUpdate: instance=" << script->instance
+                      << " update=" << script->updateMethod << std::endl;
+            logCount++;
         }
 
         InvokeMethod(script->instance, script->updateMethod, nullptr);
@@ -579,6 +585,5 @@ namespace MonoRuntime
     void PrintException(MonoObject* exc)
     {
         if (!exc) return;
-        std::cerr << "[MonoRuntime] Exception occurred during method invocation" << std::endl;
     }
 }

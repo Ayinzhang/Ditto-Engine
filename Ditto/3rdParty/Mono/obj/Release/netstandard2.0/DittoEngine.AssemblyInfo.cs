@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DittoEngine")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c135d427543a1f6e2784dec07ede0448b54d5278")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+afa91e9bb8e42ef9d254d3937f48cbebd7c32051")]
 [assembly: System.Reflection.AssemblyProductAttribute("DittoEngine")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DittoEngine")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

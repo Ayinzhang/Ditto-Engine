@@ -176,15 +176,42 @@ void Engine::Run()
 {
     while (state != Exit && !glfwWindowShouldClose(window))
     {
+        static Engine::State prevState = Edit;
         curTime = glfwGetTime(); deltaTime = curTime - lastTime; lastTime = curTime;
 
-        if (state == Play) 
-        { 
-            double physStart = glfwGetTime(); 
-            physics->UpdatePhysics(deltaTime); 
-            physicsCnt++; 
-            physicsTime += glfwGetTime() - physStart; 
+        bool enteredPlay = (state == Play && prevState != Play);
+        prevState = state;
+
+        if (state == Play)
+        {
+            if (enteredPlay)
+            {
+                ForEachGameObject(scene, [](GameObject* obj)
+                {
+                    for (Component* comp : obj->components)
+                    {
+                        if (comp->index == (1 << 10))
+                        {
+                            CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
+                            if (script->ShouldReload())
+                            {
+                                script->HotReloadScript();
+                            }
+                            else
+                            {
+                                script->scriptInstance.reset();
+                                script->started = false;
+                            }
+                        }
+                    }
+                });
+            }
             
+            double physStart = glfwGetTime();
+            physics->UpdatePhysics(deltaTime);
+            physicsCnt++;
+            physicsTime += glfwGetTime() - physStart;
+
             ForEachGameObject(scene, [](GameObject* obj)
             {
                 for (Component* comp : obj->components)
@@ -193,11 +220,6 @@ void Engine::Run()
                     {
                         CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
                         script->Update();
-
-                        if (script->ShouldReload())
-                        {
-                            script->HotReloadScript();
-                        }
                     }
                 }
             });
@@ -290,6 +312,26 @@ void Engine::ProcessInput()
             editor->CopySelectedObject();
     }
     ctrlDPressedLastFrame = ctrlDPressedNow;
+
+    static bool ctrlRPressedLastFrame = false;
+    bool ctrlRPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+    if (ctrlRPressedNow && !ctrlRPressedLastFrame) {
+        ForEachGameObject(scene, [](GameObject* obj)
+        {
+            for (Component* comp : obj->components)
+            {
+                if (comp->index == (1 << 10))
+                {
+                    CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
+                    if (!script->scriptPath.empty() && fs::exists(script->scriptPath))
+                    {
+                        script->HotReloadScript();
+                    }
+                }
+            }
+        });
+    }
+    ctrlRPressedLastFrame = ctrlRPressedNow;
 }
 
 void Engine::SetEngineState(State newState)

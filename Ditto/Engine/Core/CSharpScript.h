@@ -9,6 +9,8 @@
 #include <memory>
 #include <filesystem>
 #include <limits>
+#include <thread>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -33,6 +35,8 @@ struct CSharpScriptComponent : Component
 
     fs::file_time_type m_lastWriteTime;
     bool m_needsReload = false;
+    bool m_isReloading = false;
+    std::string m_currentDllPath;
 
     CSharpScriptComponent();
 
@@ -58,6 +62,7 @@ struct CSharpScriptSystem
 {
     static void Initialize();
     static void Shutdown();
+    static void CleanOldCompiledDLLs();
     static bool LoadScript(const std::string& csPath, CSharpScriptComponent* component);
     static bool LoadPrecompiledScript(const std::string& className, CSharpScriptComponent* component);
     static void ReloadAll();

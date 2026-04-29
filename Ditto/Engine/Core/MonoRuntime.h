@@ -36,6 +36,7 @@ namespace MonoRuntime
     bool IsInitialized();
 
     MonoAssembly* LoadAssembly(const std::string& path);
+    MonoAssembly* LoadAssemblyFromMemory(const std::string& path);
     MonoImage* GetAssemblyImage(MonoAssembly* assembly);
 
     MonoClass* GetClass(MonoImage* image, const std::string& namespaceName, const std::string& className);
