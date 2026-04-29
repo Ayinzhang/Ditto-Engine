@@ -36,7 +36,6 @@ struct CSharpScriptComponent : Component
     fs::file_time_type m_lastWriteTime;
     bool m_needsReload = false;
     bool m_isReloading = false;
-    std::string m_currentDllPath;
 
     CSharpScriptComponent();
 

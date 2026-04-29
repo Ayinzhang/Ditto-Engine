@@ -654,12 +654,6 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
     std::string uniqueName = fileName + "_" + std::to_string(s_loadCounter);
     fs::path dllPath = tempDir / (uniqueName + ".dll");
 
-    if (!component->m_currentDllPath.empty())
-    {
-        std::error_code ec;
-        fs::remove(component->m_currentDllPath, ec);
-    }
-
     std::string dllPathStr = dllPath.string();
 
     if (!CompileScript(csPath, dllPathStr)) return false;
@@ -687,7 +681,11 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
         }
     }
 
-    component->m_currentDllPath = dllPathStr;
+    {
+        std::error_code ec;
+        fs::remove(dllPathStr, ec);
+    }
+
     component->ParseScriptFields();
 
     try
@@ -808,12 +806,6 @@ void CSharpScriptComponent::HotReloadScript()
     std::string uniqueName = absScriptPath.stem().string() + "_" + std::to_string(s_reloadCounter);
     fs::path dllPath = tempDir / (uniqueName + ".dll");
 
-    if (!m_currentDllPath.empty())
-    {
-        std::error_code ec;
-        fs::remove(m_currentDllPath, ec);
-    }
-
     std::string newDllPath = dllPath.string();
     if (!CSharpScriptSystem::CompileScript(scriptPath, newDllPath))
     {
@@ -853,7 +845,11 @@ void CSharpScriptComponent::HotReloadScript()
         }
     }
 
-    m_currentDllPath = newDllPath;
+    {
+        std::error_code ec;
+        fs::remove(newDllPath, ec);
+    }
+
     ParseScriptFields();
     started = false;
 
