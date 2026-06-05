@@ -391,6 +391,7 @@ void SceneWindow::HandleMouseInput()
     {
         m_isDragging = true;
         m_draggingAxis = m_highlightedAxis;
+        if (m_editor) m_editor->BeginInspectorEdit();   // capture pre-drag state (one undo step)
         m_dragStartMousePos = ImVec2D(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
         m_originalPosition = transform->position;
         m_originalRotation = transform->rotation;
@@ -480,6 +481,7 @@ void SceneWindow::HandleMouseInput()
         if (m_isDragging)
         {
             m_justFinishedDrag = true;  // Mark that we just finished a drag operation
+            if (m_editor) m_editor->EndInspectorEdit();   // commit the drag as one undo step (if changed)
         }
         m_isDragging = false;
         m_draggingAxis = HandleAxis::None;

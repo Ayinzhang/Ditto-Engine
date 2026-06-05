@@ -269,7 +269,7 @@ void CSharpScriptComponent::OnDestroy()
     if (scriptInstance) MonoRuntime::CallOnDestroy(scriptInstance);
 }
 
-void CSharpScriptComponent::Serialize(std::ofstream& file) const
+void CSharpScriptComponent::Serialize(std::ostream& file) const
 {
     uint32_t nameLen = static_cast<uint32_t>(scriptName.length());
     file.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
@@ -343,7 +343,7 @@ void CSharpScriptComponent::Serialize(std::ofstream& file) const
     }
 }
 
-void CSharpScriptComponent::Deserialize(std::ifstream& file)
+void CSharpScriptComponent::Deserialize(std::istream& file)
 {
     uint32_t nameLen;
     file.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));

@@ -1,4 +1,65 @@
-/.vs
-/x64
-/build
-/Ditto/x64
+# ============================================================
+#  Ditto-Engine .gitignore
+#  Strategy: ignore build outputs by DIRECTORY + compiler
+#  intermediates by EXTENSION. Vendored runtime binaries under
+#  Ditto/3rdParty (mono*.dll, mscorlib.dll, glfw3.dll/.lib) live
+#  OUTSIDE these directories and remain tracked on purpose.
+# ============================================================
+
+# --- Visual Studio / MSBuild output & cache ---
+.vs/
+[Xx]64/
+[Xx]86/
+[Ww]in32/
+[Dd]ebug/
+[Rr]elease/
+*.vcxproj.user
+*.aps
+
+# --- CMake output ---
+/build/
+[Bb]uild/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CMakeUserPresets.json
+
+# --- .NET / C# project output (engine C# API + game scripts) ---
+[Bb]in/
+[Oo]bj/
+
+# --- Compiler / linker intermediates (safe by extension) ---
+*.obj
+!Assets/**/*.obj
+!**/Assets/**/*.obj
+*.o
+*.ilk
+*.pdb
+*.idb
+*.exp
+*.res
+*.recipe
+*.tlog
+*.lastbuildstate
+*.exe
+*.iobj
+*.ipdb
+*.ifc
+*.ifc.d.json
+*.module.json
+
+# --- C# build caches ---
+*.cache
+*.csproj.FileListAbsolute.txt
+*.AssemblyInfoInputs.cache
+project.assets.json
+project.nuget.cache
+
+# --- Engine runtime temp / editor layout cache ---
+/Ditto/Temp/
+imgui.ini
+*.layout.backup
+
+# --- OS junk ---
+Thumbs.db
+.DS_Store

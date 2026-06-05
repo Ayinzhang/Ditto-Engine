@@ -45,6 +45,13 @@ struct Editor
     bool projectLoaded = false;
     bool sceneDirty = false;
     bool lockingSelection = false;
+
+    // ---- Undo / Redo (memento: full-scene snapshots) ----
+    std::vector<std::string> m_undoStack;   // snapshots of pre-change scene states
+    std::vector<std::string> m_redoStack;
+    std::string m_pendingPreEdit;           // pre-edit snapshot captured at drag start
+    bool m_hasPendingEdit = false;
+    static constexpr size_t kUndoDepth = 64;
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
     int frame; float fps, ppf, deltaTime;
@@ -85,6 +92,15 @@ struct Editor
     
     // Mark scene as modified
     void MarkSceneDirty() { sceneDirty = true; }
+
+    // Undo / Redo. PushUndoSnapshot is called immediately BEFORE a discrete
+    // mutation; Begin/EndInspectorEdit bracket continuous edits (drags) so each
+    // drag is one undo step committed only if the value actually changed.
+    void PushUndoSnapshot();
+    void BeginInspectorEdit();
+    void EndInspectorEdit();
+    void Undo();
+    void Redo();
     
     // Build and package for release
     void BuildProject();

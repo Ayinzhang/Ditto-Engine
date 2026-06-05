@@ -335,6 +335,7 @@
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
     <ClInclude Include="Engine\Core\ProjectManager.h" />
+    <ClInclude Include="Engine\Core\PathUtils.h" />
     <ClInclude Include="Engine\Core\Scene.h" />
     <ClInclude Include="Engine\Core\ScriptFileWatcher.h" />
     <ClInclude Include="Engine\Graphics\Camera.h" />
@@ -523,6 +524,7 @@
     <ClCompile Include="Engine\Core\Engine.cpp" />
     <ClCompile Include="Engine\Core\GameObject.cpp" />
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />
+    <ClCompile Include="Engine\Core\PathUtils.cpp" />
     <ClCompile Include="Engine\Core\Scene.cpp" />
     <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp" />
     <ClCompile Include="Engine\Graphics\Camera.cpp" />
@@ -650,7 +652,12 @@
  %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <PostBuildEvent>
-      <Command>cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; dotnet build DittoEngine.csproj -c Release</Command>
+      <Command>setlocal
+rem Locate dotnet without relying on the IDE process PATH (which may predate a
+rem .NET SDK install). Prefer the standard install location, then PATH.
+set "DOTNET=dotnet"
+if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
+cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -672,7 +679,12 @@
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
     </Link>
     <PostBuildEvent>
-      <Command>cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; dotnet build DittoEngine.csproj -c Release</Command>
+      <Command>setlocal
+rem Locate dotnet without relying on the IDE process PATH (which may predate a
+rem .NET SDK install). Prefer the standard install location, then PATH.
+set "DOTNET=dotnet"
+if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
+cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

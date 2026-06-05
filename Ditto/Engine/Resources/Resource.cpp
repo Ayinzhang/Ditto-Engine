@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include "../Core/PathUtils.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
 #include "../../3rdParty/GLFW/glfw3.h"
@@ -15,20 +16,16 @@ Resource::Resource(const std::string& basePath)
 
 void Resource::Initialize(const std::string& basePath)
 {
-    // Determine the base path for assets
+    // Determine the base path for model assets.
     if (basePath.empty())
     {
         cubeModel = nullptr; sphereModel = nullptr;
         cubeMesh = nullptr; sphereMesh = nullptr;
-        // Try to find Assets directory relative to executable
-        if (std::filesystem::exists("Assets/Models/Cube.obj"))
-            resourcePath = "Assets/Models";
-        else if (std::filesystem::exists("../../Assets/Models/Cube.obj"))
-            resourcePath = "../../Assets/Models";
-        else if (std::filesystem::exists("../Assets/Models/Cube.obj"))
-            resourcePath = "../Assets/Models";
-        else
-            resourcePath = "Assets/Models"; // Default fallback
+
+        // Anchor to the executable location rather than guessing relative
+        // ladders against the (unpredictable) working directory.
+        std::filesystem::path cubePath = PathUtils::ResolveAsset("Models/Cube.obj");
+        resourcePath = cubePath.parent_path().string();
     }
     else
     {

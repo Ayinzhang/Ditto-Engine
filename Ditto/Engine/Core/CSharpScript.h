@@ -41,8 +41,8 @@ struct CSharpScriptComponent : Component
 
     void ParseScriptFields();
 
-    void Serialize(std::ofstream& file) const override;
-    void Deserialize(std::ifstream& file) override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
 
     void OnInspectorGUI() override;
 

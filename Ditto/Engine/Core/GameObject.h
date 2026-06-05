@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <iosfwd>   // std::ostream / std::istream forward decls (serialize to file OR memory)
 #include "../../3rdParty/GLM/glm.hpp"
 
 struct GameObject;
@@ -19,8 +20,8 @@ struct Component
 
     virtual ~Component() = default;
     virtual void OnInspectorGUI() = 0;
-    virtual void Serialize(std::ofstream& file) const = 0;
-    virtual void Deserialize(std::ifstream& file) = 0;
+    virtual void Serialize(std::ostream& file) const = 0;
+    virtual void Deserialize(std::istream& file) = 0;
 };
 
 template<typename T>
@@ -55,7 +56,7 @@ struct GameObject
         T* newComp = new T(std::forward<Args>(args)...);
         newComp->gameObject = this;
         components.push_back(newComp);
-        compMask += newComp->index;
+        compMask |= newComp->index;   // bitwise OR: idempotent if the same component type is added again
         return newComp;
     }
 
@@ -72,8 +73,8 @@ struct GameObject
     void ProcessRemovals();
     void OnInspectorGUI();
 
-    void Serialize(std::ofstream& file) const;
-    void Deserialize(std::ifstream& file);
+    void Serialize(std::ostream& file) const;
+    void Deserialize(std::istream& file);
 };
 
 
@@ -95,8 +96,8 @@ struct TransformComponent : Component
     void UpdateWorldMatrix() const;
     glm::mat4 GetWorldModel() const;
 
-    void Serialize(std::ofstream& file) const override;
-    void Deserialize(std::ifstream& file) override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
 
 private:
     glm::vec3 lastPosition, lastRotation, lastScale;
@@ -111,8 +112,8 @@ struct LightComponent : Component
     LightComponent();
     LightComponent(LightComponent* other);
     void OnInspectorGUI() override;
-    void Serialize(std::ofstream& file) const override;
-    void Deserialize(std::ifstream& file) override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
 };
 
 struct RendererComponent : Component
@@ -124,8 +125,8 @@ struct RendererComponent : Component
     RendererComponent(Type _type = Cube);
     RendererComponent(RendererComponent* other);
     void OnInspectorGUI() override;
-    void Serialize(std::ofstream& file) const override;
-    void Deserialize(std::ifstream& file) override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
 };
 
 struct RigidbodyComponent : Component
@@ -142,6 +143,6 @@ struct RigidbodyComponent : Component
     RigidbodyComponent(RigidbodyComponent* other);
     void OnInspectorGUI() override;
     void CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale);
-    void Serialize(std::ofstream& file) const override;
-    void Deserialize(std::ifstream& file) override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
 };

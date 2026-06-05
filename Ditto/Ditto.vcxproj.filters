@@ -1032,6 +1032,9 @@
     <ClInclude Include="Engine\Core\ProjectManager.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Core\PathUtils.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
     <ClInclude Include="3rdParty\stb_image.h">
       <Filter>三方库</Filter>
     </ClInclude>
@@ -1585,6 +1588,9 @@
       <Filter>源文件\Editor</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Core\ProjectManager.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\PathUtils.cpp">
       <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
     <ClCompile Include="Editor\InspectorWindow.cpp">

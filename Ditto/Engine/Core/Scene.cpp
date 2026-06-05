@@ -3,13 +3,16 @@
 #include "../../Engine/Graphics/Shader.h"
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <functional>
+#include <algorithm>
 
 // Global current scene pointer
 Scene* g_currentScene = nullptr;
 
-// Helper function: read string from file
-static std::string ReadString(std::ifstream& file)
+// Helper function: read a length-prefixed string from any input stream
+// (file OR in-memory snapshot buffer).
+static std::string ReadString(std::istream& file)
 {
     uint32_t length = 0;
     file.read(reinterpret_cast<char*>(&length), sizeof(length));
@@ -29,7 +32,7 @@ Scene::Scene()
 
 Scene::~Scene()
 {
-    for (GameObject* obj : gameObjects) delete obj;
+    DestroyAllObjects();
     for (auto& pair : geometryBatches) delete pair.second;
     for (auto& pair : baseGeometries)
     {
@@ -45,19 +48,51 @@ GeometryInstances::~GeometryInstances()
     if (colorSSBO) glDeleteBuffers(1, &colorSSBO);
 }
 
-void Scene::ClearScene()
+// Single source of truth for tearing down the object graph.
+//
+// Ownership model: a GameObject owns its children (its destructor deletes them
+// recursively). Therefore only the TOP of the hierarchy may be deleted here:
+//   - if rootGameObject exists, it owns the entire tree -> delete it alone.
+//     `gameObjects` is then a NON-OWNING flattened view and must NOT be deleted
+//     (doing so double-frees nodes already freed via the tree).
+//   - otherwise `gameObjects` holds the top-level roots -> delete each.
+// This replaces the previous split logic that relied on children.clear() and
+// could still double-free grandchildren.
+void Scene::DestroyAllObjects()
 {
     if (rootGameObject)
     {
-        rootGameObject->children.clear();
-        delete rootGameObject;
+        delete rootGameObject;   // recursively deletes the whole tree
         rootGameObject = nullptr;
     }
-    
-    for (GameObject* obj : gameObjects) delete obj;
-    gameObjects.clear();
-    
-    mainLight = nullptr;
+    else
+    {
+        for (GameObject* obj : gameObjects) delete obj;
+    }
+    gameObjects.clear();         // clear the (now dangling) observer list
+    mainLight = nullptr;         // non-owning pointer into the freed tree
+}
+
+void Scene::ClearScene()
+{
+    DestroyAllObjects();
+}
+
+void Scene::UnregisterSubtree(GameObject* obj)
+{
+    if (!obj) return;
+
+    // Depth-first: collect the subtree, then erase each node from the
+    // non-owning observer list. Also clear mainLight if it points inside.
+    std::function<void(GameObject*)> visit = [&](GameObject* node)
+    {
+        if (!node) return;
+        auto it = std::find(gameObjects.begin(), gameObjects.end(), node);
+        if (it != gameObjects.end()) gameObjects.erase(it);
+        if (mainLight == node) mainLight = nullptr;
+        for (GameObject* child : node->children) visit(child);
+    };
+    visit(obj);
 }
 
 void Scene::CollectRenderData()
@@ -420,10 +455,47 @@ struct SceneHeader
 const uint32_t SCENE_VERSION = 1;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
+// Core serialization, stream-based so it works with both files (SaveScene) and
+// in-memory buffers (CaptureSnapshot). Uses seekp to backfill the header size,
+// which both std::ofstream and std::ostringstream support.
+void Scene::WriteToStream(std::ostream& file)
+{
+    SceneHeader header;
+    memset(&header, 0, sizeof(header));
+    memcpy(header.magic, SCENE_MAGIC, 4);
+    header.version = SCENE_VERSION;
+    header.fileSize = 0;
+
+    // If rootGameObject exists it serializes the whole tree (count = 1);
+    // otherwise the flat gameObjects list owns the top-level objects.
+    if (rootGameObject)
+        header.gameObjectCount = 1;
+    else
+        header.gameObjectCount = static_cast<uint32_t>(gameObjects.size());
+
+    file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+    uint32_t nameLength = static_cast<uint32_t>(name.length());
+    file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
+    file.write(name.c_str(), nameLength);
+
+    if (rootGameObject)
+        rootGameObject->Serialize(file);
+    else
+        for (GameObject* obj : gameObjects)
+            obj->Serialize(file);
+
+    // Backfill total size into the header.
+    std::streampos endPos = file.tellp();
+    header.fileSize = static_cast<uint64_t>(endPos);
+    file.seekp(0);
+    file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+}
+
 bool Scene::SaveScene(const std::string& filepath)
 {
     std::cout << "[Scene::SaveScene] Starting save to: " << filepath << std::endl;
-    
+
     std::ofstream file(filepath, std::ios::binary | std::ios::trunc);
     if (!file.is_open())
     {
@@ -433,54 +505,9 @@ bool Scene::SaveScene(const std::string& filepath)
 
     try
     {
-        SceneHeader header;
-        memset(&header, 0, sizeof(header));
-        memcpy(header.magic, SCENE_MAGIC, 4);
-        header.version = SCENE_VERSION;
-        header.fileSize = 0;
-
-        // Calculate object count: if rootGameObject exists, count as 1 (it will serialize all children)
-        // Otherwise use gameObjects list count
-        if (rootGameObject)
-        {
-            header.gameObjectCount = 1;
-            std::cout << "[Scene::SaveScene] Using rootGameObject, count = 1" << std::endl;
-            std::cout << "[Scene::SaveScene] rootGameObject name: " << rootGameObject->name << std::endl;
-            std::cout << "[Scene::SaveScene] rootGameObject children: " << rootGameObject->children.size() << std::endl;
-        }
-        else
-        {
-            header.gameObjectCount = static_cast<uint32_t>(gameObjects.size());
-            std::cout << "[Scene::SaveScene] Using gameObjects list, count = " << gameObjects.size() << std::endl;
-        }
-
-        file.write(reinterpret_cast<const char*>(&header), sizeof(header));
-
-        uint32_t nameLength = static_cast<uint32_t>(name.length());
-        file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
-        file.write(name.c_str(), nameLength);
-        std::cout << "[Scene::SaveScene] Scene name: " << name << std::endl;
-
-        // Serialize objects: start from rootGameObject if exists, otherwise use gameObjects
-        if (rootGameObject)
-        {
-            std::cout << "[Scene::SaveScene] Serializing rootGameObject..." << std::endl;
-            rootGameObject->Serialize(file);
-        }
-        else
-        {
-            std::cout << "[Scene::SaveScene] Serializing " << gameObjects.size() << " gameObjects..." << std::endl;
-            for (GameObject* obj : gameObjects)
-                obj->Serialize(file);
-        }
-
-        std::streampos endPos = file.tellp();
-        header.fileSize = static_cast<uint64_t>(endPos);
-        file.seekp(0);
-        file.write(reinterpret_cast<const char*>(&header), sizeof(header));
-
+        WriteToStream(file);
         file.close();
-        std::cout << "[Scene::SaveScene] Save completed. File size: " << header.fileSize << " bytes" << std::endl;
+        std::cout << "[Scene::SaveScene] Save completed." << std::endl;
         return true;
     }
     catch (const std::exception& e)
@@ -491,17 +518,37 @@ bool Scene::SaveScene(const std::string& filepath)
     }
 }
 
+std::string Scene::CaptureSnapshot()
+{
+    std::ostringstream oss(std::ios::binary);
+    WriteToStream(oss);
+    return oss.str();
+}
+
+bool Scene::RestoreSnapshot(const std::string& data)
+{
+    if (data.empty()) return false;
+    std::istringstream iss(data, std::ios::binary);
+    return ReadFromStream(iss);   // ReadFromStream calls ClearScene() internally
+}
+
 bool Scene::LoadScene(const std::string& filepath)
 {
     std::cout << "[Scene::LoadScene] Starting load from: " << filepath << std::endl;
-    
+
     std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open())
     {
         std::cerr << "[Scene::LoadScene] Failed to open file for reading: " << filepath << std::endl;
         return false;
     }
+    return ReadFromStream(file);
+}
 
+// Core deserialization, stream-based (file OR in-memory snapshot). Calls
+// ClearScene() before rebuilding; on failure leaves the scene cleared.
+bool Scene::ReadFromStream(std::istream& file)
+{
     try
     {
         SceneHeader header;
@@ -652,7 +699,6 @@ bool Scene::LoadScene(const std::string& filepath)
         std::cerr << "Error loading scene: " << e.what() << std::endl;
         ClearScene();
         name = "Load Failed";
-        file.close();
-        return false;
+        return false;   // istream& has no close(); LoadScene's ifstream closes via RAII
     }
 }

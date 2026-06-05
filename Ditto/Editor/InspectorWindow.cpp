@@ -226,11 +226,11 @@ void InspectorWindow::Draw()
             
             // Built-in components
             if (!(m_currentObject->compMask >> 1 & 1) && ImGui::MenuItem("Light"))
-                m_currentObject->AddComponent<LightComponent>();
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<LightComponent>(); }
             if (!(m_currentObject->compMask >> 2 & 1) && ImGui::MenuItem("Renderer"))
-                m_currentObject->AddComponent<RendererComponent>();
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RendererComponent>(); }
             if (!(m_currentObject->compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody"))
-                m_currentObject->AddComponent<RigidbodyComponent>();
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RigidbodyComponent>(); }
             
             ImGui::Separator();
             ImGui::TextUnformatted("Scripts");

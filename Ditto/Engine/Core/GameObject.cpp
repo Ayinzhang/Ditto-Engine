@@ -17,20 +17,30 @@ constexpr int RENDERER_INDEX = 1 << 2;
 constexpr int RIGIDBODY_INDEX = 1 << 3;
 constexpr int CSHARP_SCRIPT_INDEX = 1 << 10;
 
-static void WriteString(std::ofstream& file, const std::string& str)
+static void WriteString(std::ostream& file, const std::string& str)
 {
     uint32_t length = static_cast<uint32_t>(str.length());
     file.write(reinterpret_cast<const char*>(&length), sizeof(length));
     file.write(str.c_str(), length);
 }
 
-static std::string ReadString(std::ifstream& file)
+static std::string ReadString(std::istream& file)
 {
     uint32_t length = 0;
     file.read(reinterpret_cast<char*>(&length), sizeof(length));
     std::string str(length, '\0');
     file.read(&str[0], length);
     return str;
+}
+
+// Bracket an ImGui value-editing widget so a whole drag counts as ONE undo
+// step, committed only if the value actually changed. Call immediately AFTER
+// the widget. Uses the global editor pointer.
+static void TrackUndoableEdit()
+{
+    if (!g_editor) return;
+    if (ImGui::IsItemActivated())            g_editor->BeginInspectorEdit();
+    if (ImGui::IsItemDeactivatedAfterEdit()) g_editor->EndInspectorEdit();
 }
 
 GameObject::GameObject(const std::string _name)
@@ -53,7 +63,7 @@ GameObject::GameObject(GameObject* other)
     enabled = other->enabled;
     locked = other->locked;
     name = other->name;
-    compMask = other->compMask;
+    compMask = 0;   // rebuilt by AddComponent below; never copy a possibly-stale mask
     for (Component* comp : other->components)
     {
         if (auto t = dynamic_cast<TransformComponent*>(comp))
@@ -64,6 +74,16 @@ GameObject::GameObject(GameObject* other)
             AddComponent<RendererComponent>(r);
         else if (auto rb = dynamic_cast<RigidbodyComponent*>(comp))
             AddComponent<RigidbodyComponent>(rb);
+        else if (auto cs = dynamic_cast<CSharpScriptComponent*>(comp))
+        {
+            // CSharpScriptComponent has no copy-ctor; default-construct then
+            // copy its serialized state so duplicated objects keep their script.
+            CSharpScriptComponent* newCs = AddComponent<CSharpScriptComponent>();
+            newCs->scriptName = cs->scriptName;
+            newCs->scriptPath = cs->scriptPath;
+            newCs->fields     = cs->fields;
+            newCs->enabled    = cs->enabled;
+        }
     }
     for (GameObject* child : other->children)
     {
@@ -150,6 +170,7 @@ void GameObject::OnInspectorGUI()
     ImGui::PushID("NameInput");
     if (ImGui::InputText("", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
     {
+        if (g_editor) g_editor->PushUndoSnapshot();   // pre-rename state
         name = nameBuffer;
         if (g_currentScene) g_currentScene->MarkDirty();
     }
@@ -187,7 +208,7 @@ void GameObject::OnInspectorGUI()
     ProcessRemovals();
 }
 
-void GameObject::Serialize(std::ofstream& file) const
+void GameObject::Serialize(std::ostream& file) const
 {
     std::cout << "[GameObject::Serialize] Serializing: " << name << ", components: " << components.size() << ", children: " << children.size() << std::endl;
     
@@ -212,7 +233,7 @@ void GameObject::Serialize(std::ofstream& file) const
         child->Serialize(file);
 }
 
-void GameObject::Deserialize(std::ifstream& file)
+void GameObject::Deserialize(std::istream& file)
 {
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
     file.read(reinterpret_cast<char*>(&locked), sizeof(locked));
@@ -253,6 +274,13 @@ void GameObject::Deserialize(std::ifstream& file)
             components.push_back(newComp);
         }
     }
+
+    // Recompute compMask from the components actually rebuilt, so it is
+    // self-consistent regardless of what was stored on disk (older files may
+    // carry a mask corrupted by the previous '+=' accumulation bug).
+    compMask = 0;
+    for (Component* comp : components)
+        compMask |= comp->index;
 
     uint32_t childCount = 0;
     file.read(reinterpret_cast<char*>(&childCount), sizeof(childCount));
@@ -348,8 +376,11 @@ void TransformComponent::OnInspectorGUI()
 
     ImGui::Indent(20.0f);
     if (ImGui::DragFloat3("##Position", &position.x, 0.1f)) localDirty = true;
+    TrackUndoableEdit();
     if (ImGui::DragFloat3("##Rotation", &rotation.x, 0.1f)) localDirty = true;
+    TrackUndoableEdit();
     if (ImGui::DragFloat3("##Scale", &scale.x, 0.1f)) localDirty = true;
+    TrackUndoableEdit();
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
@@ -366,14 +397,14 @@ void TransformComponent::OnInspectorGUI()
     }
 }
 
-void TransformComponent::Serialize(std::ofstream& file) const
+void TransformComponent::Serialize(std::ostream& file) const
 {
     file.write(reinterpret_cast<const char*>(&position), sizeof(glm::vec3));
     file.write(reinterpret_cast<const char*>(&rotation), sizeof(glm::vec3));
     file.write(reinterpret_cast<const char*>(&scale), sizeof(glm::vec3));
 }
 
-void TransformComponent::Deserialize(std::ifstream& file)
+void TransformComponent::Deserialize(std::istream& file)
 {
     file.read(reinterpret_cast<char*>(&position), sizeof(glm::vec3));
     file.read(reinterpret_cast<char*>(&rotation), sizeof(glm::vec3));
@@ -393,22 +424,24 @@ void LightComponent::OnInspectorGUI()
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Light");
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
     ImGui::Text("Color    "); ImGui::SameLine();
     ImGui::ColorEdit3("##Color", &color.x);
+    TrackUndoableEdit();
     ImGui::Text("Intensity"); ImGui::SameLine();
     ImGui::DragFloat("##Intensity", &intensity, 0.1f, 0.0f, 100.0f);
+    TrackUndoableEdit();
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
 }
-void LightComponent::Serialize(std::ofstream& file) const
+void LightComponent::Serialize(std::ostream& file) const
 {
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec3));
     file.write(reinterpret_cast<const char*>(&intensity), sizeof(intensity));
 }
-void LightComponent::Deserialize(std::ifstream& file)
+void LightComponent::Deserialize(std::istream& file)
 {
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec3));
     file.read(reinterpret_cast<char*>(&intensity), sizeof(intensity));
@@ -421,7 +454,7 @@ void RendererComponent::OnInspectorGUI()
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Renderer");
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
     const char* typeNames[] = { "Cube", "Sphere" };
@@ -429,18 +462,20 @@ void RendererComponent::OnInspectorGUI()
     ImGui::Text("Type "); ImGui::SameLine();
     if (ImGui::Combo("##Type", &currentType, typeNames, 2))
         type = static_cast<Type>(currentType);
+    TrackUndoableEdit();
     ImGui::Text("Color"); ImGui::SameLine();
     ImGui::ColorEdit4("##Color", &color.x, ImGuiColorEditFlags_AlphaBar);
+    TrackUndoableEdit();
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
 }
-void RendererComponent::Serialize(std::ofstream& file) const
+void RendererComponent::Serialize(std::ostream& file) const
 {
     int32_t typeInt = static_cast<int32_t>(type);
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
 }
-void RendererComponent::Deserialize(std::ifstream& file)
+void RendererComponent::Deserialize(std::istream& file)
 {
     int32_t typeInt = 0;
     file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
@@ -463,7 +498,7 @@ void RigidbodyComponent::OnInspectorGUI()
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Rigidbody");
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X")) { gameObject->RemoveComponent(this); return; }
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
     const char* typeNames[] = { "Static", "Dynamic" };
@@ -471,20 +506,27 @@ void RigidbodyComponent::OnInspectorGUI()
     ImGui::Text("Type"); ImGui::SameLine();
     if (ImGui::Combo("##Type", &currentType, typeNames, 2))
         type = static_cast<Type>(currentType);
+    TrackUndoableEdit();
     if (type == Dynamic)
     {
         ImGui::Text("Use Gravity"); ImGui::SameLine();
         ImGui::Checkbox("##Use Gravity", &useGravity);
+        TrackUndoableEdit();
         ImGui::Text("Mass "); ImGui::SameLine();
         ImGui::DragFloat("##Mass", &mass, 0.1f, 0.001f, 1000.0f);
+        TrackUndoableEdit();
         ImGui::Text("Damp "); ImGui::SameLine();
         ImGui::DragFloat("##Damp", &damp, 0.1f, 0.0f, 1.0f);
+        TrackUndoableEdit();
         ImGui::Text("ADamp"); ImGui::SameLine();
         ImGui::DragFloat("##AngularDamp", &angularDamp, 0.1f, 0.0f, 1.0f);
+        TrackUndoableEdit();
         ImGui::Text("Velocity "); ImGui::SameLine();
         ImGui::DragFloat3("##Velocity", &velocity.x, 0.1f);
+        TrackUndoableEdit();
         ImGui::Text("AVelocity"); ImGui::SameLine();
         ImGui::DragFloat3("##AVelocity", &angularVelocity.x, 0.1f);
+        TrackUndoableEdit();
     }
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
@@ -515,7 +557,7 @@ void RigidbodyComponent::CalculateInertia(RendererComponent::Type shapeType, con
     inverseInertia = glm::inverse(inertia);
 }
 
-void RigidbodyComponent::Serialize(std::ofstream& file) const
+void RigidbodyComponent::Serialize(std::ostream& file) const
 {
     int32_t typeInt = static_cast<int32_t>(type);
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
@@ -525,7 +567,7 @@ void RigidbodyComponent::Serialize(std::ofstream& file) const
     file.write(reinterpret_cast<const char*>(&angularDamp), sizeof(angularDamp));
 }
 
-void RigidbodyComponent::Deserialize(std::ifstream& file)
+void RigidbodyComponent::Deserialize(std::istream& file)
 {
     int32_t typeInt = 0;
     file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));

@@ -10,43 +10,31 @@
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "CSharpScript.h"
+#include "PathUtils.h"
 
 using namespace std;
 using namespace glm;
 namespace fs = std::filesystem;
 
+// Resolve an engine shader by name, anchored to the executable location.
 static std::string FindShaderPath(const std::string& shaderName)
 {
-    const std::vector<std::string> possiblePaths = {
-        "Assets/Shaders/" + shaderName,
-        "Ditto/Assets/Shaders/" + shaderName,
-        "../../Ditto/Ditto/Assets/Shaders/" + shaderName,
-        "../Ditto/Assets/Shaders/" + shaderName,
-        "Ditto/Ditto/Assets/Shaders/" + shaderName,
-    };
-    
-    for (const auto& path : possiblePaths)
-    {
-        if (fs::exists(path))
-            return path;
-    }
-    
-    std::cerr << "[Engine] Warning: Shader not found: " << shaderName << std::endl;
-    return "Assets/Shaders/" + shaderName;
+    fs::path resolved = PathUtils::ResolveAsset("Shaders/" + shaderName);
+    if (!fs::exists(resolved))
+        std::cerr << "[Engine] Warning: Shader not found: " << shaderName
+                  << " (looked at " << resolved.string() << ")" << std::endl;
+    return resolved.string();
 }
 
+// Resolve a shader preferring a specific project/base directory, then falling
+// back to the engine's executable-anchored search.
 static std::string FindShaderPathInDir(const std::string& baseDir, const std::string& shaderName)
 {
-    std::vector<std::string> candidates = {
-        baseDir + "/Assets/Shaders/" + shaderName,
-        baseDir + "/Shaders/" + shaderName,
-    };
-    for (const auto& p : candidates)
-    {
-        if (fs::exists(p))
-            return p;
-    }
-    return FindShaderPath(shaderName);
+    fs::path resolved = PathUtils::ResolveAsset("Shaders/" + shaderName, baseDir);
+    if (!fs::exists(resolved))
+        std::cerr << "[Engine] Warning: Shader not found: " << shaderName
+                  << " (looked at " << resolved.string() << ")" << std::endl;
+    return resolved.string();
 }
 
 template<typename Func>
@@ -332,6 +320,24 @@ void Engine::ProcessInput()
         });
     }
     ctrlRPressedLastFrame = ctrlRPressedNow;
+
+    // Ctrl+Z Undo / Ctrl+Y Redo (editor, edit-mode only). Skip while typing in a
+    // text field so the shortcuts don't fight ImGui's own text editing.
+    bool ctrlDown = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                    glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+    bool textInputActive = ImGui::GetIO().WantTextInput;
+
+    static bool ctrlZLastFrame = false;
+    bool ctrlZNow = ctrlDown && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS;
+    if (ctrlZNow && !ctrlZLastFrame && editor && state == Edit && !textInputActive)
+        editor->Undo();
+    ctrlZLastFrame = ctrlZNow;
+
+    static bool ctrlYLastFrame = false;
+    bool ctrlYNow = ctrlDown && glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS;
+    if (ctrlYNow && !ctrlYLastFrame && editor && state == Edit && !textInputActive)
+        editor->Redo();
+    ctrlYLastFrame = ctrlYNow;
 }
 
 void Engine::SetEngineState(State newState)

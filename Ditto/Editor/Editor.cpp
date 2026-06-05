@@ -705,6 +705,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 GameObject* droppedObj = *(GameObject**)payload->Data;
                 if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
                 {
+                    PushUndoSnapshot();
                     if (droppedObj->parent) droppedObj->RemoveFromParent();
                     else
                     {
@@ -771,6 +772,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 GameObject* droppedObj = *(GameObject**)payload->Data;
                 if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
                 {
+                    PushUndoSnapshot();
                     if (droppedObj->parent) droppedObj->RemoveFromParent();
                     else
                     {
@@ -802,6 +804,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         
         if (ImGui::MenuItem("Create Child"))
         {
+            PushUndoSnapshot();
             GameObject* newObj = new GameObject("New GameObject");
             obj->AddChild(newObj);
             selectedObject = newObj;
@@ -827,6 +830,7 @@ void Editor::DrawHierarchy()
     {
         if (ImGui::MenuItem("Create Directional Light"))
         {
+            PushUndoSnapshot();
             GameObject* lightObj = new GameObject("DirLight");
             lightObj->AddComponent<LightComponent>();
             lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
@@ -848,6 +852,7 @@ void Editor::DrawHierarchy()
         {
             if (ImGui::MenuItem("Create Cube"))
             {
+                PushUndoSnapshot();
                 GameObject* cube = new GameObject("Cube");
                 cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
                 if (engine->scene->rootGameObject)
@@ -864,6 +869,7 @@ void Editor::DrawHierarchy()
             }
             if (ImGui::MenuItem("Create Sphere"))
             {
+                PushUndoSnapshot();
                 GameObject* sphere = new GameObject("Sphere");
                 sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
                 if (engine->scene->rootGameObject)
@@ -890,6 +896,7 @@ void Editor::DrawHierarchy()
             GameObject* droppedObj = *(GameObject**)payload->Data;
             if (droppedObj)
             {
+                PushUndoSnapshot();
                 if (droppedObj->parent) droppedObj->RemoveFromParent();
                 else
                 {
@@ -1313,9 +1320,99 @@ void Editor::DrawBuildSettingsWindow()
     ImGui::End();
 }
 
+// ---- Undo / Redo ----------------------------------------------------------
+
+void Editor::PushUndoSnapshot()
+{
+    if (!engine || !engine->scene) return;
+    if (engine->state == Engine::State::Play) return;   // edit-mode only
+    std::string snap = engine->scene->CaptureSnapshot();
+    if (snap.empty()) return;
+    if (!m_undoStack.empty() && m_undoStack.back() == snap) return;  // dedup
+    m_undoStack.push_back(std::move(snap));
+    if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
+    m_redoStack.clear();
+}
+
+void Editor::BeginInspectorEdit()
+{
+    if (!engine || !engine->scene) return;
+    if (engine->state == Engine::State::Play) return;
+    if (m_hasPendingEdit) return;                       // one capture per interaction
+    m_pendingPreEdit = engine->scene->CaptureSnapshot();
+    m_hasPendingEdit = true;
+}
+
+void Editor::EndInspectorEdit()
+{
+    if (!m_hasPendingEdit) return;
+    m_hasPendingEdit = false;
+    if (!engine || !engine->scene) return;
+    // Commit the pre-edit snapshot only if the scene actually changed -> no
+    // spurious undo steps from clicking a control without moving it.
+    if (engine->scene->CaptureSnapshot() == m_pendingPreEdit) return;
+    m_undoStack.push_back(std::move(m_pendingPreEdit));
+    if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
+    m_redoStack.clear();
+}
+
+void Editor::Undo()
+{
+    if (!engine || !engine->scene) return;
+    if (engine->state == Engine::State::Play) return;
+    if (m_undoStack.empty()) return;
+
+    std::string current = engine->scene->CaptureSnapshot();
+    std::string prev = std::move(m_undoStack.back());
+    m_undoStack.pop_back();
+
+    if (engine->scene->RestoreSnapshot(prev))
+    {
+        m_redoStack.push_back(std::move(current));
+        if (m_redoStack.size() > kUndoDepth) m_redoStack.erase(m_redoStack.begin());
+        // All GameObject pointers were rebuilt -> drop stale references.
+        selectedObject = nullptr; activeSelection = nullptr;
+        selectedFile.Clear();
+        m_expandedGameObjects.clear();
+        m_hasPendingEdit = false;
+        sceneDirty = true;
+    }
+    else
+    {
+        m_undoStack.push_back(std::move(prev));  // restore failed: put it back
+    }
+}
+
+void Editor::Redo()
+{
+    if (!engine || !engine->scene) return;
+    if (engine->state == Engine::State::Play) return;
+    if (m_redoStack.empty()) return;
+
+    std::string current = engine->scene->CaptureSnapshot();
+    std::string next = std::move(m_redoStack.back());
+    m_redoStack.pop_back();
+
+    if (engine->scene->RestoreSnapshot(next))
+    {
+        m_undoStack.push_back(std::move(current));
+        if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
+        selectedObject = nullptr; activeSelection = nullptr;
+        selectedFile.Clear();
+        m_expandedGameObjects.clear();
+        m_hasPendingEdit = false;
+        sceneDirty = true;
+    }
+    else
+    {
+        m_redoStack.push_back(std::move(next));
+    }
+}
+
 void Editor::CopySelectedObject()
 {
     if (!selectedObject || !engine || !engine->scene) return;
+    PushUndoSnapshot();
     GameObject* newObj = new GameObject(selectedObject);
     newObj->parent = nullptr;
     if (selectedObject->parent)
@@ -1335,6 +1432,8 @@ void Editor::DeleteSelectedObject()
         return;
     }
 
+    PushUndoSnapshot();   // capture pre-delete state (covers menu + Delete key)
+
     GameObject* parent = selectedObject->parent;
     bool wasRoot = (parent == nullptr);
 
@@ -1346,6 +1445,11 @@ void Editor::DeleteSelectedObject()
         auto it = std::find(rootList.begin(), rootList.end(), selectedObject);
         if (it != rootList.end()) rootList.erase(it);
     }
+
+    // Remove the whole subtree from the non-owning observer list before the
+    // recursive delete, otherwise gameObjects would keep dangling pointers to
+    // the freed descendants.
+    engine->scene->UnregisterSubtree(selectedObject);
 
     delete selectedObject;
 
@@ -1662,6 +1766,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
     
     if (ext == ".cs")
     {
+        PushUndoSnapshot();   // adding a script component is undoable
         // C# script - create CSharpScriptComponent
         CSharpScriptComponent* csScript = new CSharpScriptComponent();
         csScript->scriptPath = scriptPath;
@@ -1670,7 +1775,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
         csScript->ParseScriptFields();
         
         obj->components.push_back(csScript);
-        obj->compMask += csScript->index;
+        obj->compMask |= csScript->index;   // bitwise OR, consistent with GameObject::AddComponent
         std::cout << "[Editor] C# script added: " << csScript->scriptName << std::endl;
         
         // Mark scene as modified
