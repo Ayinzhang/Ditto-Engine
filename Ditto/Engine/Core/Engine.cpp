@@ -176,25 +176,21 @@ void Engine::Run()
             {
                 ForEachGameObject(scene, [](GameObject* obj)
                 {
-                    for (Component* comp : obj->components)
+                    ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                     {
-                        if (comp->index == (1 << 10))
+                        if (script->ShouldReload())
                         {
-                            CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
-                            if (script->ShouldReload())
-                            {
-                                script->HotReloadScript();
-                            }
-                            else
-                            {
-                                script->scriptInstance.reset();
-                                script->started = false;
-                            }
+                            script->HotReloadScript();
                         }
-                    }
+                        else
+                        {
+                            script->scriptInstance.reset();
+                            script->started = false;
+                        }
+                    });
                 });
             }
-            
+
             double physStart = glfwGetTime();
             physics->UpdatePhysics(deltaTime);
             physicsCnt++;
@@ -202,14 +198,10 @@ void Engine::Run()
 
             ForEachGameObject(scene, [](GameObject* obj)
             {
-                for (Component* comp : obj->components)
+                ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                 {
-                    if (comp->index == (1 << 10))
-                    {
-                        CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
-                        script->Update();
-                    }
-                }
+                    script->Update();
+                });
             });
         }
         ProcessInput(); glfwPollEvents();
@@ -306,17 +298,13 @@ void Engine::ProcessInput()
     if (ctrlRPressedNow && !ctrlRPressedLastFrame) {
         ForEachGameObject(scene, [](GameObject* obj)
         {
-            for (Component* comp : obj->components)
+            ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
             {
-                if (comp->index == (1 << 10))
+                if (!script->scriptPath.empty() && fs::exists(script->scriptPath))
                 {
-                    CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
-                    if (!script->scriptPath.empty() && fs::exists(script->scriptPath))
-                    {
-                        script->HotReloadScript();
-                    }
+                    script->HotReloadScript();
                 }
-            }
+            });
         });
     }
     ctrlRPressedLastFrame = ctrlRPressedNow;
@@ -365,14 +353,10 @@ void Engine::SetEngineState(State newState)
                 
                 ForEachGameObject(scene, [](GameObject* obj)
                 {
-                    for (Component* comp : obj->components)
+                    ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                     {
-                        if (comp->index == (1 << 10))
-                        {
-                            CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
-                            script->Start();
-                        }
-                    }
+                        script->Start();
+                    });
                 });
             }
             break;
@@ -385,15 +369,11 @@ void Engine::SetEngineState(State newState)
         {
             ForEachGameObject(scene, [](GameObject* obj)
             {
-                for (Component* comp : obj->components)
+                ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                 {
-                    if (comp->index == (1 << 10))
-                    {
-                        CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
-                        script->OnDestroy();
-                        script->started = false;
-                    }
-                }
+                    script->OnDestroy();
+                    script->started = false;
+                });
             });
             
             physics->ClearColliders();
@@ -516,14 +496,10 @@ void Engine::LoadGameScene()
 
     ForEachGameObject(scene, [](GameObject* obj)
     {
-        for (Component* comp : obj->components)
+        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
         {
-            if (comp->index == (1 << 10))
-            {
-                CSharpScriptComponent* script = static_cast<CSharpScriptComponent*>(comp);
-                script->Start();
-            }
-        }
+            script->Start();
+        });
     });
 
     state = Play;

@@ -9,41 +9,42 @@
 #include <windows.h>
 #endif
 
-static std::string GetExeDirectory()
+using namespace std;
+
+static string GetExeDirectory()
 {
 #ifdef _WIN32
     char path[MAX_PATH];
     DWORD len = GetModuleFileNameA(NULL, path, MAX_PATH);
     if (len > 0 && len < MAX_PATH)
     {
-        std::string fullPath(path);
+        string fullPath(path);
         size_t lastSlash = fullPath.find_last_of("\\/");
-        if (lastSlash != std::string::npos)
-            return fullPath.substr(0, lastSlash);
+        if (lastSlash != string::npos) return fullPath.substr(0, lastSlash);
     }
 #endif
-    return std::filesystem::current_path().string();
+    return filesystem::current_path().string();
 }
 
-static std::string ReadGameConfig(const std::string& configPath)
+static string ReadGameConfig(const string& configPath)
 {
-    std::ifstream file(configPath);
+    ifstream file(configPath);
     if (!file.is_open()) return "";
 
-    std::string startupScene;
-    std::string line;
-    while (std::getline(file, line))
+    string startupScene;
+    string line;
+    while (getline(file, line))
     {
         size_t pos = line.find("\"startupScene\"");
-        if (pos == std::string::npos) continue;
+        if (pos == string::npos) continue;
 
         size_t colonPos = line.find(':', pos);
-        if (colonPos == std::string::npos) continue;
+        if (colonPos == string::npos) continue;
 
         size_t start = line.find('"', colonPos);
-        if (start == std::string::npos) continue;
+        if (start == string::npos) continue;
         size_t end = line.find('"', start + 1);
-        if (end == std::string::npos) continue;
+        if (end == string::npos) continue;
 
         startupScene = line.substr(start + 1, end - start - 1);
         break;
@@ -54,27 +55,27 @@ static std::string ReadGameConfig(const std::string& configPath)
 
 int main(int argc, char* argv[])
 {
-    std::string exeDir = GetExeDirectory();
-    std::cout << "[Ditto] EXE directory: " << exeDir << std::endl;
+    string exeDir = GetExeDirectory();
+    cout << "[Ditto] EXE directory: " << exeDir << endl;
 
-    std::string gameConfigPath = exeDir + "/game.config";
-    bool gameMode = std::filesystem::exists(gameConfigPath);
+    string gameConfigPath = exeDir + "/game.config";
+    bool gameMode = filesystem::exists(gameConfigPath);
 
-    std::string startupScene;
-    std::string projectPath;
+    string startupScene;
+    string projectPath;
 
     if (gameMode)
     {
         projectPath = exeDir;
         startupScene = ReadGameConfig(gameConfigPath);
-        std::cout << "[Ditto] Game mode detected" << std::endl;
-        std::cout << "[Ditto] Project path: " << projectPath << std::endl;
-        std::cout << "[Ditto] Startup scene: " << startupScene << std::endl;
+        cout << "[Ditto] Game mode detected" << endl;
+        cout << "[Ditto] Project path: " << projectPath << endl;
+        cout << "[Ditto] Startup scene: " << startupScene << endl;
     }
 
     for (int i = 1; i < argc; i++)
     {
-        std::string arg = argv[i];
+        string arg = argv[i];
         if (arg == "-game" || arg == "/game")
         {
             gameMode = true;

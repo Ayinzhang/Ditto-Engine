@@ -1,7 +1,8 @@
 #include <iostream>
 #include <filesystem>
 #include <windows.h>
-#include <regex>
+#include <sstream>
+#include <cctype>
 #include "CSharpScript.h"
 #include "MonoRuntime.h"
 #include "GameObject.h"
@@ -148,8 +149,283 @@ void* CSharpScriptSystem::s_editor = nullptr;
 
 CSharpScriptComponent::CSharpScriptComponent()
 {
-    index = 1 << 10;
+    index = ComponentIndex::CSharpScript;
     m_lastWriteTime = (std::numeric_limits<std::filesystem::file_time_type>::min)();
+}
+
+namespace
+{
+    // Remove // line comments and /* */ block comments while preserving the
+    // contents of string ('"') and char ('\'') literals, so a "//" inside a
+    // string default value is not mistaken for a comment. Replaces comments
+    // with a single space to keep tokens that surrounded them separated.
+    std::string StripComments(const std::string& src)
+    {
+        std::string out;
+        out.reserve(src.size());
+        enum { Code, LineComment, BlockComment, StringLit, CharLit } state = Code;
+        for (size_t i = 0; i < src.size(); ++i)
+        {
+            char c = src[i];
+            char n = (i + 1 < src.size()) ? src[i + 1] : '\0';
+            switch (state)
+            {
+            case Code:
+                if (c == '/' && n == '/') { state = LineComment; ++i; out += ' '; }
+                else if (c == '/' && n == '*') { state = BlockComment; ++i; out += ' '; }
+                else if (c == '"') { state = StringLit; out += c; }
+                else if (c == '\'') { state = CharLit; out += c; }
+                else out += c;
+                break;
+            case LineComment:
+                if (c == '\n') { state = Code; out += c; }
+                break;
+            case BlockComment:
+                if (c == '*' && n == '/') { state = Code; ++i; out += ' '; }
+                else if (c == '\n') out += c;
+                break;
+            case StringLit:
+                out += c;
+                if (c == '\\' && n != '\0') { out += n; ++i; }   // escape
+                else if (c == '"') state = Code;
+                break;
+            case CharLit:
+                out += c;
+                if (c == '\\' && n != '\0') { out += n; ++i; }
+                else if (c == '\'') state = Code;
+                break;
+            }
+        }
+        return out;
+    }
+
+    std::string Trim(const std::string& s)
+    {
+        size_t a = s.find_first_not_of(" \t\r\n");
+        if (a == std::string::npos) return "";
+        size_t b = s.find_last_not_of(" \t\r\n");
+        return s.substr(a, b - a + 1);
+    }
+
+    // Map a C# type keyword to our editor field type. Returns false for types
+    // we don't expose in the inspector (the declaration is then skipped).
+    bool MapFieldType(const std::string& typeName, ScriptFieldType& outType)
+    {
+        if (typeName == "float" || typeName == "double") { outType = ScriptFieldType::Float; return true; }
+        if (typeName == "int" || typeName == "long" ||
+            typeName == "short" || typeName == "byte" || typeName == "uint") { outType = ScriptFieldType::Int; return true; }
+        if (typeName == "bool") { outType = ScriptFieldType::Bool; return true; }
+        if (typeName == "string") { outType = ScriptFieldType::String; return true; }
+        if (typeName == "Vector2") { outType = ScriptFieldType::Vector2; return true; }
+        if (typeName == "Vector3") { outType = ScriptFieldType::Vector3; return true; }
+        if (typeName == "Vector4") { outType = ScriptFieldType::Vector4; return true; }
+        return false;
+    }
+
+    // Parse up to `count` floats from the arguments of a `new Vector_(...)`
+    // initializer. Missing components default to 0. Tolerates trailing 'f'.
+    void ParseVectorArgs(const std::string& init, float* out, int count)
+    {
+        for (int i = 0; i < count; ++i) out[i] = 0.0f;
+        size_t open = init.find('(');
+        size_t close = init.rfind(')');
+        if (open == std::string::npos || close == std::string::npos || close <= open) return;
+        std::string args = init.substr(open + 1, close - open - 1);
+        std::stringstream ss(args);
+        std::string tok;
+        int i = 0;
+        while (std::getline(ss, tok, ',') && i < count)
+        {
+            tok = Trim(tok);
+            if (!tok.empty() && (tok.back() == 'f' || tok.back() == 'F')) tok.pop_back();
+            try { out[i] = std::stof(tok); } catch (...) { out[i] = 0.0f; }
+            ++i;
+        }
+    }
+
+    // Assign a parsed default value (from the initializer text, possibly empty)
+    // into a ScriptField according to its type. Empty/invalid initializers fall
+    // back to a sensible zero/false/empty default.
+    void AssignDefault(ScriptField& field, const std::string& initRaw)
+    {
+        std::string init = Trim(initRaw);
+        switch (field.type)
+        {
+        case ScriptFieldType::Float:
+        {
+            float v = 0.0f;
+            std::string t = init;
+            if (!t.empty() && (t.back() == 'f' || t.back() == 'F')) t.pop_back();
+            try { if (!t.empty()) v = std::stof(t); } catch (...) {}
+            field.defaultValue = field.value = v;
+            break;
+        }
+        case ScriptFieldType::Int:
+        {
+            int v = 0;
+            try { if (!init.empty()) v = std::stoi(init); } catch (...) {}
+            field.defaultValue = field.value = v;
+            break;
+        }
+        case ScriptFieldType::Bool:
+        {
+            bool v = (init == "true");
+            field.defaultValue = field.value = v;
+            break;
+        }
+        case ScriptFieldType::String:
+        {
+            std::string v;
+            size_t q1 = init.find('"');
+            size_t q2 = init.rfind('"');
+            if (q1 != std::string::npos && q2 != std::string::npos && q2 > q1)
+                v = init.substr(q1 + 1, q2 - q1 - 1);
+            field.defaultValue = field.value = v;
+            break;
+        }
+        case ScriptFieldType::Vector2:
+        {
+            float c[2]; ParseVectorArgs(init, c, 2);
+            glm::vec2 v(c[0], c[1]);
+            field.defaultValue = field.value = v;
+            break;
+        }
+        case ScriptFieldType::Vector3:
+        {
+            float c[3]; ParseVectorArgs(init, c, 3);
+            glm::vec3 v(c[0], c[1], c[2]);
+            field.defaultValue = field.value = v;
+            break;
+        }
+        case ScriptFieldType::Vector4:
+        {
+            float c[4]; ParseVectorArgs(init, c, 4);
+            glm::vec4 v(c[0], c[1], c[2], c[3]);
+            field.defaultValue = field.value = v;
+            break;
+        }
+        }
+    }
+
+    bool IsModifier(const std::string& w)
+    {
+        static const char* mods[] = {
+            "public", "private", "protected", "internal", "static", "readonly",
+            "const", "volatile", "new", "unsafe", "extern", "abstract",
+            "virtual", "override", "sealed", "partial", "event"
+        };
+        for (const char* m : mods) if (w == m) return true;
+        return false;
+    }
+
+    bool IsIdentifier(const std::string& s)
+    {
+        if (s.empty()) return false;
+        if (!(std::isalpha((unsigned char)s[0]) || s[0] == '_')) return false;
+        for (char c : s) if (!(std::isalnum((unsigned char)c) || c == '_')) return false;
+        return true;
+    }
+
+    // Split a declarator list ("a = 1, b = new Vector3(1,2,3), c") on commas
+    // that sit at parenthesis depth 0, so vector initializers stay intact.
+    std::vector<std::string> SplitTopLevelCommas(const std::string& s)
+    {
+        std::vector<std::string> parts;
+        int depth = 0;
+        std::string cur;
+        for (char c : s)
+        {
+            if (c == '(' || c == '[' || c == '<') ++depth;
+            else if (c == ')' || c == ']' || c == '>') { if (depth > 0) --depth; }
+            if (c == ',' && depth == 0) { parts.push_back(cur); cur.clear(); }
+            else cur += c;
+        }
+        if (!Trim(cur).empty()) parts.push_back(cur);
+        return parts;
+    }
+}
+
+void CSharpScriptComponent::ParseFieldDeclaration(const std::string& statement)
+{
+    std::string s = Trim(statement);
+    if (s.empty()) return;
+
+    // Strip and inspect leading attributes: [SerializeField], [HideInInspector].
+    bool hasSerializeField = false, hideInInspector = false;
+    while (!s.empty() && s[0] == '[')
+    {
+        size_t close = s.find(']');
+        if (close == std::string::npos) return;   // malformed
+        std::string attr = s.substr(1, close - 1);
+        if (attr.find("SerializeField") != std::string::npos) hasSerializeField = true;
+        if (attr.find("HideInInspector") != std::string::npos) hideInInspector = true;
+        s = Trim(s.substr(close + 1));
+    }
+    if (hideInInspector) return;
+
+    // A method/indexer/expression-bodied member has '(' or "=>" in its head
+    // (before any '='). A field's only '(' is inside a `new Vector_(...)`
+    // initializer, which is after the '='.
+    size_t posEq = s.find('=');
+    size_t posArrow = s.find("=>");
+    size_t posParen = s.find('(');
+    if (posArrow != std::string::npos) return;
+    if (posParen != std::string::npos && (posEq == std::string::npos || posParen < posEq)) return;
+
+    // Consume leading modifier keywords; remember access/storage class.
+    std::stringstream head(posEq == std::string::npos ? s : s.substr(0, posEq));
+    std::string word, typeName;
+    bool isPublic = false, isStatic = false, isConst = false;
+    std::vector<std::string> headWords;
+    while (head >> word) headWords.push_back(word);
+    if (headWords.empty()) return;
+
+    size_t wi = 0;
+    for (; wi < headWords.size(); ++wi)
+    {
+        const std::string& w = headWords[wi];
+        if (IsModifier(w))
+        {
+            if (w == "public") isPublic = true;
+            else if (w == "static") isStatic = true;
+            else if (w == "const") isConst = true;
+            continue;
+        }
+        break;   // first non-modifier word is the type
+    }
+    if (wi >= headWords.size()) return;
+    typeName = headWords[wi++];
+
+    // Only public fields (or [SerializeField] ones) are editable; never expose
+    // static/const storage.
+    if (isStatic || isConst) return;
+    if (!isPublic && !hasSerializeField) return;
+
+    ScriptFieldType fieldType;
+    if (!MapFieldType(typeName, fieldType)) return;
+
+    // The first declarator name is the remaining head word (if any); the rest
+    // of the statement (after the type) forms the full declarator list.
+    // Rebuild the declarator portion: everything in `s` after the type token.
+    size_t typePos = s.find(typeName);
+    std::string declPart = (typePos == std::string::npos) ? s : s.substr(typePos + typeName.size());
+
+    for (std::string& decl : SplitTopLevelCommas(declPart))
+    {
+        std::string d = Trim(decl);
+        if (d.empty()) continue;
+
+        std::string name, init;
+        size_t eq = d.find('=');
+        if (eq == std::string::npos) name = Trim(d);
+        else { name = Trim(d.substr(0, eq)); init = Trim(d.substr(eq + 1)); }
+
+        if (!IsIdentifier(name)) continue;
+
+        ScriptField field(name, fieldType);
+        AssignDefault(field, init);
+        fields.push_back(field);
+    }
 }
 
 void CSharpScriptComponent::ParseScriptFields()
@@ -157,68 +433,49 @@ void CSharpScriptComponent::ParseScriptFields()
     fields.clear();
     if (scriptPath.empty()) return;
 
-    std::ifstream file(scriptPath);
+    std::ifstream file(scriptPath, std::ios::binary);
     if (!file.is_open()) return;
 
-    std::string line;
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = StripComments(buffer.str());
 
-    std::regex floatRegex("public\\s+float\\s+(\\w+)\\s*=\\s*([0-9.-]+f?)\\s*;");
-    std::regex intRegex("public\\s+int\\s+(\\w+)\\s*=\\s*(-?[0-9]+)\\s*;");
-    std::regex boolRegex("public\\s+bool\\s+(\\w+)\\s*=\\s*(true|false)\\s*;");
-    std::regex stringRegex("public\\s+string\\s+(\\w+)\\s*=\\s*\"([^\"]*)\"\\s*;");
-    std::regex vec2Regex("public\\s+Vector2\\s+(\\w+)\\s*=\\s*new\\s+Vector2\\s*\\(\\s*([0-9.-]+f?)\\s*,\\s*([0-9.-]+f?)\\s*\\)");
-    std::regex vec3Regex("public\\s+Vector3\\s+(\\w+)\\s*=\\s*new\\s+Vector3\\s*\\(\\s*([0-9.-]+f?)\\s*,\\s*([0-9.-]+f?)\\s*,\\s*([0-9.-]+f?)\\s*\\)");
-    std::regex vec4Regex("public\\s+Vector4\\s+(\\w+)\\s*=\\s*new\\s+Vector4\\s*\\(\\s*([0-9.-]+f?)\\s*,\\s*([0-9.-]+f?)\\s*,\\s*([0-9.-]+f?)\\s*,\\s*([0-9.-]+f?)\\s*\\)");
-
-    while (std::getline(file, line))
+    // Walk the source one top-level statement at a time. A statement ends at
+    // ';'. A '{' opens a block: if it follows a field-looking head it's an
+    // auto-property (`{ get; set; }`) or a method body, so we discard the head
+    // and skip the balanced block. This keeps us from misreading properties,
+    // methods, and nested initializers as serializable fields.
+    std::string stmt;
+    int depth = 0;
+    for (size_t i = 0; i < source.size(); ++i)
     {
-        std::smatch match;
+        char c = source[i];
+        if (depth > 0)
+        {
+            if (c == '{') ++depth;
+            else if (c == '}') --depth;
+            continue;   // inside a method/property/initializer block
+        }
 
-        if (std::regex_search(line, match, vec4Regex))
+        if (c == '{')
         {
-            ScriptField field(match[1].str(), ScriptFieldType::Vector4);
-            glm::vec4 val(std::stof(match[2].str()), std::stof(match[3].str()), std::stof(match[4].str()), std::stof(match[5].str()));
-            field.defaultValue = field.value = val;
-            fields.push_back(field);
+            // A '{' at top level: drop the pending head (property/method/type)
+            // and enter block-skipping mode.
+            stmt.clear();
+            ++depth;
         }
-        else if (std::regex_search(line, match, vec3Regex))
+        else if (c == '}')
         {
-            ScriptField field(match[1].str(), ScriptFieldType::Vector3);
-            glm::vec3 val(std::stof(match[2].str()), std::stof(match[3].str()), std::stof(match[4].str()));
-            field.defaultValue = field.value = val;
-            fields.push_back(field);
+            stmt.clear();   // closing a type/namespace brace
         }
-        else if (std::regex_search(line, match, vec2Regex))
+        else if (c == ';')
         {
-            ScriptField field(match[1].str(), ScriptFieldType::Vector2);
-            glm::vec2 val(std::stof(match[2].str()), std::stof(match[3].str()));
-            field.defaultValue = field.value = val;
-            fields.push_back(field);
+            ParseFieldDeclaration(stmt);
+            stmt.clear();
         }
-        else if (std::regex_search(line, match, floatRegex))
+        else
         {
-            ScriptField field(match[1].str(), ScriptFieldType::Float);
-            field.defaultValue = field.value = std::stof(match[2].str());
-            fields.push_back(field);
-        }
-        else if (std::regex_search(line, match, intRegex))
-        {
-            ScriptField field(match[1].str(), ScriptFieldType::Int);
-            field.defaultValue = field.value = std::stoi(match[2].str());
-            fields.push_back(field);
-        }
-        else if (std::regex_search(line, match, boolRegex))
-        {
-            ScriptField field(match[1].str(), ScriptFieldType::Bool);
-            bool val = (match[2].str() == "true");
-            field.defaultValue = field.value = val;
-            fields.push_back(field);
-        }
-        else if (std::regex_search(line, match, stringRegex))
-        {
-            ScriptField field(match[1].str(), ScriptFieldType::String);
-            field.defaultValue = field.value = match[2].str();
-            fields.push_back(field);
+            stmt += c;
         }
     }
 }

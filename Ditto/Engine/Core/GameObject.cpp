@@ -10,12 +10,9 @@
 #include <fstream>
 #include <algorithm>
 
-// Component index definitions
-constexpr int TRANSFORM_INDEX = 1 << 0;
-constexpr int LIGHT_INDEX = 1 << 1;
-constexpr int RENDERER_INDEX = 1 << 2;
-constexpr int RIGIDBODY_INDEX = 1 << 3;
-constexpr int CSHARP_SCRIPT_INDEX = 1 << 10;
+// Component index definitions live in GameObject.h (namespace ComponentIndex)
+// so engine-side code can share them. Local aliases keep the switch below terse.
+namespace CI = ComponentIndex;
 
 static void WriteString(std::ostream& file, const std::string& str)
 {
@@ -258,11 +255,11 @@ void GameObject::Deserialize(std::istream& file)
         Component* newComp = nullptr;
         switch (index)
         {
-        case TRANSFORM_INDEX: newComp = new TransformComponent(); break;
-        case LIGHT_INDEX: newComp = new LightComponent(); break;
-        case RENDERER_INDEX: newComp = new RendererComponent(); break;
-        case RIGIDBODY_INDEX: newComp = new RigidbodyComponent(); break;
-        case CSHARP_SCRIPT_INDEX: newComp = new CSharpScriptComponent(); break;
+        case CI::Transform:    newComp = new TransformComponent(); break;
+        case CI::Light:        newComp = new LightComponent(); break;
+        case CI::Renderer:     newComp = new RendererComponent(); break;
+        case CI::Rigidbody:    newComp = new RigidbodyComponent(); break;
+        case CI::CSharpScript: newComp = new CSharpScriptComponent(); break;
         default: continue;
         }
         if (newComp)
@@ -299,7 +296,7 @@ TransformComponent::TransformComponent()
     lastPosition(0.0f), lastRotation(0.0f), lastScale(1.0f),
     localDirty(true), worldDirty(true)
 {
-    index = 1 << 0;
+    index = CI::Transform;
     UpdateTransform();
 }
 
@@ -308,7 +305,7 @@ TransformComponent::TransformComponent(TransformComponent* other)
     lastPosition(other->lastPosition), lastRotation(other->lastRotation), lastScale(other->lastScale),
     localDirty(true), worldDirty(true)
 {
-    index = 1 << 0;
+    index = CI::Transform;
     UpdateTransform();
 }
 
@@ -417,8 +414,8 @@ void TransformComponent::Deserialize(std::istream& file)
     UpdateTransform();
 }
 
-LightComponent::LightComponent() : color(1.0f), intensity(1.0f) { index = 1 << 1; }
-LightComponent::LightComponent(LightComponent* other) : color(other->color), intensity(other->intensity) { index = 1 << 1; }
+LightComponent::LightComponent() : color(1.0f), intensity(1.0f) { index = CI::Light; }
+LightComponent::LightComponent(LightComponent* other) : color(other->color), intensity(other->intensity) { index = CI::Light; }
 void LightComponent::OnInspectorGUI()
 {
     ImGui::Checkbox("##Enabled", &enabled);
@@ -447,8 +444,8 @@ void LightComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&intensity), sizeof(intensity));
 }
 
-RendererComponent::RendererComponent(Type _type) : type(_type), color(1.0f, 1.0f, 1.0f, 1.0f) { index = 1 << 2; }
-RendererComponent::RendererComponent(RendererComponent* other) : type(other->type), color(other->color) { index = 1 << 2; }
+RendererComponent::RendererComponent(Type _type) : type(_type), color(1.0f, 1.0f, 1.0f, 1.0f) { index = CI::Renderer; }
+RendererComponent::RendererComponent(RendererComponent* other) : type(other->type), color(other->color) { index = CI::Renderer; }
 void RendererComponent::OnInspectorGUI()
 {
     ImGui::Checkbox("##Enabled", &enabled);
@@ -486,12 +483,12 @@ void RendererComponent::Deserialize(std::istream& file)
 RigidbodyComponent::RigidbodyComponent()
     : type(Dynamic), mass(1.0f), useGravity(true), damp(0.05f), angularDamp(0.05f),
     velocity(0.0f), angularVelocity(0.0f) {
-    index = 1 << 3;
+    index = CI::Rigidbody;
 }
 RigidbodyComponent::RigidbodyComponent(RigidbodyComponent* other)
     : type(other->type), mass(other->mass), useGravity(other->useGravity),
     damp(0.05f), angularDamp(0.05f), velocity(0.0f), angularVelocity(0.0f) {
-    index = 1 << 3;
+    index = CI::Rigidbody;
 }
 void RigidbodyComponent::OnInspectorGUI()
 {
@@ -501,10 +498,10 @@ void RigidbodyComponent::OnInspectorGUI()
     if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
-    const char* typeNames[] = { "Static", "Dynamic" };
+    const char* typeNames[] = { "Static", "Dynamic", "Kinematic" };
     int currentType = static_cast<int>(type);
     ImGui::Text("Type"); ImGui::SameLine();
-    if (ImGui::Combo("##Type", &currentType, typeNames, 2))
+    if (ImGui::Combo("##Type", &currentType, typeNames, 3))
         type = static_cast<Type>(currentType);
     TrackUndoableEdit();
     if (type == Dynamic)

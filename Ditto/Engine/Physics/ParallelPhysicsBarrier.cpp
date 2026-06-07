@@ -15,7 +15,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
     t = fmod(t, deltaTime);
 
     for (int step = 0; step < steps; ++step) {
-        // Çå¿ÕÈ«¾ÖÈÝÆ÷
+        // ï¿½ï¿½ï¿½È«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         collisionData.clear();
         colliderPairs.clear();
 
@@ -25,14 +25,14 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
         size_t numThreads = threadPool.workers.size();
         if (numThreads == 0) numThreads = 1;
 
-        // C++20 ÆÁÕÏ£¬ÓÃÓÚÏß³Ì¼äÍ¬²½
+        // C++20 ï¿½ï¿½ï¿½Ï£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì¼ï¿½Í¬ï¿½ï¿½
         std::barrier sync(numThreads);
 
         std::atomic<size_t> tasksRemaining(numThreads);
         std::mutex cvMutex;
         std::condition_variable cv;
 
-        // Ïß³Ì¾Ö²¿´æ´¢£º¹ãÏàÅö×²¶Ô ºÍ Õ­ÏàÅö×²Êý¾Ý
+        // ï¿½ß³Ì¾Ö²ï¿½ï¿½æ´¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×²ï¿½ï¿½ ï¿½ï¿½ Õ­ï¿½ï¿½ï¿½ï¿½×²ï¿½ï¿½ï¿½ï¿½
         std::vector<std::vector<std::pair<Collider*, Collider*>>> threadLocalPairs(numThreads);
         std::vector<std::vector<CollisionData>> threadLocalCollisionData(numThreads);
 
@@ -43,7 +43,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                     size_t start = tid * n / numThreads;
                     size_t end = (tid + 1) * n / numThreads;
 
-                    // ---------- ½×¶Î1: »ý·ÖÁ¦ ----------
+                    // ---------- ï¿½×¶ï¿½1: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ----------
                     for (size_t i = start; i < end; ++i) {
                         Collider* collider = colliders[i];
                         if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
@@ -61,18 +61,23 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                             transform->localDirty = true;
                             collider->isDirty = true;
                         }
+                        else if (collider->rigidbody->type == RigidbodyComponent::Kinematic) {
+                            // Hierarchy-driven, not integrated: refresh AABB each
+                            // step so it broad-phases at its current world pose.
+                            collider->isDirty = true;
+                        }
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ½×¶Î2: ¸üÐÂBVHÊ÷£¨ÓÉÏß³Ì0Ö´ÐÐ£©----------
+                    // ---------- ï¿½×¶ï¿½2: ï¿½ï¿½ï¿½ï¿½BVHï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³ï¿½0Ö´ï¿½Ð£ï¿½----------
                     if (tid == 0 && bvhTree) {
                         bvhTree->UpdateBVHTree();
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ½×¶Î3: ¹ãÏàÅö×²¼ì²â ----------
+                    // ---------- ï¿½×¶ï¿½3: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×²ï¿½ï¿½ï¿½ ----------
                     if (bvhTree) {
-                        // ÊÕ¼¯ËùÓÐ¶¯Ì¬ÎïÌåµÄË÷Òý
+                        // ï¿½Õ¼ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                         std::vector<size_t> dynamicIndices;
                         for (size_t i = 0; i < colliders.size(); ++i) {
                             if (colliders[i]->rigidbody->type == RigidbodyComponent::Dynamic)
@@ -89,10 +94,9 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                                 std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
                                 for (Collider* other : potential) {
                                     if (other == collider) continue;
-                                    if (other->rigidbody->type != RigidbodyComponent::Dynamic &&
-                                        other->rigidbody->type != RigidbodyComponent::Static)
-                                        continue;
-                                    // ±£³ÖË³ÐòÒÔ±ãºóÐøÈ¥ÖØ
+                                    // Static/Dynamic/Kinematic are all valid
+                                    // partners for a Dynamic body.
+                                    // Normalize order so duplicates dedupe.
                                     if (collider < other)
                                         local.emplace_back(collider, other);
                                     else
@@ -103,7 +107,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ºÏ²¢¹ãÏàÅö×²¶Ô£¨Ïß³Ì0£©----------
+                    // ---------- ï¿½Ï²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×²ï¿½Ô£ï¿½ï¿½ß³ï¿½0ï¿½ï¿½----------
                     if (tid == 0) {
                         std::vector<std::pair<Collider*, Collider*>> allPairs;
                         for (auto& local : threadLocalPairs) {
@@ -115,7 +119,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ½×¶Î4: Õ­ÏàÅö×²¼ì²â ----------
+                    // ---------- ï¿½×¶ï¿½4: Õ­ï¿½ï¿½ï¿½ï¿½×²ï¿½ï¿½ï¿½ ----------
                     size_t numPairs = colliderPairs.size();
                     if (numPairs > 0) {
                         size_t pairStart = tid * numPairs / numThreads;
@@ -131,7 +135,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ºÏ²¢Õ­ÏàÅö×²Êý¾Ý£¨Ïß³Ì0£©----------
+                    // ---------- ï¿½Ï²ï¿½Õ­ï¿½ï¿½ï¿½ï¿½×²ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ß³ï¿½0ï¿½ï¿½----------
                     if (tid == 0) {
                         collisionData.clear();
                         for (auto& local : threadLocalCollisionData) {
@@ -140,13 +144,13 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ½×¶Î5: ¹¹½¨Åö×²×é£¨´®ÐÐ£¬ÓÉÏß³Ì0Ö´ÐÐ£©----------
+                    // ---------- ï¿½×¶ï¿½5: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×²ï¿½é£¨ï¿½ï¿½ï¿½Ð£ï¿½ï¿½ï¿½ï¿½ß³ï¿½0Ö´ï¿½Ð£ï¿½----------
                     if (tid == 0) {
                         BuildCollisionGroups();
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ½×¶Î6: Çó½âÅö×²£¨¶à´Îµü´ú£©----------
+                    // ---------- ï¿½×¶ï¿½6: ï¿½ï¿½ï¿½ï¿½ï¿½×²ï¿½ï¿½ï¿½ï¿½Îµï¿½ï¿½ï¿½ï¿½ï¿½----------
                     for (int iter = 0; iter < iterations; ++iter) {
                         size_t numGroups = collisionGroups.size();
                         if (numGroups > 0) {
@@ -166,7 +170,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                         sync.arrive_and_wait();
                     }
 
-                    // ---------- ½×¶Î7: Ó¦ÓÃÎ»ÖÃÐÞÕý ----------
+                    // ---------- ï¿½×¶ï¿½7: Ó¦ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ----------
                     size_t numGroups = collisionGroups.size();
                     if (numGroups > 0) {
                         size_t groupStart = tid * numGroups / numThreads;
@@ -196,12 +200,12 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                     }
                     sync.arrive_and_wait();
 
-                    // ---------- ×îºó¸üÐÂËùÓÐ Transform ----------
+                    // ---------- ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Transform ----------
                     for (size_t i = start; i < end; ++i) {
                         colliders[i]->transform->UpdateTransform();
                     }
 
-                    // Í¨ÖªÖ÷Ïß³Ì±¾ÈÎÎñÍê³É
+                    // Í¨Öªï¿½ï¿½ï¿½ß³Ì±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                     if (--tasksRemaining == 0) {
                         std::lock_guard<std::mutex> lock(cvMutex);
                         cv.notify_one();
@@ -209,7 +213,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                 });
         }
 
-        // µÈ´ýËùÓÐÈÎÎñÍê³É
+        // ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         std::unique_lock<std::mutex> lock(cvMutex);
         cv.wait(lock, [&tasksRemaining] { return tasksRemaining == 0; });
     }

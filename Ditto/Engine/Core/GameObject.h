@@ -12,6 +12,21 @@ struct Editor;  // Forward declaration
 // Global Editor pointer (for GameObject to access Editor functionality)
 extern Editor* g_editor;
 
+// Component type identifiers. Each component carries one of these in its
+// `index` field; `GameObject::compMask` is the bitwise-OR of the indices of
+// the components it owns. Kept as distinct bit flags so a mask can answer
+// "does this object have component X?" with a single AND. These are the single
+// source of truth shared by component constructors, scene (de)serialization,
+// and engine-side iteration -- do not hardcode the raw `1 << n` values.
+namespace ComponentIndex
+{
+    constexpr int Transform    = 1 << 0;
+    constexpr int Light        = 1 << 1;
+    constexpr int Renderer     = 1 << 2;
+    constexpr int Rigidbody    = 1 << 3;
+    constexpr int CSharpScript = 1 << 10;
+}
+
 struct Component
 {
     bool enabled = true;
@@ -131,7 +146,18 @@ struct RendererComponent : Component
 
 struct RigidbodyComponent : Component
 {
-    enum Type { Static, Dynamic };
+    // Static    : never moves, infinite mass (level geometry).
+    // Dynamic   : fully simulated -- receives gravity/impulses, its world pose
+    //             is owned by the solver and is NOT driven by the Transform
+    //             hierarchy (so a Dynamic child does not follow a moving parent).
+    // Kinematic : infinite mass like Static, but its pose IS driven by the
+    //             Transform/script/parent hierarchy. It pushes Dynamic bodies
+    //             (moving platforms, parent-driven children) without being
+    //             pushed back, and is not affected by gravity. This is the type
+    //             to use for "child follows the parent" without double gravity.
+    // NOTE: enum values are serialized as int32; only append new values at the
+    // end to keep old scene files loading correctly (Static=0, Dynamic=1).
+    enum Type { Static, Dynamic, Kinematic };
     Type type;
     float mass;
     bool useGravity;

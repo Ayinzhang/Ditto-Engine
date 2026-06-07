@@ -41,6 +41,15 @@ struct CSharpScriptComponent : Component
 
     void ParseScriptFields();
 
+private:
+    // Parse a single ';'-terminated declaration statement (comments already
+    // stripped) and append any serializable fields it declares. Public by
+    // default; also picks up [SerializeField] members and honors
+    // [HideInInspector]. No-op for non-field statements (using, methods, etc.).
+    void ParseFieldDeclaration(const std::string& statement);
+
+public:
+
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;
 
@@ -53,6 +62,20 @@ struct CSharpScriptComponent : Component
     bool ShouldReload();
     void HotReloadScript();
 };
+
+// Visit every CSharpScriptComponent on `obj` (does not recurse into children).
+// Centralizes the `index == ComponentIndex::CSharpScript` check + cast that was
+// previously copy-pasted across the engine's play/stop/reload loops.
+template<typename Func>
+inline void ForEachScriptComponent(GameObject* obj, Func&& func)
+{
+    if (!obj) return;
+    for (Component* comp : obj->components)
+    {
+        if (comp->index == ComponentIndex::CSharpScript)
+            func(static_cast<CSharpScriptComponent*>(comp));
+    }
+}
 
 // ==================== C# Script System ====================
 typedef void (*LogCallback)(const std::string& message);

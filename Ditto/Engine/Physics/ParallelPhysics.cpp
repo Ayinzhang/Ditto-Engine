@@ -55,6 +55,13 @@ void ParallelPhysics::IntegrateForce(float dt) {
             transform->localDirty = true;
             collider->isDirty = true;
         }
+        else if (collider->rigidbody->type == RigidbodyComponent::Kinematic) {
+            // Kinematic bodies are driven by the Transform hierarchy (script or
+            // parent), never integrated -- so no gravity, no double-counting.
+            // Force an AABB refresh each step so a moving platform / parent-
+            // following child is broad-phased at its current world pose.
+            collider->isDirty = true;
+        }
         });
 }
 
@@ -85,9 +92,9 @@ void ParallelPhysics::HandleBroadCollisions() {
             std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
             for (Collider* other : potential) {
                 if (other == collider) continue;
-                if (other->rigidbody->type != RigidbodyComponent::Dynamic &&
-                    other->rigidbody->type != RigidbodyComponent::Static)
-                    continue;
+                // All body types are valid partners for a Dynamic body: Static
+                // and Kinematic both act as infinite-mass obstacles (Kinematic
+                // additionally moves and pushes this Dynamic body).
                 if (collider < other)
                     local.emplace_back(collider, other);
                 else

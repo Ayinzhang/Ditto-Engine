@@ -247,7 +247,10 @@ namespace DittoEngine
     // Rigidbody 组件
     public class Rigidbody
     {
-        public enum BodyType { Static, Dynamic }
+        // Must match RigidbodyComponent::Type on the native side (values are
+        // passed as ints across the interop boundary). Kinematic = follows the
+        // Transform/parent, infinite mass, no gravity.
+        public enum BodyType { Static, Dynamic, Kinematic }
         
         private IntPtr _nativeRigidbody;
         

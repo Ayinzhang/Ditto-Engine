@@ -71,7 +71,15 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>&
         collider->transform = transform;
         collider->rigidbody = rigidbody;
 
-        if (parentIsDynamic) collider->rigidbody->type = RigidbodyComponent::Static;
+        // A Dynamic body nested under another Dynamic body would double-count
+        // gravity: its world pose is parentWorld * localPose, so the parent's
+        // fall is inherited through the hierarchy and then integrated again
+        // locally. Demote such a child to Kinematic -- it then follows the
+        // parent rigidly (Kinematic refreshes its AABB every step) without
+        // being independently simulated. Set a body to Kinematic yourself to
+        // get this "follow the parent" behavior on purpose.
+        if (parentIsDynamic && collider->rigidbody->type == RigidbodyComponent::Dynamic)
+            collider->rigidbody->type = RigidbodyComponent::Kinematic;
 
         switch (renderer->type)
         {
@@ -107,6 +115,12 @@ void Physics::IntegrateForce(float dt)
 
             transform->localDirty = true; collider->isDirty = true;
         }
+        else if (collider->rigidbody->type == RigidbodyComponent::Kinematic)
+        {
+            // Driven by the Transform hierarchy (script/parent), not integrated.
+            // Refresh the AABB each step so it broad-phases at its current pose.
+            collider->isDirty = true;
+        }
     }
 }
 
@@ -130,9 +144,10 @@ void Physics::HandleBroadCollisions()
                         alreadyExists = true; break;
                     }
 
+                // Static/Dynamic/Kinematic are all valid partners for a Dynamic
+                // body (Static & Kinematic are infinite-mass obstacles).
                 if (!alreadyExists)
-                    if (other->rigidbody->type == RigidbodyComponent::Dynamic || other->rigidbody->type == RigidbodyComponent::Static)
-                        colliderPairs.push_back({ collider, other });
+                    colliderPairs.push_back({ collider, other });
             }
         }
     }

@@ -413,6 +413,9 @@ void ComputePhysics::UploadColliderData() {
         rbGPU[i].velocity = glm::vec4(rb->velocity, 0);
         rbGPU[i].angularVelocity = glm::vec4(rb->angularVelocity, 0);
         rbGPU[i].invInertiaLocal = rb->inverseInertia; // �����Ѽ���
+        // GPU path: 1 = Dynamic (integrated), 0 = non-integrated. Kinematic maps
+        // to 0 here (infinite-mass obstacle); hierarchy-driven Kinematic motion
+        // is a CPU-path feature and is not yet modeled on the GPU solver.
         rbGPU[i].type = (rb->type == RigidbodyComponent::Dynamic) ? 1 : 0;
         rbGPU[i].mass = rb->mass;
         rbGPU[i].linearDamping = linearDamping;   // ʹ��ȫ��ֵ��Ҳ�ɴ� rb ��ȡ
