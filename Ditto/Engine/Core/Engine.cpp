@@ -1,6 +1,7 @@
 #include "Engine.h"
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <functional>
 #include <filesystem>
@@ -11,6 +12,7 @@
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "CSharpScript.h"
 #include "PathUtils.h"
+#include "../Graphics/RHI/GLRenderer.h"
 
 using namespace std;
 using namespace glm;
@@ -35,6 +37,15 @@ static std::string FindShaderPathInDir(const std::string& baseDir, const std::st
         std::cerr << "[Engine] Warning: Shader not found: " << shaderName
                   << " (looked at " << resolved.string() << ")" << std::endl;
     return resolved.string();
+}
+
+// Read a text file (shader source) into a string.
+static std::string ReadTextFile(const std::string& path)
+{
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    std::stringstream ss;
+    ss << file.rdbuf();
+    return ss.str();
 }
 
 template<typename Func>
@@ -79,6 +90,9 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw runtime_error("Failed to initialize GLAD");
 
+    // RHI must be created after a current GL context exists (post-GLAD).
+    renderer = std::make_unique<Ditto::GLRenderer>();
+
     resource = std::make_unique<Resource>();
     scene = new Scene();
     sceneCamera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
@@ -90,7 +104,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         ? FindShaderPath("Vertex.glsl") : FindShaderPathInDir(shaderBaseDir, "Vertex.glsl");
     std::string fragmentPath = shaderBaseDir.empty()
         ? FindShaderPath("Fragment.glsl") : FindShaderPathInDir(shaderBaseDir, "Fragment.glsl");
-    shader = std::make_unique<Shader>(vertexPath.c_str(), fragmentPath.c_str());
+    shaderPipeline = renderer->CreatePipeline(ReadTextFile(vertexPath), ReadTextFile(fragmentPath));
 
     if (createEditor)
     {
@@ -100,7 +114,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     physics = std::make_unique<ParallelPhysics>(); physics->engine = this;
 
-    scene->InitializeBaseGeometries(resource.get());
+    scene->InitializeBaseGeometries(resource.get(), renderer.get());
     CSharpScriptSystem::Initialize();
 }
 
@@ -134,6 +148,12 @@ Engine::~Engine()
     // (resource, shader, physics) release automatically afterwards.
     if (editor) delete editor;
     if (sceneCamera) delete sceneCamera; if (gameCamera) delete gameCamera; if (scene) delete scene;
+
+    // Release the renderer (owns all GL objects: pipelines, meshes, buffers,
+    // textures) while the context is STILL current, before tearing down the
+    // window. The Scene/editor were deleted above and freed their handles first.
+    renderer.reset();
+
     if (window) glfwDestroyWindow(window); glfwTerminate();
 }
 
@@ -185,22 +205,19 @@ void Engine::Run()
 
         glfwGetFramebufferSize(window, &window_width, &window_height);
         if (window_width <= 0 || window_height <= 0) continue;
-        glViewport(0, 0, window_width, window_height);
-
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        renderer->SetViewport(0, 0, window_width, window_height);
+        renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
 
         if (gameMode)
         {
-            glEnable(GL_DEPTH_TEST);
-            glDepthFunc(GL_LESS);
-            
+            renderer->SetDepthState(true);
+
             mat4 view = gameCamera->GetViewMatrix();
             mat4 projection = perspective(radians(45.0f), (float)window_width / (float)window_height, 0.1f, 100.0f);
             
-            if (scene && shader)
+            if (scene && shaderPipeline)
             {
-                scene->Render(shader.get(), view, projection, gameCamera->position, window_width, window_height);
+                scene->Render(shaderPipeline, view, projection, gameCamera->position, window_width, window_height);
             }
         }
         else
@@ -222,23 +239,19 @@ void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
     int w = (int)(viewport.Max.x - viewport.Min.x);
     int h = (int)(viewport.Max.y - viewport.Min.y);
     
-    glViewport(x, y, w, h);
-    glScissor(x, y, w, h);
-    glEnable(GL_SCISSOR_TEST);
-    
-    glClear(GL_DEPTH_BUFFER_BIT);
-
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
+    renderer->SetViewport(x, y, w, h);
+    renderer->SetScissor(true, x, y, w, h);
+    renderer->Clear(Ditto::ClearDepth, glm::vec4(0.0f));
+    renderer->SetBlendState(false);
+    renderer->SetDepthState(true);
 
     Camera* cam = isGameView ? gameCamera : sceneCamera;
     mat4 view = cam->GetViewMatrix();
     mat4 projection = perspective(radians(45.0f), (float)w / (float)h, 0.1f, 100.0f);
 
-    scene->Render(shader.get(), view, projection, cam->position, w, h);
+    scene->Render(shaderPipeline, view, projection, cam->position, w, h);
 
-    glDisable(GL_SCISSOR_TEST);
+    renderer->SetScissor(false);
 }
 
 void Engine::ProcessInput()

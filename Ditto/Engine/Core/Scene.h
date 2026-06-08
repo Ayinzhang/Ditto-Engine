@@ -5,17 +5,15 @@
 #include <functional>
 #include "GameObject.h"
 #include "../Physics/Physics.h"
+#include "../Graphics/RHI/IRenderer.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
-#include "../../3rdParty/GLAD/glad.h"
 
-class Shader;
 class Resource;
 
 struct BaseGeometry
 {
-    GLuint VAO = 0, VBO = 0, EBO = 0;
-    uint32_t vertexCount = 0, indexCount = 0;
+    Ditto::MeshHandle mesh;   // owned by the renderer; freed via Scene's renderer
 };
 
 struct GeometryInstances
@@ -23,11 +21,12 @@ struct GeometryInstances
     RendererComponent::Type type;
     std::vector<glm::mat4> modelMatrices;
     std::vector<glm::vec4> instanceColors;
-    GLuint modelSSBO = 0, colorSSBO = 0;
+    Ditto::StorageBufferHandle modelSBO, colorSBO;   // owned by the renderer
     size_t instanceCount = 0;
 
     GeometryInstances(RendererComponent::Type t) : type(t) {}
-    ~GeometryInstances();
+    // No GL teardown here: the Scene destroys these storage buffers via its
+    // renderer (GeometryInstances has no renderer pointer).
 };
 
 struct Scene
@@ -52,6 +51,9 @@ struct Scene
     std::unordered_map<std::string, GeometryInstances*> customBatches;
 
     Resource* resource = nullptr;
+    // Non-owning RHI pointer (owned by Engine). Set in InitializeBaseGeometries.
+    // Used for all GPU resource creation/draw/teardown.
+    Ditto::IRenderer* renderer = nullptr;
 
     std::function<void()> onModified;
 
@@ -74,10 +76,10 @@ struct Scene
 
     void CollectRenderData();
     void UpdateSSBOs();
-    void Render(Shader* shader, const glm::mat4& view, const glm::mat4& projection,
+    void Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
         const glm::vec3& viewPos, int viewportWidth, int viewportHeight);
 
-    void InitializeBaseGeometries(Resource* resource);
+    void InitializeBaseGeometries(Resource* resource, Ditto::IRenderer* rhi);
 
     // Lazily load + GPU-upload a custom mesh (project-relative .obj) and create
     // its instance batch. No-op if already built or the path is empty.

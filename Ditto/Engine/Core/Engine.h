@@ -3,7 +3,7 @@
 #include <memory>
 #include "Scene.h"
 #include "../../Editor/Editor.h"
-#include "../../Engine/Graphics/Shader.h"
+#include "../../Engine/Graphics/RHI/IRenderer.h"
 #include "../../Engine/Graphics/Camera.h"
 #include "../Physics/ParallelPhysics.h"
 #include "../../Engine/Resources/Resource.h"
@@ -30,8 +30,11 @@ struct Engine
     bool enableMouse;
     float keySpeed, mouseSpeed;
     double lastX, lastY;
-    std::unique_ptr<Shader> shader;
     std::unique_ptr<Physics> physics;
+    // RHI: all rendering goes through this. GLRenderer today; a Vulkan backend
+    // can replace it without touching engine/editor code.
+    std::unique_ptr<Ditto::IRenderer> renderer;
+    Ditto::PipelineHandle shaderPipeline;   // main scene pipeline (owned by renderer)
     std::string gameProjectPath;
     std::string startupSceneName;
     bool gameMode = false;

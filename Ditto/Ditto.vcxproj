@@ -340,7 +340,8 @@
     <ClInclude Include="Engine\Core\Scene.h" />
     <ClInclude Include="Engine\Core\ScriptFileWatcher.h" />
     <ClInclude Include="Engine\Graphics\Camera.h" />
-    <ClInclude Include="Engine\Graphics\Shader.h" />
+    <ClInclude Include="Engine\Graphics\RHI\IRenderer.h" />
+    <ClInclude Include="Engine\Graphics\RHI\GLRenderer.h" />
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
     <ClInclude Include="Engine\Physics\ComputePhysics.h" />
     <ClInclude Include="Engine\Physics\GJK.h" />
@@ -530,7 +531,7 @@
     <ClCompile Include="Engine\Core\Scene.cpp" />
     <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp" />
     <ClCompile Include="Engine\Graphics\Camera.cpp" />
-    <ClCompile Include="Engine\Graphics\Shader.cpp" />
+    <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp" />
     <ClCompile Include="Engine\Main.cpp" />
     <ClCompile Include="Engine\Physics\CollisionShape.cpp" />
     <ClCompile Include="Engine\Physics\ComputePhysics.cpp" />

@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "../3rdParty/GLM/glm.hpp"
+#include "../Engine/Graphics/RHI/IRenderer.h"
 // 前向声明
 struct Editor;
 struct Camera;
@@ -26,21 +27,18 @@ private:
     Editor* m_editor = nullptr;
     struct GameObject* m_currentObject = nullptr;  // 当前 Inspector 显示的物体
 
-    // 模型预览相关成员变量
-    unsigned int m_previewFBO = 0;
-    unsigned int m_previewRBO = 0;
-    unsigned int m_previewTexture = 0;
+    // 模型预览相关成员变量（渲染走 RHI；句柄由 Engine 的 renderer 拥有）
+    Ditto::RenderTargetHandle m_previewRT;
+    Ditto::PipelineHandle m_previewPipeline;
     int m_previewWidth = 256;
     int m_previewHeight = 256;
     bool m_previewInitialized = false;
     bool m_modelInitialized = false;
     Camera* m_previewCamera = nullptr;
-    unsigned int m_previewProgram = 0;
 
     struct PreviewModel {
-        unsigned int VAO = 0, VBO = 0, EBO = 0;
+        Ditto::MeshHandle mesh;
         int vertexCount = 0;
-        int indexCount = 0;
         glm::vec3 center = glm::vec3(0);
         float radius = 1.0f;
     };

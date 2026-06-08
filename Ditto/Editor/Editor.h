@@ -5,6 +5,7 @@
 #include "ProjectWindow.h"
 #include "InspectorWindow.h"
 #include "BuildSystem.h"
+#include "../Engine/Graphics/RHI/IRenderer.h"
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/ImGui/imgui.h"
 #include "../Engine/Core/CSharpScript.h"
@@ -130,37 +131,40 @@ struct Editor
     // File icon related
     void InitFileIcons();
     void CleanupFileIcons();
-    unsigned int GetIconByExtension(const std::string& extension);
-    unsigned int GetFolderIcon() { return m_folderIcon; }
-    unsigned int GetFolderEmptyIcon() { return m_folderEmptyIcon; }
-    unsigned int GetFolderOpenedIcon() { return m_folderOpenedIcon; }
-    unsigned int GetDittoIcon() { return m_dittoIcon; }
-    unsigned int GetGameObjectIcon() { return m_gameObjectIcon; }
-    unsigned int GetLockIcon() { return m_lockIcon; }
-    unsigned int GetUnlockIcon() { return m_unlockIcon; }
-    unsigned int GetPlayIcon() { return m_playIcon; }
-    unsigned int GetPauseIcon() { return m_pauseIcon; }
+    // Icon getters return an ImGui texture id (backend-specific void*), resolved
+    // from a stored RHI TextureHandle. Out-of-line because they need engine->renderer.
+    void* GetIconByExtension(const std::string& extension);
+    void* GetFolderIcon();
+    void* GetFolderEmptyIcon();
+    void* GetFolderOpenedIcon();
+    void* GetDittoIcon();
+    void* GetGameObjectIcon();
+    void* GetLockIcon();
+    void* GetUnlockIcon();
+    void* GetPlayIcon();
+    void* GetPauseIcon();
     // m_stopIcon reserved for a future Stop.png asset; not currently used in the toolbar.
-    unsigned int GetStopIcon() { return m_stopIcon; }
+    void* GetStopIcon();
 
 private:
-    // File icons
-    unsigned int m_icons[7] = {0};  // 0:Default, 1:Cpp, 2:Prefab, 3:Text, 4:Shader, 5:Scene, 6:Folder
-    unsigned int m_folderIcon = 0;
-    unsigned int m_folderEmptyIcon = 0;
-    unsigned int m_folderOpenedIcon = 0;
-    unsigned int m_dittoIcon = 0;
-    unsigned int m_gameObjectIcon = 0;
-    unsigned int m_lockIcon = 0;
-    unsigned int m_unlockIcon = 0;
-    unsigned int m_playIcon = 0;
-    unsigned int m_pauseIcon = 0;
-    unsigned int m_stopIcon = 0;
+    // File icons (RHI texture handles; GPU textures owned by engine->renderer).
+    Ditto::TextureHandle m_icons[7];  // 0:Default, 1:Cpp, 2:Prefab, 3:Text, 4:Shader, 5:Scene, 6:Folder
+    Ditto::TextureHandle m_folderIcon;
+    Ditto::TextureHandle m_folderEmptyIcon;
+    Ditto::TextureHandle m_folderOpenedIcon;
+    Ditto::TextureHandle m_dittoIcon;
+    Ditto::TextureHandle m_gameObjectIcon;
+    Ditto::TextureHandle m_lockIcon;
+    Ditto::TextureHandle m_unlockIcon;
+    Ditto::TextureHandle m_playIcon;
+    Ditto::TextureHandle m_pauseIcon;
+    Ditto::TextureHandle m_stopIcon;
     bool m_fileIconsInitialized = false;
     std::string m_assetsPath;
-    
-    // Load single icon
-    unsigned int LoadIcon(const std::string& iconPath);
+
+    // Load single icon into an RHI texture; resolve a handle to an ImGui id.
+    Ditto::TextureHandle LoadIcon(const std::string& iconPath);
+    void* IconTexID(Ditto::TextureHandle h);
     int GetIconIndex(const std::string& ext);
 
     // Window components

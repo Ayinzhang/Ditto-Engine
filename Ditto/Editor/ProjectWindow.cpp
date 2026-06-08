@@ -135,7 +135,7 @@ void ProjectWindow::Draw()
                             ImGui::PopStyleVar();
                             
                             // Icon
-                            unsigned int folderIcon = 0;
+                            void* folderIcon = nullptr;
                             if (m_editor) {
                                 folderIcon = isOpen ? m_editor->GetFolderOpenedIcon() : m_editor->GetFolderIcon();
                             }
@@ -178,7 +178,7 @@ void ProjectWindow::Draw()
                             // No sub-folders but has files: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
-                            unsigned int folderIcon = 0;
+                            void* folderIcon = nullptr;
                             if (m_editor) {
                                 folderIcon = m_editor->GetFolderIcon();
                             }
@@ -215,7 +215,7 @@ void ProjectWindow::Draw()
                             // Empty folder: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
-                            unsigned int folderIcon = 0;
+                            void* folderIcon = nullptr;
                             if (m_editor) {
                                 folderIcon = m_editor->GetFolderEmptyIcon();
                             }
@@ -346,7 +346,7 @@ void ProjectWindow::Draw()
                     ImVec2 cursorPos = ImGui::GetCursorPos();
                     ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
 
-                    unsigned int folderIcon = m_editor ? m_editor->GetFolderIcon() : 0;
+                    void* folderIcon = m_editor ? m_editor->GetFolderIcon() : nullptr;
                     if (folderIcon) {
                         ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(40, 40), ImVec2(0, 1), ImVec2(1, 0));
                     } else {
@@ -402,7 +402,7 @@ void ProjectWindow::Draw()
                     ImVec2 cursorPos = ImGui::GetCursorPos();
                     ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
 
-                    unsigned int iconTexture = m_editor ? m_editor->GetIconByExtension(ext) : 0;
+                    void* iconTexture = m_editor ? m_editor->GetIconByExtension(ext) : nullptr;
                     if (iconTexture) {
                         ImGui::Image((void*)(intptr_t)iconTexture, ImVec2(40, 40), ImVec2(0, 1), ImVec2(1, 0));
                     } else {

@@ -178,7 +178,7 @@ void GameObject::OnInspectorGUI()
     extern Editor* g_editor;
     if (g_editor)
     {
-        unsigned int lockIcon = locked ? g_editor->GetLockIcon() : g_editor->GetUnlockIcon();
+        void* lockIcon = locked ? g_editor->GetLockIcon() : g_editor->GetUnlockIcon();
         if (lockIcon)
         {
             float btnSize = 16.0f;

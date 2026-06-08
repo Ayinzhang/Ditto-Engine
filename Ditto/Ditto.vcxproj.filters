@@ -993,7 +993,10 @@
     <ClInclude Include="Engine\Graphics\Camera.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Graphics\Shader.h">
+    <ClInclude Include="Engine\Graphics\RHI\IRenderer.h">
+      <Filter>头文件\Engine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Graphics\RHI\GLRenderer.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Core\GameObject.h">
@@ -1557,7 +1560,7 @@
     <ClCompile Include="Engine\Graphics\Camera.cpp">
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Graphics\Shader.cpp">
+    <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp">
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Core\GameObject.cpp">

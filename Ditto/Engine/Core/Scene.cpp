@@ -1,6 +1,5 @@
 #include "Scene.h"
 #include "../../Engine/Resources/Resource.h"
-#include "../../Engine/Graphics/Shader.h"
 #include "PathUtils.h"
 #include <iostream>
 #include <fstream>
@@ -36,26 +35,26 @@ Scene::Scene()
 Scene::~Scene()
 {
     DestroyAllObjects();
-    for (auto& pair : geometryBatches) delete pair.second;
-    for (auto& pair : baseGeometries)
-    {
-        if (pair.second.VAO) glDeleteVertexArrays(1, &pair.second.VAO);
-        if (pair.second.VBO) glDeleteBuffers(1, &pair.second.VBO);
-        if (pair.second.EBO) glDeleteBuffers(1, &pair.second.EBO);
-    }
-    for (auto& pair : customBatches) delete pair.second;
-    for (auto& pair : customGeometries)
-    {
-        if (pair.second.VAO) glDeleteVertexArrays(1, &pair.second.VAO);
-        if (pair.second.VBO) glDeleteBuffers(1, &pair.second.VBO);
-        if (pair.second.EBO) glDeleteBuffers(1, &pair.second.EBO);
-    }
-}
 
-GeometryInstances::~GeometryInstances()
-{
-    if (modelSSBO) glDeleteBuffers(1, &modelSSBO);
-    if (colorSSBO) glDeleteBuffers(1, &colorSSBO);
+    // Release all GPU resources through the renderer (sole owner). The renderer
+    // is guaranteed alive here: Engine deletes the Scene before resetting it.
+    for (auto& pair : geometryBatches)
+    {
+        if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
+                        renderer->DestroyStorageBuffer(pair.second->colorSBO); }
+        delete pair.second;
+    }
+    for (auto& pair : baseGeometries)
+        if (renderer) renderer->DestroyMesh(pair.second.mesh);
+
+    for (auto& pair : customBatches)
+    {
+        if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
+                        renderer->DestroyStorageBuffer(pair.second->colorSBO); }
+        delete pair.second;
+    }
+    for (auto& pair : customGeometries)
+        if (renderer) renderer->DestroyMesh(pair.second.mesh);
 }
 
 // Single source of truth for tearing down the object graph.
@@ -157,71 +156,60 @@ void Scene::CollectRenderData()
     collect(rootGameObject);
 }
 
-// Upload one batch's per-instance model/color arrays into its SSBOs.
-static void UploadBatchSSBO(GeometryInstances* batch)
+// Upload one batch's per-instance model/color arrays into its storage buffers.
+static void UploadBatch(Ditto::IRenderer* r, GeometryInstances* batch)
 {
-    if (batch->instanceCount == 0) return;
+    if (!r || batch->instanceCount == 0) return;
 
-    if (batch->modelSSBO == 0) glGenBuffers(1, &batch->modelSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::mat4),
-        batch->modelMatrices.data(), GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, batch->modelSSBO);
+    if (!batch->modelSBO) batch->modelSBO = r->CreateStorageBuffer(0, /*dynamic=*/true);
+    r->UpdateStorageBuffer(batch->modelSBO, batch->modelMatrices.data(),
+        batch->instanceCount * sizeof(glm::mat4));
 
-    if (batch->colorSSBO == 0) glGenBuffers(1, &batch->colorSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->colorSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::vec4),
-        batch->instanceColors.data(), GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
-
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    if (!batch->colorSBO) batch->colorSBO = r->CreateStorageBuffer(0, /*dynamic=*/true);
+    r->UpdateStorageBuffer(batch->colorSBO, batch->instanceColors.data(),
+        batch->instanceCount * sizeof(glm::vec4));
 }
 
 // Issue one instanced draw call for a batch against its geometry.
-static void DrawBatch(const BaseGeometry& geometry, GeometryInstances* batch)
+static void DrawBatch(Ditto::IRenderer* r, const BaseGeometry& geometry, GeometryInstances* batch)
 {
-    if (batch->instanceCount == 0 || geometry.VAO == 0) return;
-
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, batch->modelSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->colorSSBO);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-    glBindVertexArray(geometry.VAO);
-    if (geometry.indexCount > 0)
-        glDrawElementsInstanced(GL_TRIANGLES, geometry.indexCount, GL_UNSIGNED_INT, 0, batch->instanceCount);
-    else
-        glDrawArraysInstanced(GL_TRIANGLES, 0, geometry.vertexCount, batch->instanceCount);
-    glBindVertexArray(0);
+    if (!r || batch->instanceCount == 0 || !geometry.mesh) return;
+    r->BindStorageBuffer(0, batch->modelSBO);   // ModelMatrices (binding 0)
+    r->BindStorageBuffer(1, batch->colorSBO);   // InstanceColors (binding 1)
+    r->DrawInstanced(geometry.mesh, static_cast<int>(batch->instanceCount));
 }
 
 void Scene::UpdateSSBOs()
 {
-    for (auto& pair : geometryBatches) UploadBatchSSBO(pair.second);
-    for (auto& pair : customBatches)   UploadBatchSSBO(pair.second);
+    for (auto& pair : geometryBatches) UploadBatch(renderer, pair.second);
+    for (auto& pair : customBatches)   UploadBatch(renderer, pair.second);
 }
 
-void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& projection,
+void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
     const glm::vec3& viewPos, int viewportWidth, int viewportHeight)
 {
+    if (!renderer) return;
+
     CollectRenderData();
     UpdateSSBOs();
 
-    glUseProgram(shader->id);
-    shader->SetUniformMat4("view", view);
-    shader->SetUniformMat4("projection", projection);
-    shader->SetUniformVec3("viewPos", viewPos);
-    shader->SetUniformVec3("lightCol", GetLightColor());
-    shader->SetUniformVec3("lightDir", GetLightDirection());
-    shader->SetUniform1f("lightIntensity", GetLightIntensity());
+    renderer->BindPipeline(pipeline);
+
+    Ditto::FrameUniforms fu;
+    fu.view = view;
+    fu.projection = projection;
+    fu.viewPos = viewPos;
+    fu.lightColor = GetLightColor();
+    fu.lightDir = GetLightDirection();
+    fu.lightIntensity = GetLightIntensity();
+    renderer->SetFrameUniforms(fu);
 
     // Built-in Cube/Sphere batches.
     for (auto& pair : geometryBatches)
     {
         auto geoIt = baseGeometries.find(pair.second->type);
         if (geoIt == baseGeometries.end()) continue;
-        DrawBatch(geoIt->second, pair.second);
+        DrawBatch(renderer, geoIt->second, pair.second);
     }
 
     // Custom-mesh batches (keyed by meshPath).
@@ -229,62 +217,30 @@ void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& proje
     {
         auto geoIt = customGeometries.find(pair.first);
         if (geoIt == customGeometries.end()) continue;
-        DrawBatch(geoIt->second, pair.second);
+        DrawBatch(renderer, geoIt->second, pair.second);
     }
 }
 
-void Scene::InitializeBaseGeometries(Resource* _resource)
+void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
 {
     this->resource = _resource;
-    
-    if (resource->cubeModel && !resource->cubeModel->vertexData.empty())
+    this->renderer = rhi;
+
+    // Interleaved layout shared by all base/custom models: pos(vec3)+normal(vec3).
+    const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3} };
+
+    if (renderer && resource->cubeModel && !resource->cubeModel->vertexData.empty())
     {
-        BaseGeometry cubeGeo;
-
-        glGenVertexArrays(1, &cubeGeo.VAO);
-        glGenBuffers(1, &cubeGeo.VBO);
-
-        glBindVertexArray(cubeGeo.VAO);
-        glBindBuffer(GL_ARRAY_BUFFER, cubeGeo.VBO);
-
-        glBufferData(GL_ARRAY_BUFFER, resource->cubeModel->vertexData.size() * sizeof(float), resource->cubeModel->vertexData.data(), GL_STATIC_DRAW);
-
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-
-        cubeGeo.vertexCount = static_cast<uint32_t>(resource->cubeModel->vertexData.size() / 6);
-        baseGeometries[RendererComponent::Cube] = cubeGeo;
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
+        const auto& vd = resource->cubeModel->vertexData;
+        baseGeometries[RendererComponent::Cube] =
+            BaseGeometry{ renderer->CreateMesh(vd.data(), vd.size(), 6, attribs) };
     }
 
-    if (resource->sphereModel && !resource->sphereModel->vertexData.empty())
+    if (renderer && resource->sphereModel && !resource->sphereModel->vertexData.empty())
     {
-        BaseGeometry sphereGeo;
-
-        glGenVertexArrays(1, &sphereGeo.VAO);
-        glGenBuffers(1, &sphereGeo.VBO);
-
-        glBindVertexArray(sphereGeo.VAO);
-        glBindBuffer(GL_ARRAY_BUFFER, sphereGeo.VBO);
-
-        glBufferData(GL_ARRAY_BUFFER, resource->sphereModel->vertexData.size() * sizeof(float), resource->sphereModel->vertexData.data(), GL_STATIC_DRAW);
-
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-
-        sphereGeo.vertexCount = static_cast<uint32_t>(resource->sphereModel->vertexData.size() / 6);
-        baseGeometries[RendererComponent::Sphere] = sphereGeo;
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
+        const auto& vd = resource->sphereModel->vertexData;
+        baseGeometries[RendererComponent::Sphere] =
+            BaseGeometry{ renderer->CreateMesh(vd.data(), vd.size(), 6, attribs) };
     }
 }
 
@@ -300,35 +256,24 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
         resolved = PathUtils::ResolveAsset(meshPath).string();
 
     ModelData model(resolved);
-    if (model.vertexData.empty())
+    if (!renderer || model.vertexData.empty())
     {
-        std::cerr << "[Scene] Custom mesh has no geometry: " << resolved << std::endl;
+        if (model.vertexData.empty())
+            std::cerr << "[Scene] Custom mesh has no geometry: " << resolved << std::endl;
         // Cache empties so we don't re-attempt the load every frame.
         customGeometries[meshPath] = BaseGeometry{};
         customBatches[meshPath] = new GeometryInstances(RendererComponent::Cube);
         return;
     }
 
-    BaseGeometry geo;
-    glGenVertexArrays(1, &geo.VAO);
-    glGenBuffers(1, &geo.VBO);
-    glBindVertexArray(geo.VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, geo.VBO);
-    glBufferData(GL_ARRAY_BUFFER, model.vertexData.size() * sizeof(float),
-        model.vertexData.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    geo.vertexCount = static_cast<uint32_t>(model.vertexData.size() / 6);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3} };
+    BaseGeometry geo{ renderer->CreateMesh(model.vertexData.data(), model.vertexData.size(), 6, attribs) };
 
     customGeometries[meshPath] = geo;
     // `type` is unused for custom batches (geometry comes from customGeometries).
     customBatches[meshPath] = new GeometryInstances(RendererComponent::Cube);
     std::cout << "[Scene] Loaded custom mesh: " << resolved
-              << " (" << geo.vertexCount << " verts)" << std::endl;
+              << " (" << model.vertexData.size() / 6 << " verts)" << std::endl;
 }
 
 glm::vec3 Scene::GetLightColor() const

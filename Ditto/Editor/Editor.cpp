@@ -176,11 +176,9 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     // Show project selector (only when not in game mode)
     showProjectSelector = !gameMode;
 
-    // Initialize 3D model preview
-    InitModelPreview();
-    
-    // Initialize file icons
-    InitFileIcons();
+    // NOTE: model preview + file icons are initialized lazily on the first
+    // Draw(), NOT here: they create GPU resources through engine->renderer,
+    // but `engine` is only assigned by the caller AFTER this constructor runs.
 
     // Initialize window components
     m_projectWindow = new ProjectWindow(this);
@@ -216,7 +214,11 @@ Editor::~Editor()
 void Editor::Draw()
 {
     isSceneActive = false;
-    
+
+    // Lazy init: by the first Draw, engine (and engine->renderer) is set, so the
+    // icon textures can be created through the RHI. Idempotent.
+    InitFileIcons();
+
     ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
     
     // Global Ctrl+S shortcut - save current scene
@@ -519,7 +521,7 @@ void Editor::DrawToolbar()
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, greyHover);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  greyActive);
         }
-        if (ImGui::ImageButton("##PlayBtn", (ImTextureID)(intptr_t)m_playIcon,
+        if (ImGui::ImageButton("##PlayBtn", (ImTextureID)GetPlayIcon(),
                                ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
                                ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1)))
         {
@@ -566,7 +568,7 @@ void Editor::DrawToolbar()
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, greyHover);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  greyActive);
         }
-        if (ImGui::ImageButton("##PauseBtn", (ImTextureID)(intptr_t)m_pauseIcon,
+        if (ImGui::ImageButton("##PauseBtn", (ImTextureID)GetPauseIcon(),
                                ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
                                ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1)))
         {
@@ -654,7 +656,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
 
     bool hasChildren = !obj->children.empty();
     
-    unsigned int icon = isRoot ? GetDittoIcon() : GetGameObjectIcon();
+    void* icon = isRoot ? GetDittoIcon() : GetGameObjectIcon();
     
     // Calculate indent: 18px per level
     float indent = depth * 18.0f;
@@ -2101,38 +2103,37 @@ void Editor::InitFileIcons()
     std::cout << "[FileIcon] Initialized successfully" << std::endl;
 }
 
-unsigned int Editor::LoadIcon(const std::string& iconPath)
+Ditto::TextureHandle Editor::LoadIcon(const std::string& iconPath)
 {
     namespace fs = std::filesystem;
-    
+
     if (!fs::exists(iconPath)) {
         std::cerr << "[FileIcon] File not found: " << iconPath << std::endl;
-        return 0;
+        return {};
     }
-    
+    if (!engine || !engine->renderer) return {};
+
     int width, height, channels;
     stbi_set_flip_vertically_on_load(true);
     unsigned char* data = stbi_load(iconPath.c_str(), &width, &height, &channels, 4);
-    
+
     if (!data) {
         std::cerr << "[FileIcon] Failed to load: " << iconPath << std::endl;
-        return 0;
+        return {};
     }
-    
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_2D, textureID);
-    
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    
+
+    Ditto::TextureHandle tex = engine->renderer->CreateTexture(data, width, height, 4);
     stbi_image_free(data);
-    
+
     std::cout << "[FileIcon] Loaded: " << iconPath << " (" << width << "x" << height << ")" << std::endl;
-    return textureID;
+    return tex;
+}
+
+// Resolve an icon handle to an ImGui texture id (backend-specific). Central
+// helper used by all the icon getters.
+void* Editor::IconTexID(Ditto::TextureHandle h)
+{
+    return (engine && engine->renderer) ? engine->renderer->GetImGuiTextureID(h) : nullptr;
 }
 
 int Editor::GetIconIndex(const std::string& ext)
@@ -2146,41 +2147,49 @@ int Editor::GetIconIndex(const std::string& ext)
     return 0;  // Default Default.png
 }
 
-unsigned int Editor::GetIconByExtension(const std::string& extension)
+void* Editor::GetIconByExtension(const std::string& extension)
 {
-    if (!m_fileIconsInitialized) {
-        std::cerr << "[FileIcon] Not initialized!" << std::endl;
-        return 0;
-    }
-    
-    int idx = GetIconIndex(extension);
-    return m_icons[idx];  // GetIconIndex already returns 0-6 range
+    if (!m_fileIconsInitialized) return nullptr;
+    int idx = GetIconIndex(extension);   // already 0-6 range
+    return IconTexID(m_icons[idx]);
 }
+
+// Icon getters resolve a stored handle to an ImGui texture id on demand.
+void* Editor::GetFolderIcon()       { return IconTexID(m_folderIcon); }
+void* Editor::GetFolderEmptyIcon()  { return IconTexID(m_folderEmptyIcon); }
+void* Editor::GetFolderOpenedIcon() { return IconTexID(m_folderOpenedIcon); }
+void* Editor::GetDittoIcon()        { return IconTexID(m_dittoIcon); }
+void* Editor::GetGameObjectIcon()   { return IconTexID(m_gameObjectIcon); }
+void* Editor::GetLockIcon()         { return IconTexID(m_lockIcon); }
+void* Editor::GetUnlockIcon()       { return IconTexID(m_unlockIcon); }
+void* Editor::GetPlayIcon()         { return IconTexID(m_playIcon); }
+void* Editor::GetPauseIcon()        { return IconTexID(m_pauseIcon); }
+void* Editor::GetStopIcon()         { return IconTexID(m_stopIcon); }
 
 void Editor::CleanupFileIcons()
 {
     if (!m_fileIconsInitialized) return;
-    
-    for (int i = 0; i < 7; i++) {
-        if (m_icons[i]) {
-            glDeleteTextures(1, &m_icons[i]);
-            m_icons[i] = 0;
-        }
-    }
-    
-    if (m_folderIcon) {
-        glDeleteTextures(1, &m_folderIcon);
-        m_folderIcon = 0;
-    }
-    
-    if (m_folderEmptyIcon) {
-        glDeleteTextures(1, &m_folderEmptyIcon);
-        m_folderEmptyIcon = 0;
+
+    if (engine && engine->renderer)
+    {
+        Ditto::IRenderer* r = engine->renderer.get();
+        for (auto& h : m_icons) r->DestroyTexture(h);
+        r->DestroyTexture(m_folderIcon);
+        r->DestroyTexture(m_folderEmptyIcon);
+        r->DestroyTexture(m_folderOpenedIcon);
+        r->DestroyTexture(m_dittoIcon);
+        r->DestroyTexture(m_gameObjectIcon);
+        r->DestroyTexture(m_lockIcon);
+        r->DestroyTexture(m_unlockIcon);
+        r->DestroyTexture(m_playIcon);
+        r->DestroyTexture(m_pauseIcon);
+        r->DestroyTexture(m_stopIcon);
     }
 
-    if (m_playIcon) { glDeleteTextures(1, &m_playIcon); m_playIcon = 0; }
-    if (m_pauseIcon) { glDeleteTextures(1, &m_pauseIcon); m_pauseIcon = 0; }
-    if (m_stopIcon) { glDeleteTextures(1, &m_stopIcon); m_stopIcon = 0; }
+    for (auto& h : m_icons) h = {};
+    m_folderIcon = m_folderEmptyIcon = m_folderOpenedIcon = {};
+    m_dittoIcon = m_gameObjectIcon = m_lockIcon = m_unlockIcon = {};
+    m_playIcon = m_pauseIcon = m_stopIcon = {};
 
     m_fileIconsInitialized = false;
     std::cout << "[FileIcon] Cleaned up" << std::endl;
