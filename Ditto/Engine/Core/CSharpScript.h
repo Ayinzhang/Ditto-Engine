@@ -28,6 +28,7 @@ struct ScriptField
 
 struct CSharpScriptComponent : Component
 {
+    static constexpr int TypeBit = ComponentIndex::CSharpScript;
     std::string scriptName, scriptPath;
     bool started = false;
     std::vector<ScriptField> fields;

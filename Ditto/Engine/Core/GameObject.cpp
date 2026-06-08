@@ -293,6 +293,7 @@ void GameObject::Deserialize(std::istream& file)
 
 TransformComponent::TransformComponent()
     : position(0.0f), rotation(0.0f), scale(1.0f),
+    orientation(1.0f, 0.0f, 0.0f, 0.0f), useQuatRotation(false),
     lastPosition(0.0f), lastRotation(0.0f), lastScale(1.0f),
     localDirty(true), worldDirty(true)
 {
@@ -302,6 +303,7 @@ TransformComponent::TransformComponent()
 
 TransformComponent::TransformComponent(TransformComponent* other)
     : position(other->position), rotation(other->rotation), scale(other->scale),
+    orientation(1.0f, 0.0f, 0.0f, 0.0f), useQuatRotation(false),
     lastPosition(other->lastPosition), lastRotation(other->lastRotation), lastScale(other->lastScale),
     localDirty(true), worldDirty(true)
 {
@@ -309,15 +311,38 @@ TransformComponent::TransformComponent(TransformComponent* other)
     UpdateTransform();
 }
 
+void TransformComponent::SeedOrientationFromEuler()
+{
+    // Compose in the SAME Y * X * Z order UpdateTransform uses for euler, so a
+    // body's visible orientation does not snap when simulation takes over.
+    glm::quat qy = glm::angleAxis(glm::radians(rotation.y), glm::vec3(0, 1, 0));
+    glm::quat qx = glm::angleAxis(glm::radians(rotation.x), glm::vec3(1, 0, 0));
+    glm::quat qz = glm::angleAxis(glm::radians(rotation.z), glm::vec3(0, 0, 1));
+    orientation = qy * qx * qz;
+    useQuatRotation = true;
+    localDirty = true;
+}
+
 void TransformComponent::UpdateTransform()
 {
     if (!localDirty) return;
 
     glm::mat4 translation = glm::translate(glm::mat4(1.0f), position);
-    glm::mat4 rotationMat = glm::mat4(1.0f);
-    rotationMat = glm::rotate(rotationMat, glm::radians(rotation.y), glm::vec3(0, 1, 0));
-    rotationMat = glm::rotate(rotationMat, glm::radians(rotation.x), glm::vec3(1, 0, 0));
-    rotationMat = glm::rotate(rotationMat, glm::radians(rotation.z), glm::vec3(0, 0, 1));
+
+    glm::mat4 rotationMat;
+    if (useQuatRotation)
+    {
+        // Simulation owns the rotation: build directly from the quaternion.
+        rotationMat = glm::mat4_cast(orientation);
+    }
+    else
+    {
+        rotationMat = glm::mat4(1.0f);
+        rotationMat = glm::rotate(rotationMat, glm::radians(rotation.y), glm::vec3(0, 1, 0));
+        rotationMat = glm::rotate(rotationMat, glm::radians(rotation.x), glm::vec3(1, 0, 0));
+        rotationMat = glm::rotate(rotationMat, glm::radians(rotation.z), glm::vec3(0, 0, 1));
+    }
+
     glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), scale);
     model = translation * rotationMat * scaleMat;
     forward = glm::mat3(rotationMat) * glm::vec3(0, 0, -1);
@@ -445,7 +470,7 @@ void LightComponent::Deserialize(std::istream& file)
 }
 
 RendererComponent::RendererComponent(Type _type) : type(_type), color(1.0f, 1.0f, 1.0f, 1.0f) { index = CI::Renderer; }
-RendererComponent::RendererComponent(RendererComponent* other) : type(other->type), color(other->color) { index = CI::Renderer; }
+RendererComponent::RendererComponent(RendererComponent* other) : type(other->type), color(other->color), meshPath(other->meshPath) { index = CI::Renderer; }
 void RendererComponent::OnInspectorGUI()
 {
     ImGui::Checkbox("##Enabled", &enabled);
@@ -463,6 +488,20 @@ void RendererComponent::OnInspectorGUI()
     ImGui::Text("Color"); ImGui::SameLine();
     ImGui::ColorEdit4("##Color", &color.x, ImGuiColorEditFlags_AlphaBar);
     TrackUndoableEdit();
+
+    // Optional custom mesh override (project-relative .obj path). Empty falls
+    // back to the built-in Cube/Sphere geometry above.
+    char meshBuf[256];
+    strcpy_s(meshBuf, sizeof(meshBuf), meshPath.c_str());
+    ImGui::Text("Mesh "); ImGui::SameLine();
+    if (ImGui::InputText("##MeshPath", meshBuf, sizeof(meshBuf)))
+        meshPath = meshBuf;
+    TrackUndoableEdit();
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear##Mesh")) meshPath.clear();
+    if (!meshPath.empty())
+        ImGui::TextDisabled("custom mesh (built-in type used for physics)");
+
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
 }
@@ -471,6 +510,7 @@ void RendererComponent::Serialize(std::ostream& file) const
     int32_t typeInt = static_cast<int32_t>(type);
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
+    WriteString(file, meshPath);   // scene version 2+
 }
 void RendererComponent::Deserialize(std::istream& file)
 {
@@ -478,6 +518,11 @@ void RendererComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
     type = static_cast<Type>(typeInt);
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
+    // Only present in scene version >= 2; older files leave meshPath empty.
+    if (g_sceneLoadingVersion >= 2)
+        meshPath = ReadString(file);
+    else
+        meshPath.clear();
 }
 
 RigidbodyComponent::RigidbodyComponent()

@@ -46,13 +46,28 @@ private:
     
     // 标签页状态
     int m_activeTab = 0;
-    
-    // Console消息
+
+    // Console消息（旧接口保留；显示数据现统一来自 Ditto::Logger）
     std::vector<std::string> m_consoleMessages;
-    
+
+    // Console 停靠：首帧把 Console dock 到 Project 所在节点（之后完全自由拖动）。
+    // ImGuiID 即 unsigned int，避免在头文件引入 imgui.h。
+    unsigned int m_projectDockId = 0;
+    bool m_consoleDockInitialized = false;
+
+    // Console 视图状态（Unity 风格：分级过滤 / 折叠 / 自动滚动）
+    bool m_consoleShowInfo = true;
+    bool m_consoleShowWarning = true;
+    bool m_consoleShowError = true;
+    bool m_consoleCollapse = true;
+    bool m_consoleAutoScroll = true;
+
 public:
     // 添加Console消息
     void AddConsoleMessage(const std::string& message);
+
+    // 绘制独立的 Console 窗口（与 Project 同级、可拖动停靠）
+    void DrawConsoleWindow();
     
 private:
 

@@ -6,6 +6,7 @@
 #include "CSharpScript.h"
 #include "MonoRuntime.h"
 #include "GameObject.h"
+#include "Logger.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #include "../../3rdParty/GLM/glm.hpp"
@@ -878,13 +879,11 @@ void CSharpScriptSystem::Shutdown()
 
 void CSharpScriptSystem::LogToConsole(const std::string& message)
 {
+    // All script-side logs flow into the shared Logger, which mirrors them to
+    // stdout and feeds the editor's Console tab. Keep the optional external
+    // callback hook for callers that redirect logs elsewhere.
     if (s_logCallback) s_logCallback(message);
-    else 
-    {
-        void* editor = GetEditor();
-        if (editor) static_cast<Editor*>(editor)->AddConsoleMessage(message);
-        else std::cout << message << std::endl;
-    }
+    Ditto::Logger::Get().Info(message);
 }
 
 bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptComponent* component)
@@ -1302,7 +1301,6 @@ float Internal_Time_GetDeltaTime()
 void Internal_Debug_Log(void* msg)
 {
     std::string message = MonoRuntime::GetStringFromMono((MonoString*)msg);
-    std::cout << "[C#] " << message << std::endl;
     CSharpScriptSystem::LogToConsole("[C#] " + message);
 }
 

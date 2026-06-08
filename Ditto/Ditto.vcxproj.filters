@@ -999,6 +999,9 @@
     <ClInclude Include="Engine\Core\GameObject.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Core\Logger.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Resources\Resource.h">
       <Filter>头文件\Engine\Resources</Filter>
     </ClInclude>
@@ -1558,6 +1561,9 @@
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Core\GameObject.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\Logger.cpp">
       <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Resources\Resource.cpp">

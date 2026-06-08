@@ -334,6 +334,7 @@
     <ClInclude Include="Engine\Core\MonoRuntime.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
+    <ClInclude Include="Engine\Core\Logger.h" />
     <ClInclude Include="Engine\Core\ProjectManager.h" />
     <ClInclude Include="Engine\Core\PathUtils.h" />
     <ClInclude Include="Engine\Core\Scene.h" />
@@ -523,6 +524,7 @@
     <ClCompile Include="Engine\Core\MonoRuntime.cpp" />
     <ClCompile Include="Engine\Core\Engine.cpp" />
     <ClCompile Include="Engine\Core\GameObject.cpp" />
+    <ClCompile Include="Engine\Core\Logger.cpp" />
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />
     <ClCompile Include="Engine\Core\PathUtils.cpp" />
     <ClCompile Include="Engine\Core\Scene.cpp" />

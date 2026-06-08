@@ -46,20 +46,23 @@ void ForEachGameObject(Scene* scene, Func&& func)
     std::function<void(GameObject*)> traverse = [&](GameObject* obj)
     {
         if (!obj) return;
-        if (obj->removeComps.empty() == false) return;
-        func(obj);
+        // Skip invoking on an object that has a component pending removal this
+        // frame, but ALWAYS recurse into its children: a pending removal on one
+        // object must not silently freeze script/physics iteration for its whole
+        // subtree.
+        if (obj->removeComps.empty())
+            func(obj);
         for (GameObject* child : obj->children)
             traverse(child);
     };
     traverse(scene->rootGameObject);
 }
 
-Engine::Engine()
+void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 {
     enableMouse = false;
     window_width = 1200; window_height = 900;
     keySpeed = 0.01f, mouseSpeed = 1.0f;
-    gameMode = false;
     editor = nullptr;
 
     if (!glfwInit()) throw runtime_error("GLFW init failed");
@@ -76,66 +79,48 @@ Engine::Engine()
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw runtime_error("Failed to initialize GLAD");
 
-    resource = new Resource();
+    resource = std::make_unique<Resource>();
     scene = new Scene();
     sceneCamera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     gameCamera = new Camera(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
-    std::string vertexPath = FindShaderPath("Vertex.glsl");
-    std::string fragmentPath = FindShaderPath("Fragment.glsl");
-    shader = new Shader(vertexPath.c_str(), fragmentPath.c_str());
-    editor = new Editor(window, false, "");
-    editor->engine = this;
-    physics = new ParallelPhysics(); physics->engine = this;
 
-    scene->InitializeBaseGeometries(resource);
+    // Shaders: editor mode resolves from the executable location; game mode
+    // resolves relative to the loaded project directory.
+    std::string vertexPath = shaderBaseDir.empty()
+        ? FindShaderPath("Vertex.glsl") : FindShaderPathInDir(shaderBaseDir, "Vertex.glsl");
+    std::string fragmentPath = shaderBaseDir.empty()
+        ? FindShaderPath("Fragment.glsl") : FindShaderPathInDir(shaderBaseDir, "Fragment.glsl");
+    shader = std::make_unique<Shader>(vertexPath.c_str(), fragmentPath.c_str());
+
+    if (createEditor)
+    {
+        editor = new Editor(window, false, "");
+        editor->engine = this;
+    }
+
+    physics = std::make_unique<ParallelPhysics>(); physics->engine = this;
+
+    scene->InitializeBaseGeometries(resource.get());
     CSharpScriptSystem::Initialize();
+}
+
+Engine::Engine()
+{
+    gameMode = false;
+    InitCommon(/*createEditor=*/true, /*shaderBaseDir=*/"");
 }
 
 Engine::Engine(bool isGameMode, const std::string& projectPath, const std::string& startupScene)
 {
-    enableMouse = false;
-    window_width = 1200; window_height = 900;
-    keySpeed = 0.01f, mouseSpeed = 1.0f;
     gameMode = isGameMode;
     gameProjectPath = projectPath;
     startupSceneName = startupScene;
-    editor = nullptr;
 
     std::cout << "[Engine] Game mode constructor" << std::endl;
     std::cout << "[Engine] Project path: " << projectPath << std::endl;
     std::cout << "[Engine] Startup scene: " << startupScene << std::endl;
 
-    if (!glfwInit()) throw runtime_error("GLFW init failed");
-
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    std::string windowTitle = "Ditto";
-    window = glfwCreateWindow(window_width, window_height, windowTitle.c_str(), nullptr, nullptr);
-    if (!window) glfwTerminate(), throw runtime_error("Window create failed");
-    glfwMakeContextCurrent(window);
-    glfwSetWindowUserPointer(window, this);
-    glfwSetCursorPosCallback(window, Engine::MouseCallBack);
-
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw runtime_error("Failed to initialize GLAD");
-
-    resource = new Resource();
-    scene = new Scene();
-    sceneCamera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
-    gameCamera = new Camera(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
-
-    std::string vertexPath = FindShaderPathInDir(projectPath, "Vertex.glsl");
-    std::string fragmentPath = FindShaderPathInDir(projectPath, "Fragment.glsl");
-    std::cout << "[Engine] Vertex shader: " << vertexPath << std::endl;
-    std::cout << "[Engine] Fragment shader: " << fragmentPath << std::endl;
-    shader = new Shader(vertexPath.c_str(), fragmentPath.c_str());
-
-    physics = new ParallelPhysics(); physics->engine = this;
-
-    scene->InitializeBaseGeometries(resource);
-
-    CSharpScriptSystem::Initialize();
+    InitCommon(/*createEditor=*/false, /*shaderBaseDir=*/projectPath);
 
     LoadGameScene();
 }
@@ -143,10 +128,13 @@ Engine::Engine(bool isGameMode, const std::string& projectPath, const std::strin
 Engine::~Engine()
 {
     CSharpScriptSystem::Shutdown();
-    
-    if (editor) delete editor; if (physics) delete physics; if (shader) delete shader;
+
+    // Raw-owned members are released here, in the original safe order (scene is
+    // freed before `resource`, which it referenced). unique_ptr members
+    // (resource, shader, physics) release automatically afterwards.
+    if (editor) delete editor;
     if (sceneCamera) delete sceneCamera; if (gameCamera) delete gameCamera; if (scene) delete scene;
-    if (resource) delete resource; if (window) glfwDestroyWindow(window); glfwTerminate();
+    if (window) glfwDestroyWindow(window); glfwTerminate();
 }
 
 void Engine::Run()
@@ -212,7 +200,7 @@ void Engine::Run()
             
             if (scene && shader)
             {
-                scene->Render(shader, view, projection, gameCamera->position, window_width, window_height);
+                scene->Render(shader.get(), view, projection, gameCamera->position, window_width, window_height);
             }
         }
         else
@@ -248,7 +236,7 @@ void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
     mat4 view = cam->GetViewMatrix();
     mat4 projection = perspective(radians(45.0f), (float)w / (float)h, 0.1f, 100.0f);
 
-    scene->Render(shader, view, projection, cam->position, w, h);
+    scene->Render(shader.get(), view, projection, cam->position, w, h);
 
     glDisable(GL_SCISSOR_TEST);
 }
@@ -361,8 +349,16 @@ void Engine::SetEngineState(State newState)
                     script->OnDestroy();
                     script->started = false;
                 });
+
+                // Drop back to euler-authored rotation so the next Play seeds the
+                // quaternion fresh from the (possibly restored) euler values.
+                if (TransformComponent* t = obj->GetComponent<TransformComponent>())
+                {
+                    t->useQuatRotation = false;
+                    t->localDirty = true;
+                }
             });
-            
+
             physics->ClearColliders();
             break;
         }

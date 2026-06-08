@@ -1,13 +1,16 @@
 #include "Scene.h"
 #include "../../Engine/Resources/Resource.h"
 #include "../../Engine/Graphics/Shader.h"
+#include "PathUtils.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <functional>
 #include <algorithm>
+#include <filesystem>
 
 Scene* g_currentScene = nullptr;
+std::uint32_t g_sceneLoadingVersion = 0;
 
 static std::string ReadString(std::istream& file)
 {
@@ -35,6 +38,13 @@ Scene::~Scene()
     DestroyAllObjects();
     for (auto& pair : geometryBatches) delete pair.second;
     for (auto& pair : baseGeometries)
+    {
+        if (pair.second.VAO) glDeleteVertexArrays(1, &pair.second.VAO);
+        if (pair.second.VBO) glDeleteBuffers(1, &pair.second.VBO);
+        if (pair.second.EBO) glDeleteBuffers(1, &pair.second.EBO);
+    }
+    for (auto& pair : customBatches) delete pair.second;
+    for (auto& pair : customGeometries)
     {
         if (pair.second.VAO) glDeleteVertexArrays(1, &pair.second.VAO);
         if (pair.second.VBO) glDeleteBuffers(1, &pair.second.VBO);
@@ -93,6 +103,12 @@ void Scene::CollectRenderData()
         pair.second->instanceColors.clear();
         pair.second->instanceCount = 0;
     }
+    for (auto& pair : customBatches)
+    {
+        pair.second->modelMatrices.clear();
+        pair.second->instanceColors.clear();
+        pair.second->instanceCount = 0;
+    }
 
     mainLight = nullptr;
     std::function<void(GameObject*)> findLight = [&](GameObject* obj)
@@ -113,10 +129,22 @@ void Scene::CollectRenderData()
 
             if (renderer && renderer->enabled && transform && transform->enabled)
             {
-                auto it = geometryBatches.find(renderer->type);
-                if (it != geometryBatches.end())
+                GeometryInstances* batch = nullptr;
+                if (!renderer->meshPath.empty())
                 {
-                    GeometryInstances* batch = it->second;
+                    // Custom mesh: lazily build its geometry/batch, then route to it.
+                    EnsureCustomGeometry(renderer->meshPath);
+                    auto it = customBatches.find(renderer->meshPath);
+                    if (it != customBatches.end()) batch = it->second;
+                }
+                else
+                {
+                    auto it = geometryBatches.find(renderer->type);
+                    if (it != geometryBatches.end()) batch = it->second;
+                }
+
+                if (batch)
+                {
                     batch->modelMatrices.push_back(transform->GetWorldModel());
                     batch->instanceColors.push_back(glm::vec4(renderer->color));
                     batch->instanceCount++;
@@ -129,27 +157,49 @@ void Scene::CollectRenderData()
     collect(rootGameObject);
 }
 
+// Upload one batch's per-instance model/color arrays into its SSBOs.
+static void UploadBatchSSBO(GeometryInstances* batch)
+{
+    if (batch->instanceCount == 0) return;
+
+    if (batch->modelSSBO == 0) glGenBuffers(1, &batch->modelSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::mat4),
+        batch->modelMatrices.data(), GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, batch->modelSSBO);
+
+    if (batch->colorSSBO == 0) glGenBuffers(1, &batch->colorSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->colorSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::vec4),
+        batch->instanceColors.data(), GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+}
+
+// Issue one instanced draw call for a batch against its geometry.
+static void DrawBatch(const BaseGeometry& geometry, GeometryInstances* batch)
+{
+    if (batch->instanceCount == 0 || geometry.VAO == 0) return;
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, batch->modelSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->colorSSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    glBindVertexArray(geometry.VAO);
+    if (geometry.indexCount > 0)
+        glDrawElementsInstanced(GL_TRIANGLES, geometry.indexCount, GL_UNSIGNED_INT, 0, batch->instanceCount);
+    else
+        glDrawArraysInstanced(GL_TRIANGLES, 0, geometry.vertexCount, batch->instanceCount);
+    glBindVertexArray(0);
+}
+
 void Scene::UpdateSSBOs()
 {
-    for (auto& pair : geometryBatches)
-    {
-        GeometryInstances* batch = pair.second;
-        if (batch->instanceCount == 0) continue;
-
-        if (batch->modelSSBO == 0) glGenBuffers(1, &batch->modelSSBO);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::mat4),
-            batch->modelMatrices.data(), GL_DYNAMIC_DRAW);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, batch->modelSSBO);
-
-        if (batch->colorSSBO == 0) glGenBuffers(1, &batch->colorSSBO);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->colorSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, batch->instanceCount * sizeof(glm::vec4),
-            batch->instanceColors.data(), GL_DYNAMIC_DRAW);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
-
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    }
+    for (auto& pair : geometryBatches) UploadBatchSSBO(pair.second);
+    for (auto& pair : customBatches)   UploadBatchSSBO(pair.second);
 }
 
 void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& projection,
@@ -166,30 +216,20 @@ void Scene::Render(Shader* shader, const glm::mat4& view, const glm::mat4& proje
     shader->SetUniformVec3("lightDir", GetLightDirection());
     shader->SetUniform1f("lightIntensity", GetLightIntensity());
 
+    // Built-in Cube/Sphere batches.
     for (auto& pair : geometryBatches)
     {
-        GeometryInstances* batch = pair.second;
-        if (batch->instanceCount == 0) continue;
-        auto geoIt = baseGeometries.find(batch->type);
+        auto geoIt = baseGeometries.find(pair.second->type);
         if (geoIt == baseGeometries.end()) continue;
+        DrawBatch(geoIt->second, pair.second);
+    }
 
-        const BaseGeometry& geometry = geoIt->second;
-
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->modelSSBO);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, batch->modelSSBO);
-
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch->colorSSBO);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, batch->colorSSBO);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-        glBindVertexArray(geometry.VAO);
-
-        if (geometry.indexCount > 0)
-            glDrawElementsInstanced(GL_TRIANGLES, geometry.indexCount, GL_UNSIGNED_INT, 0, batch->instanceCount);
-        else
-            glDrawArraysInstanced(GL_TRIANGLES, 0, geometry.vertexCount, batch->instanceCount);
-
-        glBindVertexArray(0);
+    // Custom-mesh batches (keyed by meshPath).
+    for (auto& pair : customBatches)
+    {
+        auto geoIt = customGeometries.find(pair.first);
+        if (geoIt == customGeometries.end()) continue;
+        DrawBatch(geoIt->second, pair.second);
     }
 }
 
@@ -246,6 +286,49 @@ void Scene::InitializeBaseGeometries(Resource* _resource)
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
     }
+}
+
+void Scene::EnsureCustomGeometry(const std::string& meshPath)
+{
+    if (meshPath.empty()) return;
+    if (customGeometries.find(meshPath) != customGeometries.end()) return; // already built (or cached as failed)
+
+    // Resolve the path: accept an existing path as-is, else anchor it to the
+    // executable/project asset location like the built-in models.
+    std::string resolved = meshPath;
+    if (!std::filesystem::exists(resolved))
+        resolved = PathUtils::ResolveAsset(meshPath).string();
+
+    ModelData model(resolved);
+    if (model.vertexData.empty())
+    {
+        std::cerr << "[Scene] Custom mesh has no geometry: " << resolved << std::endl;
+        // Cache empties so we don't re-attempt the load every frame.
+        customGeometries[meshPath] = BaseGeometry{};
+        customBatches[meshPath] = new GeometryInstances(RendererComponent::Cube);
+        return;
+    }
+
+    BaseGeometry geo;
+    glGenVertexArrays(1, &geo.VAO);
+    glGenBuffers(1, &geo.VBO);
+    glBindVertexArray(geo.VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, geo.VBO);
+    glBufferData(GL_ARRAY_BUFFER, model.vertexData.size() * sizeof(float),
+        model.vertexData.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    geo.vertexCount = static_cast<uint32_t>(model.vertexData.size() / 6);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    customGeometries[meshPath] = geo;
+    // `type` is unused for custom batches (geometry comes from customGeometries).
+    customBatches[meshPath] = new GeometryInstances(RendererComponent::Cube);
+    std::cout << "[Scene] Loaded custom mesh: " << resolved
+              << " (" << geo.vertexCount << " verts)" << std::endl;
 }
 
 glm::vec3 Scene::GetLightColor() const
@@ -412,7 +495,8 @@ struct SceneHeader
     uint32_t gameObjectCount;
     uint64_t fileSize;
 };
-const uint32_t SCENE_VERSION = 1;
+// v1: original format. v2: RendererComponent::meshPath (custom mesh override).
+const uint32_t SCENE_VERSION = 2;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
 void Scene::WriteToStream(std::ostream& file)
@@ -507,12 +591,15 @@ bool Scene::ReadFromStream(std::istream& file)
             std::cerr << "[Scene::LoadScene] Invalid scene file: wrong magic number" << std::endl;
             return false;
         }
-        if (header.version != SCENE_VERSION)
+        if (header.version == 0 || header.version > SCENE_VERSION)
         {
             std::cerr << "[Scene::LoadScene] Unsupported scene version: " << header.version
-                << " (expected: " << SCENE_VERSION << ")" << std::endl;
+                << " (this build reads up to: " << SCENE_VERSION << ")" << std::endl;
             return false;
         }
+        // Expose the loading version so component deserializers can read
+        // version-gated fields while still accepting older files.
+        g_sceneLoadingVersion = header.version;
 
         uint32_t nameLength = 0;
         file.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));

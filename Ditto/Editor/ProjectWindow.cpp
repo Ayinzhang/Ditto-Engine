@@ -2,6 +2,7 @@
 #include "Editor.h"
 #include "InspectorWindow.h"
 #include "../Engine/Core/ProjectManager.h"
+#include "../Engine/Core/Logger.h"
 #include <filesystem>
 #include <shlobj.h>
 #include <iostream>
@@ -59,6 +60,9 @@ void ProjectWindow::Draw()
     std::string assetsPath = pm.GetProjectAssetsPath();
 
     ImGui::Begin("Project");
+
+    // Remember which dock node Project lives in, so Console can dock beside it.
+    m_projectDockId = ImGui::GetWindowDockID();
 
     // Top path bar
     ImGui::Text("Project");
@@ -519,6 +523,26 @@ void ProjectWindow::Draw()
     ImGui::End();
 }
 
+// Console is a separate, independently-dockable window (drawn by Editor::Draw so
+// it shows even when no project is loaded). By default it is docked next to
+// Project (see Editor::SetupDocking), so the two appear as tabs but can be
+// dragged apart like any other panel.
+void ProjectWindow::DrawConsoleWindow()
+{
+    // On first appearance, dock Console into Project's node (so it shows up as a
+    // tab beside Project even with a pre-existing saved layout). Applied once;
+    // afterwards the user can drag/dock it freely and the .ini remembers it.
+    if (!m_consoleDockInitialized && m_projectDockId != 0)
+    {
+        ImGui::SetNextWindowDockID(m_projectDockId, ImGuiCond_Once);
+        m_consoleDockInitialized = true;
+    }
+
+    ImGui::Begin("Console");
+    DrawConsole();
+    ImGui::End();
+}
+
 void ProjectWindow::OnScriptDropped(const std::string& scriptPath)
 {
     // TODO: Attach script to currently selected GameObject
@@ -779,11 +803,99 @@ void ProjectWindow::DrawPopups()
 
 void ProjectWindow::AddConsoleMessage(const std::string& message)
 {
-    m_consoleMessages.push_back(message);
-    if (m_consoleMessages.size() > 100)
+    // Backward-compatible entry point: route any legacy console message into the
+    // shared Logger so it shows up in the Console tab alongside everything else.
+    Ditto::Logger::Get().Info(message);
+}
+
+void ProjectWindow::DrawConsole()
+{
+    auto& logger = Ditto::Logger::Get();
+
+    int infoCount = 0, warnCount = 0, errCount = 0;
+    logger.GetCounts(infoCount, warnCount, errCount);
+
+    // ---- Toolbar ----
+    if (ImGui::Button("Clear")) logger.Clear();
+    ImGui::SameLine();
+    ImGui::Checkbox("Collapse", &m_consoleCollapse);
+    ImGui::SameLine();
+    ImGui::Checkbox("Autoscroll", &m_consoleAutoScroll);
+
+    ImGui::SameLine();
+    ImGui::Dummy(ImVec2(12, 0));
+    ImGui::SameLine();
+
+    // Level filter toggles with live counts. `###id` keeps a stable widget id
+    // even though the visible count text changes every frame.
+    std::string infoLabel  = "Info "  + std::to_string(infoCount)  + "###consoleInfo";
+    std::string warnLabel  = "Warn "  + std::to_string(warnCount)  + "###consoleWarn";
+    std::string errLabel   = "Error " + std::to_string(errCount)   + "###consoleError";
+
+    ImGui::PushStyleColor(ImGuiCol_Text, m_consoleShowInfo
+        ? ImVec4(0.85f, 0.85f, 0.85f, 1.0f) : ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
+    if (ImGui::SmallButton(infoLabel.c_str())) m_consoleShowInfo = !m_consoleShowInfo;
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+
+    ImGui::PushStyleColor(ImGuiCol_Text, m_consoleShowWarning
+        ? ImVec4(1.0f, 0.85f, 0.3f, 1.0f) : ImVec4(0.5f, 0.45f, 0.25f, 1.0f));
+    if (ImGui::SmallButton(warnLabel.c_str())) m_consoleShowWarning = !m_consoleShowWarning;
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+
+    ImGui::PushStyleColor(ImGuiCol_Text, m_consoleShowError
+        ? ImVec4(1.0f, 0.4f, 0.4f, 1.0f) : ImVec4(0.5f, 0.3f, 0.3f, 1.0f));
+    if (ImGui::SmallButton(errLabel.c_str())) m_consoleShowError = !m_consoleShowError;
+    ImGui::PopStyleColor();
+
+    ImGui::Separator();
+
+    // ---- Log list ----
+    ImGui::BeginChild("ConsoleScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+
+    std::vector<Ditto::LogEntry> entries = logger.Snapshot();
+    for (const auto& e : entries)
     {
-        m_consoleMessages.erase(m_consoleMessages.begin());
+        if (e.level == Ditto::LogLevel::Info && !m_consoleShowInfo) continue;
+        if (e.level == Ditto::LogLevel::Warning && !m_consoleShowWarning) continue;
+        if (e.level == Ditto::LogLevel::Error && !m_consoleShowError) continue;
+
+        ImVec4 color;
+        switch (e.level)
+        {
+            case Ditto::LogLevel::Warning: color = ImVec4(1.0f, 0.85f, 0.3f, 1.0f); break;
+            case Ditto::LogLevel::Error:   color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);  break;
+            default:                       color = ImVec4(0.85f, 0.85f, 0.85f, 1.0f); break;
+        }
+
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        if (m_consoleCollapse)
+        {
+            if (e.count > 1)
+            {
+                std::string line = e.message + "   (" + std::to_string(e.count) + ")";
+                ImGui::TextUnformatted(line.c_str());
+            }
+            else
+            {
+                ImGui::TextUnformatted(e.message.c_str());
+            }
+        }
+        else
+        {
+            // Expanded view: one line per occurrence.
+            for (int i = 0; i < e.count; ++i)
+                ImGui::TextUnformatted(e.message.c_str());
+        }
+        ImGui::PopStyleColor();
     }
+
+    // Auto-scroll only when the user is already pinned to the bottom.
+    if (m_consoleAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
+        ImGui::SetScrollHereY(1.0f);
+
+    ImGui::EndChild();
 }
 
 bool ProjectWindow::IsFolderExpanded(const std::string& path) const

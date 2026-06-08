@@ -44,7 +44,13 @@ struct Scene
     GameObject* mainLight = nullptr;
     std::unordered_map<RendererComponent::Type, BaseGeometry> baseGeometries;
     std::unordered_map<RendererComponent::Type, GeometryInstances*> geometryBatches;
-    
+
+    // Custom-mesh rendering runs as a parallel, lazily-populated pipeline keyed
+    // by the renderer's meshPath. The built-in Cube/Sphere path above is left
+    // untouched. GL buffers + batches here are owned by the Scene.
+    std::unordered_map<std::string, BaseGeometry> customGeometries;
+    std::unordered_map<std::string, GeometryInstances*> customBatches;
+
     Resource* resource = nullptr;
 
     std::function<void()> onModified;
@@ -72,6 +78,10 @@ struct Scene
         const glm::vec3& viewPos, int viewportWidth, int viewportHeight);
 
     void InitializeBaseGeometries(Resource* resource);
+
+    // Lazily load + GPU-upload a custom mesh (project-relative .obj) and create
+    // its instance batch. No-op if already built or the path is empty.
+    void EnsureCustomGeometry(const std::string& meshPath);
 
     GameObject* RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4& view, const glm::mat4& projection, int viewportWidth, int viewportHeight);
 

@@ -314,6 +314,7 @@ void Editor::Draw()
     DrawScene();
     DrawGame();
     if (m_projectWindow) m_projectWindow->Draw();
+    if (m_projectWindow) m_projectWindow->DrawConsoleWindow();
     if (m_inspectorWindow) m_inspectorWindow->Draw();
     DrawPopups();
     DrawBuildSettingsWindow();
@@ -403,6 +404,9 @@ void Editor::SetupDocking()
         ImGui::DockBuilderDockWindow("Hierarchy", dock_id_left_bottom);
         ImGui::DockBuilderDockWindow("Game", dock_id_center_top);
         ImGui::DockBuilderDockWindow("Project", dock_id_center_bottom);
+        // Console shares Project's dock node by default: appears as a tab next to
+        // Project but is an independent, draggable window.
+        ImGui::DockBuilderDockWindow("Console", dock_id_center_bottom);
         ImGui::DockBuilderDockWindow("Inspector", dock_id_right);
 
         ImGui::DockBuilderFinish(dockspace_id);

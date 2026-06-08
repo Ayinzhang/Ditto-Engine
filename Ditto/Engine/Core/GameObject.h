@@ -3,7 +3,9 @@
 #include <vector>
 #include <algorithm>
 #include <iosfwd>   // std::ostream / std::istream forward decls (serialize to file OR memory)
+#include <cstdint>
 #include "../../3rdParty/GLM/glm.hpp"
+#include "../../3rdParty/GLM/gtc/quaternion.hpp"
 
 struct GameObject;
 struct Scene;
@@ -78,6 +80,13 @@ struct GameObject
     template<DerivedFromComponent T>
     T* GetComponent() const
     {
+        // Fast reject: if the component bit isn't set in compMask, the object
+        // cannot own a T, so skip the dynamic_cast scan entirely. Components
+        // expose their bit as `T::TypeBit`; types without one fall back to the
+        // full scan.
+        if constexpr (requires { T::TypeBit; })
+            if ((compMask & T::TypeBit) == 0) return nullptr;
+
         for (Component* comp : components)
             if (T* result = dynamic_cast<T*>(comp))
                 return result;
@@ -96,12 +105,28 @@ struct GameObject
 // Global current scene pointer (used to mark dirty when components are modified)
 extern Scene* g_currentScene;
 
+// Version of the scene file currently being deserialized. Set by
+// Scene::ReadFromStream before component deserialization so components can read
+// version-gated fields (e.g. RendererComponent::meshPath, added in v2) while
+// still loading older files. 0 when not loading.
+extern std::uint32_t g_sceneLoadingVersion;
+
 struct TransformComponent : Component
 {
+    static constexpr int TypeBit = ComponentIndex::Transform;
     glm::vec3 position, rotation, scale, forward;
     glm::mat4 model; mutable glm::mat4 worldModel;
 
     mutable bool localDirty, worldDirty;
+
+    // Runtime rotation state for physics. `rotation` (euler degrees) stays the
+    // authored + serialized representation; during simulation the physics
+    // integrator advances `orientation` (a quaternion) instead -- correct
+    // angular composition, no gimbal lock. When `useQuatRotation` is set,
+    // UpdateTransform builds the model from the quaternion; otherwise it uses
+    // euler exactly as before. The quaternion is NOT serialized.
+    glm::quat orientation;
+    bool useQuatRotation;
 
     TransformComponent();
     TransformComponent(TransformComponent* other);
@@ -110,6 +135,11 @@ struct TransformComponent : Component
     void UpdateTransform();
     void UpdateWorldMatrix() const;
     glm::mat4 GetWorldModel() const;
+
+    // Seed `orientation` from the current euler `rotation` (matching the same
+    // Y*X*Z order UpdateTransform uses) and switch to quaternion mode. Called
+    // lazily by the physics integrator when a body first simulates.
+    void SeedOrientationFromEuler();
 
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;
@@ -121,6 +151,7 @@ private:
 
 struct LightComponent : Component
 {
+    static constexpr int TypeBit = ComponentIndex::Light;
     glm::vec3 color;
     float intensity;
 
@@ -133,9 +164,16 @@ struct LightComponent : Component
 
 struct RendererComponent : Component
 {
+    static constexpr int TypeBit = ComponentIndex::Renderer;
     enum Type { Cube, Sphere };
     Type type;
     glm::vec4 color;
+
+    // Optional custom mesh override (project-relative .obj path). Empty => use
+    // the built-in `type` geometry. This is a RENDER-only override; physics and
+    // colliders still use `type` as a bounding approximation. Serialized from
+    // scene version 2 onward (older scenes load with an empty path).
+    std::string meshPath;
 
     RendererComponent(Type _type = Cube);
     RendererComponent(RendererComponent* other);
@@ -157,6 +195,7 @@ struct RigidbodyComponent : Component
     //             to use for "child follows the parent" without double gravity.
     // NOTE: enum values are serialized as int32; only append new values at the
     // end to keep old scene files loading correctly (Static=0, Dynamic=1).
+    static constexpr int TypeBit = ComponentIndex::Rigidbody;
     enum Type { Static, Dynamic, Kinematic };
     Type type;
     float mass;

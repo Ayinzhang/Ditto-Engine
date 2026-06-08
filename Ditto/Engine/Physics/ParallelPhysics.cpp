@@ -50,7 +50,18 @@ void ParallelPhysics::IntegrateForce(float dt) {
             rb->velocity *= glm::max(0.0f, glm::pow(1.0f - linearDamping, dt));
             rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - angularDamping, dt));
             transform->position += rb->velocity * dt;
-            transform->rotation += rb->angularVelocity * dt;
+
+            // Quaternion angular integration: compose a delta rotation onto the
+            // orientation instead of adding euler components (which shears and
+            // gimbal-locks). `angularVelocity` is stored in degrees/sec.
+            if (!transform->useQuatRotation)
+                transform->SeedOrientationFromEuler();
+            glm::vec3 wRad = glm::radians(rb->angularVelocity);
+            glm::quat spin(0.0f, wRad.x, wRad.y, wRad.z);
+            transform->orientation = glm::normalize(
+                transform->orientation + 0.5f * spin * transform->orientation * dt);
+            // Mirror back to euler so the Inspector / serialization stay meaningful.
+            transform->rotation = glm::degrees(glm::eulerAngles(transform->orientation));
 
             transform->localDirty = true;
             collider->isDirty = true;
