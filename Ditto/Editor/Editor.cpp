@@ -479,96 +479,105 @@ void Editor::DrawToolbar()
         ImGui::Separator();
 
         float windowWidth = ImGui::GetWindowWidth();
-        float buttonWidth = 60.0f;
+        float buttonSize = 32.0f;
+        float iconSize = 20.0f;
         float spacing = 10.0f;
-        float totalWidth = buttonWidth * 2 + spacing;
+        float totalWidth = buttonSize * 2 + spacing;
         float startX = (windowWidth - totalWidth) * 0.5f;
 
         ImGui::SetCursorPosX(startX);
 
-        // Play/Pause button
-        if (engine->state == Engine::Edit)
-        {
-            // Edit mode: show green Play button
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.3f, 1.0f));
-            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
-            {
-                // Save current scene to temp file
-                m_tempScenePath = "../../Ditto/Ditto/Temp/PlayModeScene.scene";
-                std::filesystem::create_directories("../../Ditto/Ditto/Temp");
-                engine->scene->SaveScene(m_tempScenePath);
-                
-                // Start Play mode
-                m_isPlaying = true;
-                engine->SetEngineState(Engine::Play);
-            }
-            ImGui::PopStyleColor(2);
-        }
-        else if (engine->state == Engine::Play)
-        {
-            // Play mode: show blue Pause button
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.9f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.5f, 1.0f, 1.0f));
-            if (ImGui::Button("Pause", ImVec2(buttonWidth, 0)))
-            {
-                engine->SetEngineState(Engine::Pause);
-            }
-            ImGui::PopStyleColor(2);
-        }
-        else if (engine->state == Engine::Pause)
-        {
-            // Pause mode: show green Play button (resume)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.9f, 0.3f, 1.0f));
-            if (ImGui::Button("Play", ImVec2(buttonWidth, 0)))
-            {
-                engine->SetEngineState(Engine::Play);
-            }
-            ImGui::PopStyleColor(2);
-        }
+        // Button palette. Grey variants match the menu bar; the two blues are
+        // the standard ImGui accent colors used for an "active" button feel.
+        // We always override the three Button* colors to neutralize ImGui's
+        // translucent light-blue Button default; the decision of "grey vs blue"
+        // is made per-button below.
+        const ImVec4 grey       = ImGui::GetStyle().Colors[ImGuiCol_MenuBarBg];
+        const ImVec4 greyHover  = ImVec4(grey.x + 0.06f, grey.y + 0.06f, grey.z + 0.06f, 1.0f);
+        const ImVec4 greyActive = ImVec4(grey.x + 0.03f, grey.y + 0.03f, grey.z + 0.03f, 1.0f);
+        const ImVec4 blue       = ImVec4(0.26f, 0.59f, 1.00f, 1.00f);
+        const ImVec4 blueHover  = ImVec4(0.31f, 0.65f, 1.00f, 1.00f);
+        const ImVec4 blueActive = ImVec4(0.20f, 0.50f, 0.90f, 1.00f);
 
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(startX + buttonWidth + spacing);
-
-        // Stop button (only available in Play or Pause mode)
-        if (engine->state == Engine::Edit)
+        // ---- Left button: Play ----
+        // Blue when the engine is currently Play OR Pause (i.e. any "in-session"
+        // state); grey otherwise.
+        const bool playOn = (engine->state == Engine::Play || engine->state == Engine::Pause);
+        if (playOn)
         {
-            // Edit mode: Stop button is grayed out and disabled
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
-            ImGui::Button("Stop", ImVec2(buttonWidth, 0));
-            ImGui::PopStyleColor(2);
+            ImGui::PushStyleColor(ImGuiCol_Button,        blue);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, blueHover);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  blueActive);
         }
         else
         {
-            // Play/Pause mode: show red Stop button
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.9f, 0.2f, 0.2f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
-            if (ImGui::Button("Stop", ImVec2(buttonWidth, 0)))
-            {
-                // First stop physics simulation
-                engine->SetEngineState(Engine::Stop);
-                
-                // Load temp scene file (restore to state before Play)
-                if (!m_tempScenePath.empty() && std::filesystem::exists(m_tempScenePath))
-                {
-                    engine->scene->LoadScene(m_tempScenePath);
-                    
-                    // After scene reload, all old GameObject pointers are invalidated
-                    // Reset selection state
-                    selectedObject = nullptr;
-                    activeSelection = nullptr;
-                    selectedFile.Clear();
-                    m_expandedGameObjects.clear();
-                }
-                
-                // End Play mode, return to Edit state
-                m_isPlaying = false;
-                engine->state = Engine::Edit;
-            }
-            ImGui::PopStyleColor(2);
+            ImGui::PushStyleColor(ImGuiCol_Button,        grey);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, greyHover);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  greyActive);
         }
+        if (ImGui::ImageButton("##PlayBtn", (ImTextureID)(intptr_t)m_playIcon,
+                               ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
+                               ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1)))
+        {
+            if (engine->state == Engine::Edit)
+            {
+                // Save current scene to temp file before entering Play mode
+                m_tempScenePath = "../../Ditto/Ditto/Temp/PlayModeScene.scene";
+                std::filesystem::create_directories("../../Ditto/Ditto/Temp");
+                engine->scene->SaveScene(m_tempScenePath);
+
+                engine->SetEngineState(Engine::Play);
+            }
+            else if (engine->state == Engine::Play)
+            {
+                // Already playing — clicking Play returns to Edit (acts as Stop)
+                engine->SetEngineState(Engine::Stop);
+                StopAndRestoreScene();
+            }
+            else if (engine->state == Engine::Pause)
+            {
+                // Paused — clicking Play also returns to Edit (acts as Stop);
+                // both buttons should go grey to signal "session ended".
+                engine->SetEngineState(Engine::Stop);
+                StopAndRestoreScene();
+            }
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(startX + buttonSize + spacing);
+
+        // ---- Right button: Pause ----
+        // Blue ONLY when the engine is currently Paused; grey otherwise.
+        const bool pauseOn = (engine->state == Engine::Pause);
+        if (pauseOn)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button,        blue);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, blueHover);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  blueActive);
+        }
+        else
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button,        grey);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, greyHover);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  greyActive);
+        }
+        if (ImGui::ImageButton("##PauseBtn", (ImTextureID)(intptr_t)m_pauseIcon,
+                               ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
+                               ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1)))
+        {
+            if (engine->state == Engine::Play)
+            {
+                engine->SetEngineState(Engine::Pause);
+            }
+            else if (engine->state == Engine::Pause)
+            {
+                // Already paused — clicking Pause resumes Play
+                engine->SetEngineState(Engine::Play);
+            }
+            // In Edit state: do nothing (Pause has no meaning before Play)
+        }
+        ImGui::PopStyleColor(3);
 
         ImGui::EndMainMenuBar();
     }
@@ -835,14 +844,8 @@ void Editor::DrawHierarchy()
             lightObj->AddComponent<LightComponent>();
             lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
             lightObj->GetComponent<TransformComponent>()->UpdateTransform();
-            if (engine->scene->rootGameObject)
-            {
-                engine->scene->rootGameObject->AddChild(lightObj);
-            }
-            else
-            {
-                engine->scene->gameObjects.push_back(lightObj);
-            }
+            // Single-ownership: always attach to rootGameObject.
+            engine->scene->rootGameObject->AddChild(lightObj);
             selectedObject = lightObj;
             selectedFile.Clear();
             engine->scene->MarkDirty();
@@ -855,14 +858,8 @@ void Editor::DrawHierarchy()
                 PushUndoSnapshot();
                 GameObject* cube = new GameObject("Cube");
                 cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
-                if (engine->scene->rootGameObject)
-                {
-                    engine->scene->rootGameObject->AddChild(cube);
-                }
-                else
-                {
-                    engine->scene->gameObjects.push_back(cube);
-                }
+                // Single-ownership: always attach to rootGameObject.
+                engine->scene->rootGameObject->AddChild(cube);
                 selectedObject = cube;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
@@ -872,14 +869,8 @@ void Editor::DrawHierarchy()
                 PushUndoSnapshot();
                 GameObject* sphere = new GameObject("Sphere");
                 sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
-                if (engine->scene->rootGameObject)
-                {
-                    engine->scene->rootGameObject->AddChild(sphere);
-                }
-                else
-                {
-                    engine->scene->gameObjects.push_back(sphere);
-                }
+                // Single-ownership: always attach to rootGameObject.
+                engine->scene->rootGameObject->AddChild(sphere);
                 selectedObject = sphere;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
@@ -897,36 +888,19 @@ void Editor::DrawHierarchy()
             if (droppedObj)
             {
                 PushUndoSnapshot();
-                if (droppedObj->parent) droppedObj->RemoveFromParent();
-                else
-                {
-                    auto& rootList = engine->scene->gameObjects;
-                    auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
-                    if (it != rootList.end()) rootList.erase(it);
-                }
-                if (engine->scene->rootGameObject && droppedObj != engine->scene->rootGameObject)
-                {
-                    engine->scene->rootGameObject->AddChild(droppedObj);
-                }
-                else
-                {
-                    engine->scene->gameObjects.push_back(droppedObj);
-                    droppedObj->parent = nullptr;
-                }
+                // Single-ownership: AddChild() already rejects self-loops and
+                // handles reparenting (RemoveFromParent internally).
+                engine->scene->rootGameObject->AddChild(droppedObj);
                 engine->scene->MarkDirty();
             }
         }
         ImGui::EndDragDropTarget();
     }
 
-    if (engine->scene->rootGameObject)
-    {
-        DrawGameObjectNode(engine->scene->rootGameObject, true);
-    }
-    else
-    {
-        for (GameObject* obj : engine->scene->gameObjects) DrawGameObjectNode(obj, false);
-    }
+    // Single-ownership: the entire hierarchy starts from rootGameObject.
+    // The root itself is shown at depth 0 (isRoot=true) so the user can
+    // select it to perform scene-wide operations.
+    DrawGameObjectNode(engine->scene->rootGameObject, true);
 
     // Save window state
     {
@@ -1635,18 +1609,16 @@ void Editor::OpenProject(const std::string& projectPath)
                 {
                     std::cout << "[Editor] Scene loaded successfully: " << engine->scene->name << std::endl;
                     std::cout << "[Editor] GameObject count: " << engine->scene->gameObjects.size() << std::endl;
-                    if (engine->scene->rootGameObject)
-                    {
-                        std::cout << "[Editor] RootGameObject children: " << engine->scene->rootGameObject->children.size() << std::endl;
-                    }
+                    // Single-ownership: rootGameObject is always present.
+                    std::cout << "[Editor] RootGameObject children: " << engine->scene->rootGameObject->children.size() << std::endl;
                 }
                 else
                 {
                     std::cerr << "[Editor] Failed to load scene: " << fullPath << std::endl;
-                    // Create default scene
-                    engine->scene->ClearScene();
+                    // Create default scene. ClearScene() rebuilds the root
+                    // using the current scene name, so set the name first.
                     engine->scene->name = "Default";
-                    engine->scene->rootGameObject = new GameObject("Default");
+                    engine->scene->ClearScene();
                 }
                 
                 // Update UI
@@ -2070,6 +2042,25 @@ static const char* s_iconFiles[] = {
     "Default.png", "Cs.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Folder.png"
 };
 
+void Editor::StopAndRestoreScene()
+{
+    // Reload the temp scene snapshot (captured when Play started) and reset
+    // editor selection state. After this returns the engine state should be
+    // Engine::Edit; the caller is expected to set that.
+    if (!m_tempScenePath.empty() && std::filesystem::exists(m_tempScenePath))
+    {
+        engine->scene->LoadScene(m_tempScenePath);
+    }
+
+    // After scene reload, all old GameObject pointers are invalidated.
+    selectedObject = nullptr;
+    activeSelection = nullptr;
+    selectedFile.Clear();
+    m_expandedGameObjects.clear();
+
+    engine->state = Engine::Edit;
+}
+
 void Editor::InitFileIcons()
 {
     if (m_fileIconsInitialized) return;
@@ -2096,7 +2087,12 @@ void Editor::InitFileIcons()
     // Load lock icons
     m_lockIcon = LoadIcon(m_assetsPath + "/Lock.png");
     m_unlockIcon = LoadIcon(m_assetsPath + "/UnLock.png");
-    
+
+    // Load toolbar icons
+    m_playIcon = LoadIcon(m_assetsPath + "/Play.png");
+    m_pauseIcon = LoadIcon(m_assetsPath + "/Pause.png");
+    m_stopIcon = LoadIcon(m_assetsPath + "/Scene.png"); // placeholder; swap to "Stop.png" when available
+
     m_fileIconsInitialized = true;
     std::cout << "[FileIcon] Initialized successfully" << std::endl;
 }
@@ -2177,7 +2173,11 @@ void Editor::CleanupFileIcons()
         glDeleteTextures(1, &m_folderEmptyIcon);
         m_folderEmptyIcon = 0;
     }
-    
+
+    if (m_playIcon) { glDeleteTextures(1, &m_playIcon); m_playIcon = 0; }
+    if (m_pauseIcon) { glDeleteTextures(1, &m_pauseIcon); m_pauseIcon = 0; }
+    if (m_stopIcon) { glDeleteTextures(1, &m_stopIcon); m_stopIcon = 0; }
+
     m_fileIconsInitialized = false;
     std::cout << "[FileIcon] Cleaned up" << std::endl;
 }

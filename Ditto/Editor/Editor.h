@@ -57,7 +57,6 @@ struct Editor
     int frame; float fps, ppf, deltaTime;
     
     std::string m_tempScenePath;
-    bool m_isPlaying = false;
 
     Editor(void* window, bool gameMode = false, const std::string& projectPath = "");
     ~Editor();
@@ -108,6 +107,10 @@ struct Editor
     // Compile scripts to DLL
     void BuildScripts();
 
+    // Stops the play session, reloads the temp scene snapshot, and resets
+    // editor selection state. Leaves the engine in Engine::Edit.
+    void StopAndRestoreScene();
+
     // Script drag-drop handling
     void OnScriptComponentDropped(const std::string& scriptPath);
     void OnScriptComponentDroppedToObject(GameObject* obj, const std::string& scriptPath);
@@ -135,6 +138,10 @@ struct Editor
     unsigned int GetGameObjectIcon() { return m_gameObjectIcon; }
     unsigned int GetLockIcon() { return m_lockIcon; }
     unsigned int GetUnlockIcon() { return m_unlockIcon; }
+    unsigned int GetPlayIcon() { return m_playIcon; }
+    unsigned int GetPauseIcon() { return m_pauseIcon; }
+    // m_stopIcon reserved for a future Stop.png asset; not currently used in the toolbar.
+    unsigned int GetStopIcon() { return m_stopIcon; }
 
 private:
     // File icons
@@ -146,6 +153,9 @@ private:
     unsigned int m_gameObjectIcon = 0;
     unsigned int m_lockIcon = 0;
     unsigned int m_unlockIcon = 0;
+    unsigned int m_playIcon = 0;
+    unsigned int m_pauseIcon = 0;
+    unsigned int m_stopIcon = 0;
     bool m_fileIconsInitialized = false;
     std::string m_assetsPath;
     

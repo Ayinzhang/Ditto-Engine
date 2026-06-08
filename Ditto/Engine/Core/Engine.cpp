@@ -41,28 +41,17 @@ template<typename Func>
 void ForEachGameObject(Scene* scene, Func&& func)
 {
     if (!scene) return;
-    
-    if (scene->rootGameObject)
+
+    // Single-ownership: always traverse from rootGameObject.
+    std::function<void(GameObject*)> traverse = [&](GameObject* obj)
     {
-        std::function<void(GameObject*)> traverse = [&](GameObject* obj)
-        {
-            if (!obj) return;
-            if (obj->removeComps.empty() == false) return;
-            func(obj);
-            for (GameObject* child : obj->children)
-                traverse(child);
-        };
-        traverse(scene->rootGameObject);
-    }
-    else
-    {
-        for (GameObject* obj : scene->gameObjects)
-        {
-            if (!obj) continue;
-            if (obj->removeComps.empty() == false) continue;
-            func(obj);
-        }
-    }
+        if (!obj) return;
+        if (obj->removeComps.empty() == false) return;
+        func(obj);
+        for (GameObject* child : obj->children)
+            traverse(child);
+    };
+    traverse(scene->rootGameObject);
 }
 
 Engine::Engine()
@@ -340,17 +329,15 @@ void Engine::SetEngineState(State newState)
         {
             if (oldState == Edit)
             {
-                if (scene->rootGameObject)
+                // Single-ownership: physics only needs the root to traverse the
+                // whole tree.
+                if (scene && scene->rootGameObject)
                 {
                     std::vector<GameObject*> rootObjects;
                     rootObjects.push_back(scene->rootGameObject);
                     physics->GenerateColliders(rootObjects);
                 }
-                else
-                {
-                    physics->GenerateColliders(scene->gameObjects);
-                }
-                
+
                 ForEachGameObject(scene, [](GameObject* obj)
                 {
                     ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
@@ -485,13 +472,11 @@ void Engine::LoadGameScene()
 
     if (scene && scene->rootGameObject)
     {
+        // Single-ownership: physics only needs the root to traverse the
+        // whole tree.
         std::vector<GameObject*> rootObjects;
         rootObjects.push_back(scene->rootGameObject);
         physics->GenerateColliders(rootObjects);
-    }
-    else if (scene)
-    {
-        physics->GenerateColliders(scene->gameObjects);
     }
 
     ForEachGameObject(scene, [](GameObject* obj)

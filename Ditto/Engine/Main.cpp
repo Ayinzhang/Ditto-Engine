@@ -1,8 +1,13 @@
 #include "Core/Engine.h"
+
 #include <iostream>
 #include <fstream>
-#include <filesystem>
 #include <string>
+#include <vector>
+#include <memory>
+#include <optional>
+#include <regex>
+#include <filesystem>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -10,99 +15,254 @@
 #endif
 
 using namespace std;
+namespace fs = filesystem;
+
+struct Args
+{
+    bool gameMode = false;
+    bool showHelp = false;
+    string projectPath;
+    string startupScene;
+};
+
+class ArgsParser
+{
+public:
+    static optional<Args> Parse(int argc, char* argv[])
+    {
+        Args args;
+
+        for (int i = 1; i < argc; ++i)
+        {
+            const string a = argv[i];
+
+            if (a == "-h" || a == "--help" || a == "/?")
+            {
+                args.showHelp = true;
+            }
+            else if (a == "-game" || a == "/game")
+            {
+                args.gameMode = true;
+            }
+            else if ((a == "-project" || a == "/project") && i + 1 < argc)
+            {
+                args.projectPath = argv[++i];
+                args.gameMode    = true;
+            }
+            else if ((a == "-scene" || a == "/scene") && i + 1 < argc)
+            {
+                args.startupScene = argv[++i];
+            }
+            else
+            {
+                cerr << "[Ditto] Unknown argument: " << a << endl;
+                return nullopt;
+            }
+        }
+
+        return args;
+    }
+
+    static void PrintUsage(const char* exeName)
+    {
+        cout
+            << "Ditto Engine\n"
+            << "Usage: " << exeName << " [options]\n"
+            << "\n"
+            << "Options:\n"
+            << "  -game                 Force Game mode (no editor window).\n"
+            << "  -project <path>       Path to a Ditto project. Implies -game.\n"
+            << "  -scene <scene>        Scene to load on startup. Overrides game.config.\n"
+            << "  -h, --help, /?        Show this help and exit.\n"
+            << "\n"
+            << "If a game.config file exists next to the executable, Game mode is\n"
+            << "entered automatically. CLI flags override the file.\n";
+    }
+};
+
+class ConfigParser
+{
+public:
+    struct Config
+    {
+        string startupScene;
+        bool found = false;
+    };
+
+    static optional<Config> ParseFile(const fs::path& path)
+    {
+        ifstream file(path);
+        if (!file.is_open()) return nullopt;
+
+        regex re(R"~(^[^/\n]*"startupScene"\s*:\s*"([^"]*)")~", regex::ECMAScript | regex::optimize);
+
+        string line;
+        Config cfg;
+        while (getline(file, line))
+        {
+            smatch m;
+            if (regex_search(line, m, re))
+            {
+                cfg.startupScene = m[1].str();
+                cfg.found        = true;
+                break;
+            }
+        }
+        return cfg;
+    }
+};
 
 static string GetExeDirectory()
 {
 #ifdef _WIN32
-    char path[MAX_PATH];
-    DWORD len = GetModuleFileNameA(NULL, path, MAX_PATH);
-    if (len > 0 && len < MAX_PATH)
+    char path[MAX_PATH] = {};
+    DWORD len = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH)
     {
-        string fullPath(path);
+        wchar_t wpath[32768] = {};
+        len = GetModuleFileNameW(nullptr, wpath, size(wpath));
+        if (len == 0) return fs::current_path().string();
+
+        int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wpath, (int)len, nullptr, 0, nullptr, nullptr);
+        string utf8(utf8Len, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wpath, (int)len, utf8.data(), utf8Len, nullptr, nullptr);
+
+        string fullPath = move(utf8);
         size_t lastSlash = fullPath.find_last_of("\\/");
-        if (lastSlash != string::npos) return fullPath.substr(0, lastSlash);
+        return (lastSlash == string::npos) ? fullPath : fullPath.substr(0, lastSlash);
     }
+
+    string fullPath(path, len);
+    size_t lastSlash = fullPath.find_last_of("\\/");
+    return (lastSlash == string::npos) ? fullPath : fullPath.substr(0, lastSlash);
+#else
+    return fs::current_path().string();
 #endif
-    return filesystem::current_path().string();
 }
 
-static string ReadGameConfig(const string& configPath)
+static bool IsValidProjectPath(const string& path, string* outError = nullptr)
 {
-    ifstream file(configPath);
-    if (!file.is_open()) return "";
+    auto fail = [&](const char* msg) {
+        if (outError) *outError = msg;
+        return false;
+    };
 
-    string startupScene;
-    string line;
-    while (getline(file, line))
-    {
-        size_t pos = line.find("\"startupScene\"");
-        if (pos == string::npos) continue;
+    if (path.empty())                   return fail("project path is empty");
+    if (!fs::exists(path))              return fail("project path does not exist");
+    if (!fs::is_directory(path))        return fail("project path is not a directory");
 
-        size_t colonPos = line.find(':', pos);
-        if (colonPos == string::npos) continue;
+    fs::path assetsDir = fs::path(path) / "Assets";
+    if (!fs::exists(assetsDir))
+        return fail("project path has no 'Assets/' subfolder (not a Ditto project?)");
 
-        size_t start = line.find('"', colonPos);
-        if (start == string::npos) continue;
-        size_t end = line.find('"', start + 1);
-        if (end == string::npos) continue;
+    return true;
+}
 
-        startupScene = line.substr(start + 1, end - start - 1);
-        break;
-    }
-    file.close();
-    return startupScene;
+static void ReportFatal(const string& message)
+{
+    cerr << "[Ditto] FATAL: " << message << endl;
+
+#ifdef _WIN32
+    MessageBoxA(nullptr, message.c_str(), "Ditto Engine - Fatal Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
+#endif
 }
 
 int main(int argc, char* argv[])
 {
-    string exeDir = GetExeDirectory();
+    auto parsedArgs = ArgsParser::Parse(argc, argv);
+    if (!parsedArgs)
+    {
+        ArgsParser::PrintUsage(argv[0]);
+        return 1;
+    }
+    Args args = *parsedArgs;
+
+    if (args.showHelp)
+    {
+        ArgsParser::PrintUsage(argv[0]);
+        return 0;
+    }
+
+    const string exeDir = GetExeDirectory();
     cout << "[Ditto] EXE directory: " << exeDir << endl;
 
-    string gameConfigPath = exeDir + "/game.config";
-    bool gameMode = filesystem::exists(gameConfigPath);
+    const fs::path gameConfigPath = fs::path(exeDir) / "game.config";
+    const bool hasConfigFile = fs::exists(gameConfigPath);
 
-    string startupScene;
     string projectPath;
+    string startupScene;
 
-    if (gameMode)
+    if (hasConfigFile)
     {
-        projectPath = exeDir;
-        startupScene = ReadGameConfig(gameConfigPath);
-        cout << "[Ditto] Game mode detected" << endl;
-        cout << "[Ditto] Project path: " << projectPath << endl;
-        cout << "[Ditto] Startup scene: " << startupScene << endl;
-    }
+        args.gameMode = true;
 
-    for (int i = 1; i < argc; i++)
-    {
-        string arg = argv[i];
-        if (arg == "-game" || arg == "/game")
+        auto cfg = ConfigParser::ParseFile(gameConfigPath);
+        if (!cfg)
         {
-            gameMode = true;
+            cerr << "[Ditto] Warning: could not read " << gameConfigPath  << endl;
         }
-        else if (arg == "-project" && i + 1 < argc)
+        else
         {
-            projectPath = argv[++i];
-            gameMode = true;
+            if (!cfg->found)
+            {
+                cerr << "[Ditto] Warning: game.config has no 'startupScene' key" << endl;
+            }
+            projectPath = exeDir;
+            if (!cfg->startupScene.empty())
+                startupScene = cfg->startupScene;
+
+            cout << "[Ditto] Game mode (game.config detected)" << endl;
+            cout << "[Ditto] Project path: " << projectPath << endl;
+            cout << "[Ditto] Startup scene: " << startupScene << endl;
         }
-        else if (arg == "-scene" && i + 1 < argc)
+    }
+
+    if (!args.projectPath.empty())   projectPath  = args.projectPath;
+    if (!args.startupScene.empty())  startupScene = args.startupScene;
+
+    if (args.gameMode)
+    {
+        string err;
+        if (!IsValidProjectPath(projectPath, &err))
         {
-            startupScene = argv[++i];
+            ReportFatal("Invalid project path '" + projectPath + "': " + err);
+            return 1;
         }
     }
 
-    Engine* engine = nullptr;
-
-    if (gameMode && !projectPath.empty())
+    unique_ptr<Engine> engine;
+    try
     {
-        engine = new Engine(true, projectPath, startupScene);
+        if (args.gameMode && !projectPath.empty())
+            engine = make_unique<Engine>(true, projectPath, startupScene);
+        else
+            engine = make_unique<Engine>();
     }
-    else
+    catch (const exception& e)
     {
-        engine = new Engine();
+        ReportFatal(string("Failed to construct engine: ") + e.what());
+        return 1;
+    }
+    catch (...)
+    {
+        ReportFatal("Failed to construct engine: unknown exception");
+        return 1;
     }
 
-    engine->Run();
-    delete engine;
+    try
+    {
+        engine->Run();
+    }
+    catch (const exception& e)
+    {
+        ReportFatal(string("Engine::Run() threw: ") + e.what());
+        return 1;
+    }
+    catch (...)
+    {
+        ReportFatal("Engine::Run() threw an unknown exception");
+        return 1;
+    }
+
     return 0;
 }

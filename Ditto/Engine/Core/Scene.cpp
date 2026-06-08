@@ -7,11 +7,8 @@
 #include <functional>
 #include <algorithm>
 
-// Global current scene pointer
 Scene* g_currentScene = nullptr;
 
-// Helper function: read a length-prefixed string from any input stream
-// (file OR in-memory snapshot buffer).
 static std::string ReadString(std::istream& file)
 {
     uint32_t length = 0;
@@ -25,6 +22,9 @@ Scene::Scene()
 {
     name = "Default";
     g_currentScene = this;
+
+    rootGameObject = new GameObject(name);
+    rootGameObject->name = name;
 
     geometryBatches[RendererComponent::Cube] = new GeometryInstances(RendererComponent::Cube);
     geometryBatches[RendererComponent::Sphere] = new GeometryInstances(RendererComponent::Sphere);
@@ -50,27 +50,19 @@ GeometryInstances::~GeometryInstances()
 
 // Single source of truth for tearing down the object graph.
 //
-// Ownership model: a GameObject owns its children (its destructor deletes them
-// recursively). Therefore only the TOP of the hierarchy may be deleted here:
-//   - if rootGameObject exists, it owns the entire tree -> delete it alone.
-//     `gameObjects` is then a NON-OWNING flattened view and must NOT be deleted
-//     (doing so double-frees nodes already freed via the tree).
-//   - otherwise `gameObjects` holds the top-level roots -> delete each.
-// This replaces the previous split logic that relied on children.clear() and
-// could still double-free grandchildren.
+// Ownership model: `rootGameObject` owns the entire object tree (each
+// GameObject owns its children and recursively deletes them). `gameObjects`
+// is a NON-OWNING flattened view mirroring `rootGameObject->children`; it
+// must never be deleted (doing so would double-free nodes).
 void Scene::DestroyAllObjects()
 {
-    if (rootGameObject)
-    {
-        delete rootGameObject;   // recursively deletes the whole tree
-        rootGameObject = nullptr;
-    }
-    else
-    {
-        for (GameObject* obj : gameObjects) delete obj;
-    }
-    gameObjects.clear();         // clear the (now dangling) observer list
-    mainLight = nullptr;         // non-owning pointer into the freed tree
+    delete rootGameObject;       // recursively deletes the whole tree
+    // Recreate a fresh root, mirroring the scene name (Unity-style).
+    rootGameObject = new GameObject(name);
+    rootGameObject->name = name;
+
+    gameObjects.clear();
+    mainLight = nullptr;
 }
 
 void Scene::ClearScene()
@@ -82,8 +74,6 @@ void Scene::UnregisterSubtree(GameObject* obj)
 {
     if (!obj) return;
 
-    // Depth-first: collect the subtree, then erase each node from the
-    // non-owning observer list. Also clear mainLight if it points inside.
     std::function<void(GameObject*)> visit = [&](GameObject* node)
     {
         if (!node) return;
@@ -111,16 +101,8 @@ void Scene::CollectRenderData()
             if (!mainLight && obj->GetComponent<LightComponent>()) mainLight = obj;
             for (auto child : obj->children) findLight(child);
         };
-    
-    // Traverse from rootGameObject or gameObjects list
-    if (rootGameObject)
-    {
-        findLight(rootGameObject);
-    }
-    else
-    {
-        for (auto root : gameObjects) findLight(root);
-    }
+
+    findLight(rootGameObject);
 
     std::function<void(GameObject*)> collect = [&](GameObject* obj)
         {
@@ -144,16 +126,7 @@ void Scene::CollectRenderData()
             for (auto child : obj->children) collect(child);
         };
 
-    // Traverse from rootGameObject or gameObjects list
-    if (rootGameObject)
-    {
-        collect(rootGameObject);
-    }
-    else
-    {
-        for (auto root : gameObjects)
-            collect(root);
-    }
+    collect(rootGameObject);
 }
 
 void Scene::UpdateSSBOs()
@@ -330,7 +303,6 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
     float closestDist = FLT_MAX;
     int checkedCount = 0;
 
-    // Get mesh data based on renderer type
     auto getMeshData = [&](RendererComponent::Type type) -> MeshData* {
         if (!resource) return nullptr;
         if (type == RendererComponent::Cube) return resource->cubeMesh;
@@ -338,7 +310,6 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
         return nullptr;
     };
 
-    // Ray-triangle intersection (Möller–Trumbore algorithm)
     auto rayTriangleIntersect = [&](const glm::vec3& orig, const glm::vec3& dir,
                                     const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
                                     float& t) -> bool {
@@ -381,7 +352,6 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
         float tMin = FLT_MAX;
         bool hit = false;
 
-        // Check all triangles in the mesh
         for (size_t i = 0; i < mesh->indices.size(); i += 3)
         {
             if (i + 2 >= mesh->indices.size()) break;
@@ -393,7 +363,6 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
             if (idx0 >= mesh->vertices.size() || idx1 >= mesh->vertices.size() || idx2 >= mesh->vertices.size())
                 continue;
 
-            // Transform vertices to world space
             glm::vec3 v0 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx0], 1.0f));
             glm::vec3 v1 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx1], 1.0f));
             glm::vec3 v2 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx2], 1.0f));
@@ -420,31 +389,22 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
         }
     };
 
-    // Traverse all objects - if rootGameObject exists, traverse its hierarchy, otherwise use gameObjects list
-    if (rootGameObject)
+    // Always traverse from rootGameObject (single-ownership model).
+    std::cout << "[Raycast] Traversing rootGameObject hierarchy: " << rootGameObject->name << std::endl;
+    std::function<void(GameObject*)> traverseHierarchy = [&](GameObject* obj)
     {
-        std::cout << "[Raycast] Traversing rootGameObject hierarchy: " << rootGameObject->name << std::endl;
-        std::function<void(GameObject*)> traverseHierarchy = [&](GameObject* obj)
-        {
-            if (!obj) return;
-            checkObject(obj);
-            for (auto* child : obj->children)
-                traverseHierarchy(child);
-        };
-        traverseHierarchy(rootGameObject);
-    }
-    else
-    {
-        std::cout << "[Raycast] Traversing gameObjects list, count: " << gameObjects.size() << std::endl;
-        for (auto obj : gameObjects) checkObject(obj);
-    }
+        if (!obj) return;
+        checkObject(obj);
+        for (auto* child : obj->children)
+            traverseHierarchy(child);
+    };
+    traverseHierarchy(rootGameObject);
 
     std::cout << "[Raycast] Checked " << checkedCount << " objects, closest: " << (closest ? closest->name : "none") << std::endl;
 
     return closest;
 }
 
-// --- Scene file header struct definition --- 
 struct SceneHeader
 {
     char magic[4];
@@ -455,9 +415,6 @@ struct SceneHeader
 const uint32_t SCENE_VERSION = 1;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
-// Core serialization, stream-based so it works with both files (SaveScene) and
-// in-memory buffers (CaptureSnapshot). Uses seekp to backfill the header size,
-// which both std::ofstream and std::ostringstream support.
 void Scene::WriteToStream(std::ostream& file)
 {
     SceneHeader header;
@@ -465,13 +422,7 @@ void Scene::WriteToStream(std::ostream& file)
     memcpy(header.magic, SCENE_MAGIC, 4);
     header.version = SCENE_VERSION;
     header.fileSize = 0;
-
-    // If rootGameObject exists it serializes the whole tree (count = 1);
-    // otherwise the flat gameObjects list owns the top-level objects.
-    if (rootGameObject)
-        header.gameObjectCount = 1;
-    else
-        header.gameObjectCount = static_cast<uint32_t>(gameObjects.size());
+    header.gameObjectCount = 1;
 
     file.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
@@ -479,11 +430,7 @@ void Scene::WriteToStream(std::ostream& file)
     file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
     file.write(name.c_str(), nameLength);
 
-    if (rootGameObject)
-        rootGameObject->Serialize(file);
-    else
-        for (GameObject* obj : gameObjects)
-            obj->Serialize(file);
+    rootGameObject->Serialize(file);
 
     // Backfill total size into the header.
     std::streampos endPos = file.tellp();
@@ -545,8 +492,6 @@ bool Scene::LoadScene(const std::string& filepath)
     return ReadFromStream(file);
 }
 
-// Core deserialization, stream-based (file OR in-memory snapshot). Calls
-// ClearScene() before rebuilding; on failure leaves the scene cleared.
 bool Scene::ReadFromStream(std::istream& file)
 {
     try
@@ -578,72 +523,30 @@ bool Scene::ReadFromStream(std::istream& file)
 
         ClearScene();
 
-        // Check first object's name - if it matches scene name, it's rootGameObject
-        // Pre-read first object's name
-        std::streampos firstObjPos = file.tellg();
-        bool firstEnabled = false, firstLocked = false;
-        file.read(reinterpret_cast<char*>(&firstEnabled), sizeof(firstEnabled));
-        file.read(reinterpret_cast<char*>(&firstLocked), sizeof(firstLocked));
-        std::string firstObjName = ReadString(file);
-        file.seekg(firstObjPos);
+        std::cout << "[Scene::LoadScene] Deserializing rootGameObject..." << std::endl;
+        rootGameObject->Deserialize(file);
+        rootGameObject->name = name;
+        std::cout << "[Scene::LoadScene] rootGameObject deserialized: " << rootGameObject->name
+                  << ", children: " << rootGameObject->children.size() << std::endl;
 
-        std::cout << "[Scene::LoadScene] First object name: " << firstObjName << std::endl;
-
-        // If first object's name matches scene name, it's rootGameObject
-        bool hasRootGameObject = (firstObjName == name);
-        std::cout << "[Scene::LoadScene] hasRootGameObject: " << (hasRootGameObject ? "true" : "false") << std::endl;
-
-        if (hasRootGameObject && header.gameObjectCount > 0)
-        {
-            std::cout << "[Scene::LoadScene] Deserializing rootGameObject..." << std::endl;
-            rootGameObject = new GameObject(false);
-            rootGameObject->Deserialize(file);
-            std::cout << "[Scene::LoadScene] rootGameObject deserialized: " << rootGameObject->name 
-                      << ", children: " << rootGameObject->children.size() << std::endl;
-            
-            // Collect all parentless objects into gameObjects list
-            std::function<void(GameObject*)> collectRootObjects = [&](GameObject* obj) {
-                for (auto child : obj->children)
+        std::function<void(GameObject*)> collectRootObjects = [&](GameObject* obj) {
+            for (auto child : obj->children)
+            {
+                if (child->children.empty())
                 {
-                    if (child->children.empty())
-                    {
-                        // Leaf node
-                        gameObjects.push_back(child);
-                    }
-                    else
-                    {
-                        // Non-leaf node, continue traversal
-                        collectRootObjects(child);
-                        gameObjects.push_back(child);
-                    }
+                    // Leaf node
+                    gameObjects.push_back(child);
                 }
-            };
-            collectRootObjects(rootGameObject);
-            std::cout << "[Scene::LoadScene] Collected " << gameObjects.size() << " objects to gameObjects list" << std::endl;
-        }
-        else
-        {
-            std::cout << "[Scene::LoadScene] Loading " << header.gameObjectCount << " gameObjects (old format)..." << std::endl;
-            // Old format: directly load all objects into gameObjects
-            gameObjects.reserve(header.gameObjectCount);
-            for (uint32_t i = 0; i < header.gameObjectCount; i++)
-            {
-                GameObject* newObj = new GameObject(false);
-                newObj->Deserialize(file);
-                gameObjects.push_back(newObj);
-            }
-            
-            // Create rootGameObject and reorganize parent-child relationships
-            rootGameObject = new GameObject(name);
-            for (GameObject* obj : gameObjects)
-            {
-                if (!obj->parent)
+                else
                 {
-                    rootGameObject->children.push_back(obj);
-                    obj->parent = rootGameObject;
+                    // Non-leaf node, continue traversal
+                    collectRootObjects(child);
+                    gameObjects.push_back(child);
                 }
             }
-        }
+        };
+        collectRootObjects(rootGameObject);
+        std::cout << "[Scene::LoadScene] Collected " << gameObjects.size() << " objects to gameObjects list" << std::endl;
 
         // Find main light
         mainLight = nullptr;
@@ -653,17 +556,7 @@ bool Scene::ReadFromStream(std::istream& file)
             for (auto child : obj->children)
                 findLight(child);
         };
-        if (rootGameObject)
-            findLight(rootGameObject);
-        else
-        {
-            for (GameObject* obj : gameObjects)
-                if (obj->GetComponent<LightComponent>())
-                {
-                    mainLight = obj;
-                    break;
-                }
-        }
+        findLight(rootGameObject);
 
         // Report raycast-capable objects
         std::cout << "[Scene::LoadScene] === Raycast-capable objects ===" << std::endl;
@@ -686,10 +579,8 @@ bool Scene::ReadFromStream(std::istream& file)
             for (auto child : obj->children)
                 reportRaycastObjects(child);
         };
-        if (rootGameObject)
-            reportRaycastObjects(rootGameObject);
-        else
-            for (auto obj : gameObjects) reportRaycastObjects(obj);
+        // Single-ownership: always start from rootGameObject.
+        reportRaycastObjects(rootGameObject);
         std::cout << "[Scene::LoadScene] Total raycast-capable objects: " << raycastObjCount << std::endl;
 
         return true;
