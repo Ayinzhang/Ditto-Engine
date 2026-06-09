@@ -132,6 +132,59 @@ namespace Ditto
         VkCommandBuffer BeginSingleTime();
         void EndSingleTime(VkCommandBuffer cmd);
 
+        // ---- Scene rendering (Vk4) ----
+        // Depth buffer for the swapchain render pass (recreated with the swapchain).
+        VkImage m_depthImage = VK_NULL_HANDLE;
+        VkDeviceMemory m_depthMem = VK_NULL_HANDLE;
+        VkImageView m_depthView = VK_NULL_HANDLE;
+        VkFormat m_depthFormat{};
+
+        struct VkMeshRes
+        {
+            VkBuffer vbuf = VK_NULL_HANDLE;
+            VkDeviceMemory vmem = VK_NULL_HANDLE;
+            uint32_t vertexCount = 0;
+        };
+        // Storage buffers are per-frame-in-flight (host-visible, persistently mapped)
+        // so a frame's writes don't stomp a buffer the GPU is still reading.
+        struct VkStorageRes
+        {
+            VkBuffer buf[kFramesInFlight] = {};
+            VkDeviceMemory mem[kFramesInFlight] = {};
+            void* mapped[kFramesInFlight] = {};
+            size_t size = 0;
+        };
+        struct VkPipelineRes
+        {
+            VkPipeline pipeline = VK_NULL_HANDLE;
+            VkPipelineLayout layout = VK_NULL_HANDLE;
+            VkDescriptorSetLayout setLayouts[2] = {};   // set0=UBO, set1=2 SSBOs
+            VkShaderModule vs = VK_NULL_HANDLE;
+            VkShaderModule fs = VK_NULL_HANDLE;
+        };
+        std::vector<VkMeshRes> m_meshes;
+        std::vector<VkStorageRes> m_storage;
+        std::vector<VkPipelineRes> m_pipelines;
+
+        // Per-frame-in-flight FrameUniforms UBO ring.
+        VkBuffer m_uboBuf[kFramesInFlight] = {};
+        VkDeviceMemory m_uboMem[kFramesInFlight] = {};
+        void* m_uboMapped[kFramesInFlight] = {};
+
+        // Push descriptors (avoids descriptor-pool/set management for scene draws).
+        PFN_vkCmdPushDescriptorSetKHR m_pushDescriptor = nullptr;
+        bool m_pushDescriptorOK = false;
+
+        // Current-draw state recorded between BindPipeline/BindStorageBuffer/DrawInstanced.
+        VkPipelineRes* m_boundPipeline = nullptr;
+        StorageBufferHandle m_boundStorage[2];
+
+        bool CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
+                          VkBuffer& outBuf, VkDeviceMemory& outMem);
+        bool CreateDepthResources();
+        void DestroyDepthResources();
+        VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
+
         bool m_validation = false;
     };
 }

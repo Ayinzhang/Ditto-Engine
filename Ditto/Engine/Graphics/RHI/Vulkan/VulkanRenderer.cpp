@@ -1,5 +1,6 @@
 #include "VulkanRenderer.h"
 #include "../../../Core/Logger.h"
+#include "../../Shaders/ShaderCompiler.h"
 #define GLFW_INCLUDE_VULKAN
 #include "../../../../3rdParty/GLFW/glfw3.h"
 #include "../../../../3rdParty/ImGui/imgui.h"
@@ -51,12 +52,22 @@ namespace Ditto
         if (!CreateSwapchain()) return;
         CreateImageViews();
         if (!CreateRenderPass()) return;
+        if (!CreateDepthResources()) return;
         CreateFramebuffers();
         if (!CreateCommandResources()) return;
         if (!CreateSyncObjects()) return;
 
+        // FrameUniforms UBO ring (one per frame in flight), host-visible + mapped.
+        for (int i = 0; i < kFramesInFlight; ++i)
+        {
+            CreateBuffer(256, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_uboBuf[i], m_uboMem[i]);
+            vkMapMemory(m_device, m_uboMem[i], 0, 256, 0, &m_uboMapped[i]);
+        }
+
         m_ready = true;
-        Logger::Get().Info("[Vulkan] Renderer initialized (swapchain + frame resources ready).");
+        Logger::Get().Info("[Vulkan] Renderer initialized (swapchain + depth + frame resources ready).");
     }
 
     VulkanRenderer::~VulkanRenderer()
@@ -76,6 +87,30 @@ namespace Ditto
             }
             if (m_sampler)   vkDestroySampler(m_device, m_sampler, nullptr);
             if (m_imguiPool) vkDestroyDescriptorPool(m_device, m_imguiPool, nullptr);
+
+            // Scene resources.
+            for (auto& m : m_meshes)
+            {
+                if (m.vbuf) vkDestroyBuffer(m_device, m.vbuf, nullptr);
+                if (m.vmem) vkFreeMemory(m_device, m.vmem, nullptr);
+            }
+            for (auto& s : m_storage)
+                for (int i = 0; i < kFramesInFlight; ++i)
+                {
+                    if (s.buf[i]) vkDestroyBuffer(m_device, s.buf[i], nullptr);
+                    if (s.mem[i]) vkFreeMemory(m_device, s.mem[i], nullptr);
+                }
+            for (auto& p : m_pipelines)
+            {
+                if (p.pipeline) vkDestroyPipeline(m_device, p.pipeline, nullptr);
+                if (p.layout)   vkDestroyPipelineLayout(m_device, p.layout, nullptr);
+                if (p.setLayouts[0]) vkDestroyDescriptorSetLayout(m_device, p.setLayouts[0], nullptr);
+                if (p.setLayouts[1]) vkDestroyDescriptorSetLayout(m_device, p.setLayouts[1], nullptr);
+                if (p.vs) vkDestroyShaderModule(m_device, p.vs, nullptr);
+                if (p.fs) vkDestroyShaderModule(m_device, p.fs, nullptr);
+            }
+            for (int i = 0; i < kFramesInFlight; ++i)
+                if (m_uboBuf[i]) { vkDestroyBuffer(m_device, m_uboBuf[i], nullptr); vkFreeMemory(m_device, m_uboMem[i], nullptr); }
 
             for (auto s : m_renderFinished) if (s) vkDestroySemaphore(m_device, s, nullptr);
             for (auto s : m_imageAvailable) if (s) vkDestroySemaphore(m_device, s, nullptr);
@@ -235,7 +270,25 @@ namespace Ditto
             queueInfos.push_back(qci);
         }
 
-        const char* deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+        // Enable swapchain + push-descriptor (scene draws push UBO/SSBO descriptors
+        // inline, avoiding descriptor-pool management). Push-descriptor is enabled
+        // only if the device supports it.
+        std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+        {
+            uint32_t extCount = 0;
+            vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &extCount, nullptr);
+            std::vector<VkExtensionProperties> exts(extCount);
+            vkEnumerateDeviceExtensionProperties(m_physicalDevice, nullptr, &extCount, exts.data());
+            for (const auto& e : exts)
+                if (std::strcmp(e.extensionName, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME) == 0)
+                {
+                    deviceExtensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+                    m_pushDescriptorOK = true;
+                    break;
+                }
+        }
+        if (!m_pushDescriptorOK)
+            Logger::Get().Warning("[Vulkan] VK_KHR_push_descriptor not supported; scene rendering disabled.");
 
         VkPhysicalDeviceFeatures features{};
         features.fillModeNonSolid = VK_TRUE;   // wireframe (model preview parity)
@@ -243,8 +296,8 @@ namespace Ditto
         VkDeviceCreateInfo ci{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
         ci.queueCreateInfoCount = (uint32_t)queueInfos.size();
         ci.pQueueCreateInfos = queueInfos.data();
-        ci.enabledExtensionCount = 1;
-        ci.ppEnabledExtensionNames = deviceExtensions;
+        ci.enabledExtensionCount = (uint32_t)deviceExtensions.size();
+        ci.ppEnabledExtensionNames = deviceExtensions.data();
         ci.pEnabledFeatures = &features;
 
         if (vkCreateDevice(m_physicalDevice, &ci, nullptr, &m_device) != VK_SUCCESS)
@@ -254,6 +307,11 @@ namespace Ditto
         }
         vkGetDeviceQueue(m_device, m_graphicsQueueFamily, 0, &m_graphicsQueue);
         vkGetDeviceQueue(m_device, m_presentQueueFamily, 0, &m_presentQueue);
+
+        if (m_pushDescriptorOK)
+            m_pushDescriptor = (PFN_vkCmdPushDescriptorSetKHR)vkGetDeviceProcAddr(m_device, "vkCmdPushDescriptorSetKHR");
+
+        m_depthFormat = VK_FORMAT_D32_SFLOAT;   // universally supported as a depth attachment
         return true;
     }
 
@@ -356,22 +414,37 @@ namespace Ditto
         color.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         VkAttachmentReference colorRef{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+
+        // Depth attachment (cleared each frame, not stored).
+        VkAttachmentDescription depth{};
+        depth.format = m_depthFormat;
+        depth.samples = VK_SAMPLE_COUNT_1_BIT;
+        depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        VkAttachmentReference depthRef{ 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &colorRef;
+        subpass.pDepthStencilAttachment = &depthRef;
 
         VkSubpassDependency dep{};
         dep.srcSubpass = VK_SUBPASS_EXTERNAL;
         dep.dstSubpass = 0;
-        dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dep.srcAccessMask = 0;
-        dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
+        VkAttachmentDescription attachments[] = { color, depth };
         VkRenderPassCreateInfo ci{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-        ci.attachmentCount = 1;
-        ci.pAttachments = &color;
+        ci.attachmentCount = 2;
+        ci.pAttachments = attachments;
         ci.subpassCount = 1;
         ci.pSubpasses = &subpass;
         ci.dependencyCount = 1;
@@ -390,10 +463,10 @@ namespace Ditto
         m_framebuffers.resize(m_swapchainImageViews.size());
         for (size_t i = 0; i < m_swapchainImageViews.size(); ++i)
         {
-            VkImageView attachments[] = { m_swapchainImageViews[i] };
+            VkImageView attachments[] = { m_swapchainImageViews[i], m_depthView };
             VkFramebufferCreateInfo ci{ VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
             ci.renderPass = m_renderPass;
-            ci.attachmentCount = 1;
+            ci.attachmentCount = 2;
             ci.pAttachments = attachments;
             ci.width = m_swapchainExtent.width;
             ci.height = m_swapchainExtent.height;
@@ -455,6 +528,7 @@ namespace Ditto
     void VulkanRenderer::CleanupSwapchain()
     {
         if (!m_device) return;
+        DestroyDepthResources();
         for (auto fb : m_framebuffers) if (fb) vkDestroyFramebuffer(m_device, fb, nullptr);
         m_framebuffers.clear();
         for (auto iv : m_swapchainImageViews) if (iv) vkDestroyImageView(m_device, iv, nullptr);
@@ -472,6 +546,7 @@ namespace Ditto
         CleanupSwapchain();
         if (!CreateSwapchain()) return false;
         CreateImageViews();
+        if (!CreateDepthResources()) return false;
         CreateFramebuffers();
 
         // Image count may change → rebuild per-image render-finished semaphores.
@@ -501,17 +576,20 @@ namespace Ditto
         VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
         vkBeginCommandBuffer(cmd, &bi);
 
-        VkClearValue clear{};
-        clear.color = { { m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a } };
+        VkClearValue clears[2]{};
+        clears[0].color = { { m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a } };
+        clears[1].depthStencil = { 1.0f, 0 };
         VkRenderPassBeginInfo rp{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
         rp.renderPass = m_renderPass;
         rp.framebuffer = m_framebuffers[m_imageIndex];
         rp.renderArea.extent = m_swapchainExtent;
-        rp.clearValueCount = 1;
-        rp.pClearValues = &clear;
+        rp.clearValueCount = 2;
+        rp.pClearValues = clears;
         vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
-        VkViewport vp{ 0.0f, 0.0f, (float)m_swapchainExtent.width, (float)m_swapchainExtent.height, 0.0f, 1.0f };
+        // Negative-height viewport flips Y so Vulkan matches the GL Y-up convention.
+        VkViewport vp{ 0.0f, (float)m_swapchainExtent.height,
+                       (float)m_swapchainExtent.width, -(float)m_swapchainExtent.height, 0.0f, 1.0f };
         VkRect2D sc{ {0, 0}, m_swapchainExtent };
         vkCmdSetViewport(cmd, 0, 1, &vp);
         vkCmdSetScissor(cmd, 0, 1, &sc);
@@ -561,14 +639,30 @@ namespace Ditto
     void VulkanRenderer::SetViewport(int x, int y, int w, int h)
     {
         if (!m_frameActive) return;
-        VkViewport vp{ (float)x, (float)y, (float)w, (float)h, 0.0f, 1.0f };
+        // Incoming coords are GL bottom-left origin. Convert to Vulkan top-left and
+        // use a negative-height viewport to flip Y (matches the GL backend).
+        const float fbH = (float)m_swapchainExtent.height;
+        const float topY = fbH - (float)y - (float)h;
+        VkViewport vp{};
+        vp.x = (float)x;
+        vp.y = topY + (float)h;
+        vp.width = (float)w;
+        vp.height = -(float)h;
+        vp.minDepth = 0.0f; vp.maxDepth = 1.0f;
         vkCmdSetViewport(m_commandBuffers[m_currentFrame], 0, 1, &vp);
     }
     void VulkanRenderer::SetScissor(bool enabled, int x, int y, int w, int h)
     {
         if (!m_frameActive) return;
-        VkRect2D sc = enabled ? VkRect2D{ {x, y}, {(uint32_t)w, (uint32_t)h} }
-                              : VkRect2D{ {0, 0}, m_swapchainExtent };
+        VkRect2D sc;
+        if (enabled)
+        {
+            int fbH = (int)m_swapchainExtent.height;
+            int topY = fbH - y - h; if (topY < 0) topY = 0;
+            sc.offset = { x, topY };
+            sc.extent = { (uint32_t)w, (uint32_t)h };
+        }
+        else sc = VkRect2D{ {0, 0}, m_swapchainExtent };
         vkCmdSetScissor(m_commandBuffers[m_currentFrame], 0, 1, &sc);
     }
     void VulkanRenderer::Clear(uint32_t, const glm::vec4& color) { m_clearColor = color; }
@@ -577,13 +671,265 @@ namespace Ditto
     void VulkanRenderer::SetWireframe(bool) {}
     void VulkanRenderer::SetCullState(bool) {}
 
-    MeshHandle VulkanRenderer::CreateMesh(const float*, size_t, int, const std::vector<VertexAttrib>&, const uint32_t*, size_t) { return {}; }
-    void VulkanRenderer::DestroyMesh(MeshHandle) {}
-    StorageBufferHandle VulkanRenderer::CreateStorageBuffer(size_t, bool) { return {}; }
-    void VulkanRenderer::UpdateStorageBuffer(StorageBufferHandle, const void*, size_t) {}
-    void VulkanRenderer::DestroyStorageBuffer(StorageBufferHandle) {}
-    PipelineHandle VulkanRenderer::CreatePipeline(const std::string&) { return {}; }
-    void VulkanRenderer::DestroyPipeline(PipelineHandle) {}
+    // ----------------------------- Helpers --------------------------------
+    bool VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
+                                      VkMemoryPropertyFlags props, VkBuffer& outBuf, VkDeviceMemory& outMem)
+    {
+        VkBufferCreateInfo bci{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bci.size = size ? size : 1;
+        bci.usage = usage;
+        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateBuffer(m_device, &bci, nullptr, &outBuf) != VK_SUCCESS) return false;
+        VkMemoryRequirements mr; vkGetBufferMemoryRequirements(m_device, outBuf, &mr);
+        VkMemoryAllocateInfo mai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        mai.allocationSize = mr.size;
+        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, props);
+        if (vkAllocateMemory(m_device, &mai, nullptr, &outMem) != VK_SUCCESS) return false;
+        vkBindBufferMemory(m_device, outBuf, outMem, 0);
+        return true;
+    }
+
+    bool VulkanRenderer::CreateDepthResources()
+    {
+        VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        ici.imageType = VK_IMAGE_TYPE_2D;
+        ici.extent = { m_swapchainExtent.width, m_swapchainExtent.height, 1 };
+        ici.mipLevels = 1; ici.arrayLayers = 1;
+        ici.format = m_depthFormat;
+        ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ici.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        ici.samples = VK_SAMPLE_COUNT_1_BIT;
+        ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateImage(m_device, &ici, nullptr, &m_depthImage) != VK_SUCCESS) return false;
+
+        VkMemoryRequirements mr; vkGetImageMemoryRequirements(m_device, m_depthImage, &mr);
+        VkMemoryAllocateInfo mai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        mai.allocationSize = mr.size;
+        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (vkAllocateMemory(m_device, &mai, nullptr, &m_depthMem) != VK_SUCCESS) return false;
+        vkBindImageMemory(m_device, m_depthImage, m_depthMem, 0);
+
+        VkImageViewCreateInfo vci{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+        vci.image = m_depthImage; vci.viewType = VK_IMAGE_VIEW_TYPE_2D; vci.format = m_depthFormat;
+        vci.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+        return vkCreateImageView(m_device, &vci, nullptr, &m_depthView) == VK_SUCCESS;
+    }
+
+    void VulkanRenderer::DestroyDepthResources()
+    {
+        if (m_depthView)  { vkDestroyImageView(m_device, m_depthView, nullptr); m_depthView = VK_NULL_HANDLE; }
+        if (m_depthImage) { vkDestroyImage(m_device, m_depthImage, nullptr); m_depthImage = VK_NULL_HANDLE; }
+        if (m_depthMem)   { vkFreeMemory(m_device, m_depthMem, nullptr); m_depthMem = VK_NULL_HANDLE; }
+    }
+
+    VkShaderModule VulkanRenderer::CreateShaderModule(const std::vector<uint32_t>& spirv)
+    {
+        VkShaderModuleCreateInfo ci{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+        ci.codeSize = spirv.size() * sizeof(uint32_t);
+        ci.pCode = spirv.data();
+        VkShaderModule m = VK_NULL_HANDLE;
+        vkCreateShaderModule(m_device, &ci, nullptr, &m);
+        return m;
+    }
+
+    // ----------------------------- Mesh -----------------------------------
+    MeshHandle VulkanRenderer::CreateMesh(const float* vertexData, size_t floatCount, int strideFloats,
+                                          const std::vector<VertexAttrib>&, const uint32_t*, size_t)
+    {
+        if (!vertexData || floatCount == 0 || strideFloats <= 0) return {};
+        const VkDeviceSize size = floatCount * sizeof(float);
+
+        VkBuffer staging; VkDeviceMemory stagingMem;
+        CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging, stagingMem);
+        void* p; vkMapMemory(m_device, stagingMem, 0, size, 0, &p);
+        memcpy(p, vertexData, (size_t)size);
+        vkUnmapMemory(m_device, stagingMem);
+
+        VkMeshRes mesh;
+        mesh.vertexCount = (uint32_t)(floatCount / strideFloats);
+        CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mesh.vbuf, mesh.vmem);
+
+        VkCommandBuffer cmd = BeginSingleTime();
+        VkBufferCopy region{}; region.size = size;
+        vkCmdCopyBuffer(cmd, staging, mesh.vbuf, 1, &region);
+        EndSingleTime(cmd);
+
+        vkDestroyBuffer(m_device, staging, nullptr);
+        vkFreeMemory(m_device, stagingMem, nullptr);
+
+        m_meshes.push_back(mesh);
+        return MeshHandle{ (uint32_t)m_meshes.size() };
+    }
+
+    void VulkanRenderer::DestroyMesh(MeshHandle h)
+    {
+        if (h.id == 0 || h.id > m_meshes.size()) return;
+        VkMeshRes& m = m_meshes[h.id - 1];
+        if (m.vbuf) vkDestroyBuffer(m_device, m.vbuf, nullptr);
+        if (m.vmem) vkFreeMemory(m_device, m.vmem, nullptr);
+        m = VkMeshRes{};
+    }
+
+    // ------------------------- Storage buffers ----------------------------
+    StorageBufferHandle VulkanRenderer::CreateStorageBuffer(size_t sizeBytes, bool)
+    {
+        VkStorageRes s;
+        s.size = sizeBytes < 4096 ? 4096 : sizeBytes;   // start with headroom; grow on demand
+        for (int i = 0; i < kFramesInFlight; ++i)
+        {
+            CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, s.buf[i], s.mem[i]);
+            vkMapMemory(m_device, s.mem[i], 0, s.size, 0, &s.mapped[i]);
+        }
+        m_storage.push_back(s);
+        return StorageBufferHandle{ (uint32_t)m_storage.size() };
+    }
+
+    void VulkanRenderer::UpdateStorageBuffer(StorageBufferHandle h, const void* data, size_t sizeBytes)
+    {
+        if (h.id == 0 || h.id > m_storage.size() || !data || sizeBytes == 0) return;
+        VkStorageRes& s = m_storage[h.id - 1];
+
+        if (sizeBytes > s.size)   // grow (rare: instance count increased)
+        {
+            vkDeviceWaitIdle(m_device);
+            for (int i = 0; i < kFramesInFlight; ++i)
+            {
+                if (s.buf[i]) vkDestroyBuffer(m_device, s.buf[i], nullptr);
+                if (s.mem[i]) vkFreeMemory(m_device, s.mem[i], nullptr);
+            }
+            s.size = sizeBytes;
+            for (int i = 0; i < kFramesInFlight; ++i)
+            {
+                CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, s.buf[i], s.mem[i]);
+                vkMapMemory(m_device, s.mem[i], 0, s.size, 0, &s.mapped[i]);
+            }
+        }
+        memcpy(s.mapped[m_currentFrame], data, sizeBytes);
+    }
+
+    void VulkanRenderer::DestroyStorageBuffer(StorageBufferHandle h)
+    {
+        if (h.id == 0 || h.id > m_storage.size()) return;
+        VkStorageRes& s = m_storage[h.id - 1];
+        for (int i = 0; i < kFramesInFlight; ++i)
+        {
+            if (s.buf[i]) vkDestroyBuffer(m_device, s.buf[i], nullptr);
+            if (s.mem[i]) vkFreeMemory(m_device, s.mem[i], nullptr);
+        }
+        s = VkStorageRes{};
+    }
+
+    // ------------------------------ Pipeline ------------------------------
+    PipelineHandle VulkanRenderer::CreatePipeline(const std::string& hlslSource)
+    {
+        if (!m_pushDescriptorOK)
+        {
+            Logger::Get().Error("[Vulkan] CreatePipeline: push descriptors unavailable");
+            return {};
+        }
+        CompiledShader vs = ShaderCompiler::Compile(hlslSource, ShaderStage::Vertex, "VSMain", false);
+        CompiledShader ps = ShaderCompiler::Compile(hlslSource, ShaderStage::Pixel, "PSMain", false);
+        if (!vs.ok || !ps.ok) { Logger::Get().Error("[Vulkan] pipeline shader compile failed"); return {}; }
+
+        VkPipelineRes p;
+        p.vs = CreateShaderModule(vs.spirv);
+        p.fs = CreateShaderModule(ps.spirv);
+
+        // set 0: FrameUniforms UBO (vertex+fragment). set 1: 2 storage buffers (vertex).
+        VkDescriptorSetLayoutBinding ub{};
+        ub.binding = 0; ub.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; ub.descriptorCount = 1;
+        ub.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutCreateInfo l0{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        l0.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+        l0.bindingCount = 1; l0.pBindings = &ub;
+        vkCreateDescriptorSetLayout(m_device, &l0, nullptr, &p.setLayouts[0]);
+
+        VkDescriptorSetLayoutBinding sb[2]{};
+        sb[0].binding = 0; sb[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[0].descriptorCount = 1; sb[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        sb[1].binding = 1; sb[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[1].descriptorCount = 1; sb[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        VkDescriptorSetLayoutCreateInfo l1{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        l1.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+        l1.bindingCount = 2; l1.pBindings = sb;
+        vkCreateDescriptorSetLayout(m_device, &l1, nullptr, &p.setLayouts[1]);
+
+        VkPipelineLayoutCreateInfo plc{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+        plc.setLayoutCount = 2; plc.pSetLayouts = p.setLayouts;
+        vkCreatePipelineLayout(m_device, &plc, nullptr, &p.layout);
+
+        VkPipelineShaderStageCreateInfo stages[2]{};
+        stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT; stages[0].module = p.vs; stages[0].pName = "main";
+        stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = p.fs; stages[1].pName = "main";
+
+        // Vertex input: interleaved pos(vec3)+normal(vec3), stride 24 (matches the
+        // engine's base/custom meshes).
+        VkVertexInputBindingDescription bind{}; bind.binding = 0; bind.stride = 6 * sizeof(float); bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        VkVertexInputAttributeDescription attrs[2]{};
+        attrs[0].location = 0; attrs[0].binding = 0; attrs[0].format = VK_FORMAT_R32G32B32_SFLOAT; attrs[0].offset = 0;
+        attrs[1].location = 1; attrs[1].binding = 0; attrs[1].format = VK_FORMAT_R32G32B32_SFLOAT; attrs[1].offset = 3 * sizeof(float);
+        VkPipelineVertexInputStateCreateInfo vi{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+        vi.vertexBindingDescriptionCount = 1; vi.pVertexBindingDescriptions = &bind;
+        vi.vertexAttributeDescriptionCount = 2; vi.pVertexAttributeDescriptions = attrs;
+
+        VkPipelineInputAssemblyStateCreateInfo ia{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        VkPipelineViewportStateCreateInfo vp{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+        vp.viewportCount = 1; vp.scissorCount = 1;   // dynamic
+
+        VkPipelineRasterizationStateCreateInfo rs{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+        rs.polygonMode = VK_POLYGON_MODE_FILL; rs.cullMode = VK_CULL_MODE_NONE; rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth = 1.0f;
+
+        VkPipelineMultisampleStateCreateInfo msi{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+        msi.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineDepthStencilStateCreateInfo ds{ VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+        ds.depthTestEnable = VK_TRUE; ds.depthWriteEnable = VK_TRUE; ds.depthCompareOp = VK_COMPARE_OP_LESS;
+
+        VkPipelineColorBlendAttachmentState cba{};
+        cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        VkPipelineColorBlendStateCreateInfo cb{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+        cb.attachmentCount = 1; cb.pAttachments = &cba;
+
+        VkDynamicState dyn[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+        VkPipelineDynamicStateCreateInfo dynS{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+        dynS.dynamicStateCount = 2; dynS.pDynamicStates = dyn;
+
+        VkGraphicsPipelineCreateInfo gp{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+        gp.stageCount = 2; gp.pStages = stages;
+        gp.pVertexInputState = &vi; gp.pInputAssemblyState = &ia; gp.pViewportState = &vp;
+        gp.pRasterizationState = &rs; gp.pMultisampleState = &msi; gp.pDepthStencilState = &ds;
+        gp.pColorBlendState = &cb; gp.pDynamicState = &dynS;
+        gp.layout = p.layout; gp.renderPass = m_renderPass; gp.subpass = 0;
+
+        if (vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &p.pipeline) != VK_SUCCESS)
+        {
+            Logger::Get().Error("[Vulkan] vkCreateGraphicsPipelines failed");
+            return {};
+        }
+
+        m_pipelines.push_back(p);
+        return PipelineHandle{ (uint32_t)m_pipelines.size() };
+    }
+
+    void VulkanRenderer::DestroyPipeline(PipelineHandle h)
+    {
+        if (h.id == 0 || h.id > m_pipelines.size()) return;
+        VkPipelineRes& p = m_pipelines[h.id - 1];
+        if (p.pipeline) vkDestroyPipeline(m_device, p.pipeline, nullptr);
+        if (p.layout)   vkDestroyPipelineLayout(m_device, p.layout, nullptr);
+        if (p.setLayouts[0]) vkDestroyDescriptorSetLayout(m_device, p.setLayouts[0], nullptr);
+        if (p.setLayouts[1]) vkDestroyDescriptorSetLayout(m_device, p.setLayouts[1], nullptr);
+        if (p.vs) vkDestroyShaderModule(m_device, p.vs, nullptr);
+        if (p.fs) vkDestroyShaderModule(m_device, p.fs, nullptr);
+        p = VkPipelineRes{};
+    }
     // ------------------------------- ImGui --------------------------------
     void VulkanRenderer::ImGuiInit(void* window)
     {
@@ -791,8 +1137,71 @@ namespace Ditto
     TextureHandle VulkanRenderer::GetColorTexture(RenderTargetHandle) { return {}; }
     void VulkanRenderer::DestroyRenderTarget(RenderTargetHandle) {}
 
-    void VulkanRenderer::BindPipeline(PipelineHandle) {}
-    void VulkanRenderer::SetFrameUniforms(const FrameUniforms&) {}
-    void VulkanRenderer::BindStorageBuffer(int, StorageBufferHandle) {}
-    void VulkanRenderer::DrawInstanced(MeshHandle, int) {}
+    void VulkanRenderer::BindPipeline(PipelineHandle h)
+    {
+        m_boundPipeline = (h.id && h.id <= m_pipelines.size()) ? &m_pipelines[h.id - 1] : nullptr;
+        if (!m_frameActive || !m_boundPipeline || !m_boundPipeline->pipeline) return;
+
+        VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->pipeline);
+
+        // Push set 0 (this frame's FrameUniforms UBO).
+        VkDescriptorBufferInfo bi{ m_uboBuf[m_currentFrame], 0, VK_WHOLE_SIZE };
+        VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        w.dstBinding = 0; w.descriptorCount = 1;
+        w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w.pBufferInfo = &bi;
+        m_pushDescriptor(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout, 0, 1, &w);
+    }
+
+    void VulkanRenderer::SetFrameUniforms(const FrameUniforms& u)
+    {
+        // std140 mirror matching Scene.hlsl's cbuffer (same bytes as the GL path,
+        // GLM column-major; the SPIR-V's matrix decorations make it consistent).
+        struct Std140
+        {
+            glm::mat4 view;
+            glm::mat4 projection;
+            glm::vec3 viewPos;     float _p0;
+            glm::vec3 lightColor;  float _p1;
+            glm::vec3 lightDir;    float lightIntensity;
+        } d;
+        d.view = u.view; d.projection = u.projection;
+        d.viewPos = u.viewPos;        d._p0 = 0.0f;
+        d.lightColor = u.lightColor;  d._p1 = 0.0f;
+        d.lightDir = u.lightDir;      d.lightIntensity = u.lightIntensity;
+
+        if (m_uboMapped[m_currentFrame]) memcpy(m_uboMapped[m_currentFrame], &d, sizeof(d));
+    }
+
+    void VulkanRenderer::BindStorageBuffer(int binding, StorageBufferHandle h)
+    {
+        if (binding >= 0 && binding < 2) m_boundStorage[binding] = h;
+    }
+
+    void VulkanRenderer::DrawInstanced(MeshHandle h, int instanceCount)
+    {
+        if (!m_frameActive || !m_boundPipeline || !m_pushDescriptor || instanceCount <= 0) return;
+        VkMeshRes* mesh = (h.id && h.id <= m_meshes.size()) ? &m_meshes[h.id - 1] : nullptr;
+        if (!mesh || !mesh->vbuf) return;
+
+        VkStorageRes* model = (m_boundStorage[0].id && m_boundStorage[0].id <= m_storage.size()) ? &m_storage[m_boundStorage[0].id - 1] : nullptr;
+        VkStorageRes* color = (m_boundStorage[1].id && m_boundStorage[1].id <= m_storage.size()) ? &m_storage[m_boundStorage[1].id - 1] : nullptr;
+        if (!model || !color) return;
+
+        VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
+
+        // Push set 1 (this frame's storage buffers: model matrices + colors).
+        VkDescriptorBufferInfo bi[2] = {
+            { model->buf[m_currentFrame], 0, VK_WHOLE_SIZE },
+            { color->buf[m_currentFrame], 0, VK_WHOLE_SIZE },
+        };
+        VkWriteDescriptorSet w[2]{};
+        w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w[0].pBufferInfo = &bi[0];
+        w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1].dstBinding = 1; w[1].descriptorCount = 1; w[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w[1].pBufferInfo = &bi[1];
+        m_pushDescriptor(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout, 1, 2, w);
+
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &mesh->vbuf, &offset);
+        vkCmdDraw(cmd, mesh->vertexCount, (uint32_t)instanceCount, 0, 0);
+    }
 }

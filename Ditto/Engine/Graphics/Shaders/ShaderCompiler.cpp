@@ -90,8 +90,11 @@ namespace Ditto
 
         // HLSL -> SPIR-V. -Zpc packs matrices column-major; explicit [[vk::binding]]
         // in the HLSL pins set/binding so no shift flags are needed.
+        // -fspv-entrypoint-name=main: the emitted SPIR-V entry point is always
+        // "main", so the Vulkan backend can reference it without guessing. (GL's
+        // SPIRV-Cross output uses main() regardless, so this is harmless there.)
         std::string dxc = "\"" + bin + "\\dxc.exe\" -spirv -T " + profile + " -E " + entryPoint +
-            " -Zpc \"" + hlslP.string() + "\" -Fo \"" + spvP.string() + "\" 2>\"" + errP.string() + "\"";
+            " -fspv-entrypoint-name=main -Zpc \"" + hlslP.string() + "\" -Fo \"" + spvP.string() + "\" 2>\"" + errP.string() + "\"";
         if (run(dxc) != 0)
         {
             out.error = "DXC failed: " + ReadText(errP);
