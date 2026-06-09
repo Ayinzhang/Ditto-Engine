@@ -166,10 +166,15 @@ namespace Ditto
         std::vector<VkStorageRes> m_storage;
         std::vector<VkPipelineRes> m_pipelines;
 
-        // Per-frame-in-flight FrameUniforms UBO ring.
+        // Per-frame-in-flight FrameUniforms UBO ring + a shared set-0 descriptor
+        // set per frame (regular, not push -- a layout may have only ONE push set,
+        // which we reserve for the storage buffers in set 1).
         VkBuffer m_uboBuf[kFramesInFlight] = {};
         VkDeviceMemory m_uboMem[kFramesInFlight] = {};
         void* m_uboMapped[kFramesInFlight] = {};
+        VkDescriptorSetLayout m_uboSetLayout = VK_NULL_HANDLE;   // shared set-0 layout
+        VkDescriptorPool m_uboPool = VK_NULL_HANDLE;
+        VkDescriptorSet m_uboSets[kFramesInFlight] = {};
 
         // Push descriptors (avoids descriptor-pool/set management for scene draws).
         PFN_vkCmdPushDescriptorSetKHR m_pushDescriptor = nullptr;
@@ -181,6 +186,7 @@ namespace Ditto
 
         bool CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
                           VkBuffer& outBuf, VkDeviceMemory& outMem);
+        bool CreateUboDescriptors();
         bool CreateDepthResources();
         void DestroyDepthResources();
         VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);

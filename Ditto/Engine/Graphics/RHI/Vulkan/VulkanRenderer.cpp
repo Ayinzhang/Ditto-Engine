@@ -65,6 +65,7 @@ namespace Ditto
                 m_uboBuf[i], m_uboMem[i]);
             vkMapMemory(m_device, m_uboMem[i], 0, 256, 0, &m_uboMapped[i]);
         }
+        if (!CreateUboDescriptors()) return;
 
         m_ready = true;
         Logger::Get().Info("[Vulkan] Renderer initialized (swapchain + depth + frame resources ready).");
@@ -111,6 +112,8 @@ namespace Ditto
             }
             for (int i = 0; i < kFramesInFlight; ++i)
                 if (m_uboBuf[i]) { vkDestroyBuffer(m_device, m_uboBuf[i], nullptr); vkFreeMemory(m_device, m_uboMem[i], nullptr); }
+            if (m_uboPool) vkDestroyDescriptorPool(m_device, m_uboPool, nullptr);
+            if (m_uboSetLayout) vkDestroyDescriptorSetLayout(m_device, m_uboSetLayout, nullptr);
 
             for (auto s : m_renderFinished) if (s) vkDestroySemaphore(m_device, s, nullptr);
             for (auto s : m_imageAvailable) if (s) vkDestroySemaphore(m_device, s, nullptr);
@@ -689,6 +692,40 @@ namespace Ditto
         return true;
     }
 
+    bool VulkanRenderer::CreateUboDescriptors()
+    {
+        // Shared set-0 layout (UBO @ binding 0), used by all pipelines. Regular
+        // (not push), so set 1 can be the single allowed push-descriptor set.
+        VkDescriptorSetLayoutBinding ub{};
+        ub.binding = 0; ub.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; ub.descriptorCount = 1;
+        ub.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutCreateInfo lc{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        lc.bindingCount = 1; lc.pBindings = &ub;
+        if (vkCreateDescriptorSetLayout(m_device, &lc, nullptr, &m_uboSetLayout) != VK_SUCCESS) return false;
+
+        VkDescriptorPoolSize ps{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kFramesInFlight };
+        VkDescriptorPoolCreateInfo pc{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        pc.maxSets = kFramesInFlight; pc.poolSizeCount = 1; pc.pPoolSizes = &ps;
+        if (vkCreateDescriptorPool(m_device, &pc, nullptr, &m_uboPool) != VK_SUCCESS) return false;
+
+        VkDescriptorSetLayout layouts[kFramesInFlight];
+        for (int i = 0; i < kFramesInFlight; ++i) layouts[i] = m_uboSetLayout;
+        VkDescriptorSetAllocateInfo ai{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        ai.descriptorPool = m_uboPool; ai.descriptorSetCount = kFramesInFlight; ai.pSetLayouts = layouts;
+        if (vkAllocateDescriptorSets(m_device, &ai, m_uboSets) != VK_SUCCESS) return false;
+
+        // Point each frame's set at its UBO buffer (contents update via mapped memory).
+        for (int i = 0; i < kFramesInFlight; ++i)
+        {
+            VkDescriptorBufferInfo bi{ m_uboBuf[i], 0, VK_WHOLE_SIZE };
+            VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            w.dstSet = m_uboSets[i]; w.dstBinding = 0; w.descriptorCount = 1;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w.pBufferInfo = &bi;
+            vkUpdateDescriptorSets(m_device, 1, &w, 0, nullptr);
+        }
+        return true;
+    }
+
     bool VulkanRenderer::CreateDepthResources()
     {
         VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
@@ -840,15 +877,9 @@ namespace Ditto
         p.vs = CreateShaderModule(vs.spirv);
         p.fs = CreateShaderModule(ps.spirv);
 
-        // set 0: FrameUniforms UBO (vertex+fragment). set 1: 2 storage buffers (vertex).
-        VkDescriptorSetLayoutBinding ub{};
-        ub.binding = 0; ub.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; ub.descriptorCount = 1;
-        ub.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        VkDescriptorSetLayoutCreateInfo l0{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-        l0.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-        l0.bindingCount = 1; l0.pBindings = &ub;
-        vkCreateDescriptorSetLayout(m_device, &l0, nullptr, &p.setLayouts[0]);
-
+        // set 0 = shared UBO layout (regular, bound). set 1 = 2 storage buffers (push,
+        // the single allowed push-descriptor set). p.setLayouts[0] stays null (shared,
+        // not owned by the pipeline); only set 1 is created/destroyed per pipeline.
         VkDescriptorSetLayoutBinding sb[2]{};
         sb[0].binding = 0; sb[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[0].descriptorCount = 1; sb[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         sb[1].binding = 1; sb[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[1].descriptorCount = 1; sb[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
@@ -857,8 +888,9 @@ namespace Ditto
         l1.bindingCount = 2; l1.pBindings = sb;
         vkCreateDescriptorSetLayout(m_device, &l1, nullptr, &p.setLayouts[1]);
 
+        VkDescriptorSetLayout layouts[2] = { m_uboSetLayout, p.setLayouts[1] };
         VkPipelineLayoutCreateInfo plc{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-        plc.setLayoutCount = 2; plc.pSetLayouts = p.setLayouts;
+        plc.setLayoutCount = 2; plc.pSetLayouts = layouts;
         vkCreatePipelineLayout(m_device, &plc, nullptr, &p.layout);
 
         VkPipelineShaderStageCreateInfo stages[2]{};
@@ -1145,12 +1177,10 @@ namespace Ditto
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->pipeline);
 
-        // Push set 0 (this frame's FrameUniforms UBO).
-        VkDescriptorBufferInfo bi{ m_uboBuf[m_currentFrame], 0, VK_WHOLE_SIZE };
-        VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        w.dstBinding = 0; w.descriptorCount = 1;
-        w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w.pBufferInfo = &bi;
-        m_pushDescriptor(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout, 0, 1, &w);
+        // Bind set 0 (this frame's FrameUniforms UBO). Set 1 (storage buffers) is
+        // pushed per-draw in DrawInstanced.
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout,
+            0, 1, &m_uboSets[m_currentFrame], 0, nullptr);
     }
 
     void VulkanRenderer::SetFrameUniforms(const FrameUniforms& u)
