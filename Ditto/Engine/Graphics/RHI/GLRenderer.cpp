@@ -4,6 +4,7 @@
 #include "../../../3rdParty/GLFW/glfw3.h"
 #include "../../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "../../Core/Logger.h"
+#include "../Shaders/ShaderCompiler.h"
 #include "../../../3rdParty/ImGui/imgui.h"
 #include "../../../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../../../3rdParty/ImGui/imgui_impl_opengl3.h"
@@ -34,6 +35,7 @@ namespace Ditto
             if (m.ebo) glDeleteBuffers(1, &m.ebo);
         }
         for (auto& b : m_buffers) if (b.ssbo) glDeleteBuffers(1, &b.ssbo);
+        if (m_frameUBO) glDeleteBuffers(1, &m_frameUBO);
         for (auto& p : m_pipelines) if (p.program) glDeleteProgram(p.program);
         for (auto& t : m_textures) if (t.tex) glDeleteTextures(1, &t.tex);
         for (auto& rt : m_renderTargets)
@@ -209,10 +211,20 @@ namespace Ditto
         return shader;
     }
 
-    PipelineHandle GLRenderer::CreatePipeline(const std::string& vertexSrc, const std::string& fragmentSrc)
+    PipelineHandle GLRenderer::CreatePipeline(const std::string& hlslSource)
     {
-        unsigned int vert = CompileStage(GL_VERTEX_SHADER, vertexSrc, "vertex");
-        unsigned int frag = CompileStage(GL_FRAGMENT_SHADER, fragmentSrc, "fragment");
+        // HLSL -> SPIR-V -> GLSL (via the shared ShaderCompiler), then the usual
+        // GL compile/link.
+        CompiledShader vs = ShaderCompiler::Compile(hlslSource, ShaderStage::Vertex, "VSMain", true);
+        CompiledShader ps = ShaderCompiler::Compile(hlslSource, ShaderStage::Pixel, "PSMain", true);
+        if (!vs.ok || !ps.ok)
+        {
+            Ditto::Logger::Get().Error("[GLRenderer] pipeline shader compile failed");
+            return {};
+        }
+
+        unsigned int vert = CompileStage(GL_VERTEX_SHADER, vs.glsl, "vertex");
+        unsigned int frag = CompileStage(GL_FRAGMENT_SHADER, ps.glsl, "fragment");
 
         GLPipeline p;
         p.program = glCreateProgram();
@@ -350,14 +362,34 @@ namespace Ditto
 
     void GLRenderer::SetFrameUniforms(const FrameUniforms& u)
     {
-        if (!m_currentProgram) return;
-        const unsigned int p = m_currentProgram;
-        glUniformMatrix4fv(glGetUniformLocation(p, "view"), 1, GL_FALSE, glm::value_ptr(u.view));
-        glUniformMatrix4fv(glGetUniformLocation(p, "projection"), 1, GL_FALSE, glm::value_ptr(u.projection));
-        glUniform3f(glGetUniformLocation(p, "viewPos"), u.viewPos.x, u.viewPos.y, u.viewPos.z);
-        glUniform3f(glGetUniformLocation(p, "lightCol"), u.lightColor.x, u.lightColor.y, u.lightColor.z);
-        glUniform3f(glGetUniformLocation(p, "lightDir"), u.lightDir.x, u.lightDir.y, u.lightDir.z);
-        glUniform1f(glGetUniformLocation(p, "lightIntensity"), u.lightIntensity);
+        // std140 mirror of the HLSL `FrameUniforms` cbuffer (vec3 + pad pairs).
+        // Matrices are uploaded as-is (GLM column-major); the generated GLSL marks
+        // them row_major, which composes with its row-vector multiplies to the
+        // same result. Layout = 176 bytes.
+        struct Std140
+        {
+            glm::mat4 view;
+            glm::mat4 projection;
+            glm::vec3 viewPos;     float _p0;
+            glm::vec3 lightColor;  float _p1;
+            glm::vec3 lightDir;    float lightIntensity;
+        } data;
+        data.view = u.view;
+        data.projection = u.projection;
+        data.viewPos = u.viewPos;          data._p0 = 0.0f;
+        data.lightColor = u.lightColor;    data._p1 = 0.0f;
+        data.lightDir = u.lightDir;        data.lightIntensity = u.lightIntensity;
+
+        if (!m_frameUBO)
+        {
+            glGenBuffers(1, &m_frameUBO);
+            glBindBuffer(GL_UNIFORM_BUFFER, m_frameUBO);
+            glBufferData(GL_UNIFORM_BUFFER, sizeof(Std140), nullptr, GL_DYNAMIC_DRAW);
+        }
+        glBindBuffer(GL_UNIFORM_BUFFER, m_frameUBO);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Std140), &data);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_frameUBO);   // FrameUniforms @ binding 0
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
 
     void GLRenderer::BindStorageBuffer(int binding, StorageBufferHandle h)

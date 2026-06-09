@@ -308,18 +308,28 @@ void InspectorWindow::InitModelPreview()
     m_previewRT = r->CreateRenderTarget(m_previewWidth, m_previewHeight);
     m_previewCamera = new Camera(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
 
-    // Solid-white wireframe preview shader. The model transform is folded into
-    // `view` on the CPU, so the fixed FrameUniforms block (view + projection)
-    // drives it without needing a separate per-draw model uniform.
-    const std::string vertSrc = R"(#version 460 core
-layout(location = 0) in vec3 aPos;
-uniform mat4 view;
-uniform mat4 projection;
-void main() { gl_Position = projection * view * vec4(aPos, 1.0); })";
-    const std::string fragSrc = R"(#version 460 core
-out vec4 col;
-void main() { col = vec4(1.0); })";
-    m_previewPipeline = r->CreatePipeline(vertSrc, fragSrc);
+    // Solid-white wireframe preview shader (HLSL). The model transform is folded
+    // into `view` on the CPU, so the shared FrameUniforms block drives it. The
+    // cbuffer must mirror the scene shader's layout so SetFrameUniforms matches.
+    const std::string previewHlsl = R"(
+[[vk::binding(0, 0)]] cbuffer FrameUniforms : register(b0, space0)
+{
+    float4x4 view;
+    float4x4 projection;
+    float3   viewPos;        float _pad0;
+    float3   lightColor;     float _pad1;
+    float3   lightDir;       float lightIntensity;
+};
+struct VSOutput { float4 position : SV_Position; };
+VSOutput VSMain(float3 aPos : POSITION)
+{
+    VSOutput o;
+    o.position = mul(projection, mul(view, float4(aPos, 1.0)));
+    return o;
+}
+float4 PSMain(VSOutput i) : SV_Target { return float4(1.0, 1.0, 1.0, 1.0); }
+)";
+    m_previewPipeline = r->CreatePipeline(previewHlsl);
 
     m_previewInitialized = true;
 }

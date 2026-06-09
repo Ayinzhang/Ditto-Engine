@@ -179,11 +179,9 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     // Shaders: editor mode resolves from the executable location; game mode
     // resolves relative to the loaded project directory.
-    std::string vertexPath = shaderBaseDir.empty()
-        ? FindShaderPath("Vertex.glsl") : FindShaderPathInDir(shaderBaseDir, "Vertex.glsl");
-    std::string fragmentPath = shaderBaseDir.empty()
-        ? FindShaderPath("Fragment.glsl") : FindShaderPathInDir(shaderBaseDir, "Fragment.glsl");
-    shaderPipeline = renderer->CreatePipeline(ReadTextFile(vertexPath), ReadTextFile(fragmentPath));
+    std::string scenePath = shaderBaseDir.empty()
+        ? FindShaderPath("Scene.hlsl") : FindShaderPathInDir(shaderBaseDir, "Scene.hlsl");
+    shaderPipeline = renderer->CreatePipeline(ReadTextFile(scenePath));
 
     if (createEditor)
     {

@@ -582,7 +582,7 @@ namespace Ditto
     StorageBufferHandle VulkanRenderer::CreateStorageBuffer(size_t, bool) { return {}; }
     void VulkanRenderer::UpdateStorageBuffer(StorageBufferHandle, const void*, size_t) {}
     void VulkanRenderer::DestroyStorageBuffer(StorageBufferHandle) {}
-    PipelineHandle VulkanRenderer::CreatePipeline(const std::string&, const std::string&) { return {}; }
+    PipelineHandle VulkanRenderer::CreatePipeline(const std::string&) { return {}; }
     void VulkanRenderer::DestroyPipeline(PipelineHandle) {}
     // ------------------------------- ImGui --------------------------------
     void VulkanRenderer::ImGuiInit(void* window)

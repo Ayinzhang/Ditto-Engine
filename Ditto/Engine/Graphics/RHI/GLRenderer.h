@@ -45,7 +45,7 @@ namespace Ditto
         void UpdateStorageBuffer(StorageBufferHandle, const void* data, size_t sizeBytes) override;
         void DestroyStorageBuffer(StorageBufferHandle) override;
 
-        PipelineHandle CreatePipeline(const std::string& vertexSrc, const std::string& fragmentSrc) override;
+        PipelineHandle CreatePipeline(const std::string& hlslSource) override;
         void DestroyPipeline(PipelineHandle) override;
 
         TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) override;
@@ -88,6 +88,7 @@ namespace Ditto
 
         void* m_window = nullptr;   // GLFWwindow* for buffer swap
         unsigned int m_currentProgram = 0;
+        unsigned int m_frameUBO = 0;   // FrameUniforms std140 UBO (binding 0)
 
         // Saved default-framebuffer state across BeginRenderTarget/EndRenderTarget
         // (single level; the preview never nests render targets).

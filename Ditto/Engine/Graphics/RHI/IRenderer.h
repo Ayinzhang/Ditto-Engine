@@ -91,7 +91,9 @@ namespace Ditto
         virtual void UpdateStorageBuffer(StorageBufferHandle, const void* data, size_t sizeBytes) = 0;
         virtual void DestroyStorageBuffer(StorageBufferHandle) = 0;
 
-        virtual PipelineHandle CreatePipeline(const std::string& vertexSrc, const std::string& fragmentSrc) = 0;
+        // One combined HLSL source with `VSMain` + `PSMain` entry points. Compiled
+        // (HLSL->SPIR-V->per-backend) by the shared ShaderCompiler.
+        virtual PipelineHandle CreatePipeline(const std::string& hlslSource) = 0;
         virtual void DestroyPipeline(PipelineHandle) = 0;
 
         virtual TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) = 0;
