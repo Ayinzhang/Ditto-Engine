@@ -101,6 +101,12 @@ namespace PathUtils
         if (!assetRoot.empty())
             candidates.push_back(assetRoot / "Assets" / relativeToAssets);
 
+        // Project layout: exe in <root>/x64/Debug, engine assets in <root>/Ditto/Assets.
+        // Anchored to the exe so it resolves regardless of the working directory.
+        fs::path dittoRoot = FindAncestorContaining(exeDir, "Ditto");
+        if (!dittoRoot.empty())
+            candidates.push_back(dittoRoot / "Ditto" / "Assets" / relativeToAssets);
+
         fs::path cwd = fs::current_path(ec);
         if (!ec)
             candidates.push_back(cwd / "Assets" / relativeToAssets);
