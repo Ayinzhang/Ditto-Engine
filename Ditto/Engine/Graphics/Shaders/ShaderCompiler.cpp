@@ -82,11 +82,17 @@ namespace Ditto
 
         const std::string profile = (stage == ShaderStage::Vertex) ? "vs_6_0" : "ps_6_0";
 
+        // NOTE: system() runs `cmd /c <command>`, and cmd strips the outer pair of
+        // quotes when the command both starts and ends with one. Our commands do
+        // (quoted exe path ... quoted redirect), so wrap the WHOLE command in an
+        // extra pair of quotes -- cmd strips those and leaves the inner quoting intact.
+        auto run = [](const std::string& cmd) { return std::system(("\"" + cmd + "\"").c_str()); };
+
         // HLSL -> SPIR-V. -Zpc packs matrices column-major; explicit [[vk::binding]]
         // in the HLSL pins set/binding so no shift flags are needed.
         std::string dxc = "\"" + bin + "\\dxc.exe\" -spirv -T " + profile + " -E " + entryPoint +
             " -Zpc \"" + hlslP.string() + "\" -Fo \"" + spvP.string() + "\" 2>\"" + errP.string() + "\"";
-        if (std::system(dxc.c_str()) != 0)
+        if (run(dxc) != 0)
         {
             out.error = "DXC failed: " + ReadText(errP);
             Logger::Get().Error("[ShaderCompiler] " + out.error);
@@ -107,7 +113,7 @@ namespace Ditto
             // SPIR-V -> desktop GLSL 460 for the OpenGL backend.
             std::string sc = "\"" + bin + "\\spirv-cross.exe\" \"" + spvP.string() +
                 "\" --version 460 --no-es --output \"" + glslP.string() + "\" 2>\"" + errP.string() + "\"";
-            if (std::system(sc.c_str()) != 0)
+            if (run(sc) != 0)
             {
                 out.error = "spirv-cross failed: " + ReadText(errP);
                 Logger::Get().Error("[ShaderCompiler] " + out.error);
