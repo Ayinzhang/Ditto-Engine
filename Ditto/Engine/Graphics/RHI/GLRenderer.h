@@ -13,8 +13,13 @@ namespace Ditto
     class GLRenderer : public IRenderer
     {
     public:
-        GLRenderer() = default;
+        // `window` is the GLFWwindow* (kept as void* so this header needs no GLFW
+        // include); used by EndFrame to swap buffers.
+        explicit GLRenderer(void* window) : m_window(window) {}
         ~GLRenderer() override;
+
+        void BeginFrame() override {}
+        void EndFrame() override;   // glfwSwapBuffers
 
         // State
         void SetViewport(int x, int y, int w, int h) override;
@@ -76,6 +81,7 @@ namespace Ditto
         std::vector<GLTexture>         m_textures;
         std::vector<GLRenderTargetRes> m_renderTargets;
 
+        void* m_window = nullptr;   // GLFWwindow* for buffer swap
         unsigned int m_currentProgram = 0;
 
         // Saved default-framebuffer state across BeginRenderTarget/EndRenderTarget

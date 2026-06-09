@@ -1,5 +1,7 @@
 #include "VulkanRenderer.h"
 #include "../../../Core/Logger.h"
+#define GLFW_INCLUDE_VULKAN
+#include "../../../../3rdParty/GLFW/glfw3.h"
 #include <cstring>
 #include <vector>
 
@@ -30,22 +32,25 @@ namespace Ditto
         return false;
     }
 
-    VulkanRenderer::VulkanRenderer()
+    VulkanRenderer::VulkanRenderer(void* window)
+        : m_window(window)
     {
 #ifdef _DEBUG
         m_validation = HasValidationLayer();
 #endif
         if (!CreateInstance()) return;
         if (m_validation) SetupDebugMessenger();
+        if (!CreateSurface()) return;
         if (!PickPhysicalDevice()) return;
         if (!CreateLogicalDevice()) return;
 
-        Logger::Get().Info("[Vulkan] Renderer initialized (instance + device ready).");
+        Logger::Get().Info("[Vulkan] Renderer initialized (instance + surface + device ready).");
     }
 
     VulkanRenderer::~VulkanRenderer()
     {
         if (m_device) vkDestroyDevice(m_device, nullptr);
+        if (m_surface) vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 
         if (m_debugMessenger)
         {
@@ -54,6 +59,16 @@ namespace Ditto
             if (destroyFn) destroyFn(m_instance, m_debugMessenger, nullptr);
         }
         if (m_instance) vkDestroyInstance(m_instance, nullptr);
+    }
+
+    bool VulkanRenderer::CreateSurface()
+    {
+        if (glfwCreateWindowSurface(m_instance, static_cast<GLFWwindow*>(m_window), nullptr, &m_surface) != VK_SUCCESS)
+        {
+            Logger::Get().Error("[Vulkan] glfwCreateWindowSurface failed (is GLFW built with Vulkan support?)");
+            return false;
+        }
+        return true;
     }
 
     bool VulkanRenderer::CreateInstance()
@@ -115,50 +130,75 @@ namespace Ditto
         std::vector<VkPhysicalDevice> devices(count);
         vkEnumeratePhysicalDevices(m_instance, &count, devices.data());
 
-        // Prefer a discrete GPU; fall back to the first device with a graphics queue.
-        VkPhysicalDevice fallback = VK_NULL_HANDLE;
-        for (VkPhysicalDevice dev : devices)
+        // For a device, find a graphics queue family and a present-capable family
+        // (preferring one family that does both). Returns false if either is missing.
+        auto findQueues = [&](VkPhysicalDevice dev, uint32_t& gfx, uint32_t& present) -> bool
         {
             uint32_t qCount = 0;
             vkGetPhysicalDeviceQueueFamilyProperties(dev, &qCount, nullptr);
             std::vector<VkQueueFamilyProperties> qprops(qCount);
             vkGetPhysicalDeviceQueueFamilyProperties(dev, &qCount, qprops.data());
 
-            uint32_t gfx = UINT32_MAX;
+            gfx = UINT32_MAX; present = UINT32_MAX;
             for (uint32_t i = 0; i < qCount; ++i)
-                if (qprops[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { gfx = i; break; }
-            if (gfx == UINT32_MAX) continue;
+            {
+                bool isGfx = (qprops[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+                VkBool32 canPresent = VK_FALSE;
+                vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, m_surface, &canPresent);
+
+                if (isGfx && canPresent) { gfx = present = i; return true; }   // unified queue: ideal
+                if (isGfx && gfx == UINT32_MAX) gfx = i;
+                if (canPresent && present == UINT32_MAX) present = i;
+            }
+            return gfx != UINT32_MAX && present != UINT32_MAX;
+        };
+
+        VkPhysicalDevice fallback = VK_NULL_HANDLE;
+        uint32_t fbGfx = UINT32_MAX, fbPresent = UINT32_MAX;
+        for (VkPhysicalDevice dev : devices)
+        {
+            uint32_t gfx, present;
+            if (!findQueues(dev, gfx, present)) continue;
 
             VkPhysicalDeviceProperties props;
             vkGetPhysicalDeviceProperties(dev, &props);
             if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
             {
-                m_physicalDevice = dev; m_graphicsQueueFamily = gfx;
+                m_physicalDevice = dev; m_graphicsQueueFamily = gfx; m_presentQueueFamily = present;
                 Logger::Get().Info(std::string("[Vulkan] GPU: ") + props.deviceName);
                 return true;
             }
-            if (fallback == VK_NULL_HANDLE) { fallback = dev; m_graphicsQueueFamily = gfx; }
+            if (fallback == VK_NULL_HANDLE) { fallback = dev; fbGfx = gfx; fbPresent = present; }
         }
 
         if (fallback != VK_NULL_HANDLE)
         {
-            m_physicalDevice = fallback;
+            m_physicalDevice = fallback; m_graphicsQueueFamily = fbGfx; m_presentQueueFamily = fbPresent;
             VkPhysicalDeviceProperties props;
             vkGetPhysicalDeviceProperties(fallback, &props);
             Logger::Get().Info(std::string("[Vulkan] GPU (fallback): ") + props.deviceName);
             return true;
         }
-        Logger::Get().Error("[Vulkan] no device with a graphics queue");
+        Logger::Get().Error("[Vulkan] no device with graphics + present queues");
         return false;
     }
 
     bool VulkanRenderer::CreateLogicalDevice()
     {
         float priority = 1.0f;
-        VkDeviceQueueCreateInfo qci{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
-        qci.queueFamilyIndex = m_graphicsQueueFamily;
-        qci.queueCount = 1;
-        qci.pQueuePriorities = &priority;
+        std::vector<VkDeviceQueueCreateInfo> queueInfos;
+
+        // One queue create-info per unique family (graphics + present may share).
+        std::vector<uint32_t> families = { m_graphicsQueueFamily };
+        if (m_presentQueueFamily != m_graphicsQueueFamily) families.push_back(m_presentQueueFamily);
+        for (uint32_t fam : families)
+        {
+            VkDeviceQueueCreateInfo qci{ VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+            qci.queueFamilyIndex = fam;
+            qci.queueCount = 1;
+            qci.pQueuePriorities = &priority;
+            queueInfos.push_back(qci);
+        }
 
         const char* deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
@@ -166,8 +206,8 @@ namespace Ditto
         features.fillModeNonSolid = VK_TRUE;   // wireframe (model preview parity)
 
         VkDeviceCreateInfo ci{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-        ci.queueCreateInfoCount = 1;
-        ci.pQueueCreateInfos = &qci;
+        ci.queueCreateInfoCount = (uint32_t)queueInfos.size();
+        ci.pQueueCreateInfos = queueInfos.data();
         ci.enabledExtensionCount = 1;
         ci.ppEnabledExtensionNames = deviceExtensions;
         ci.pEnabledFeatures = &features;
@@ -178,6 +218,7 @@ namespace Ditto
             return false;
         }
         vkGetDeviceQueue(m_device, m_graphicsQueueFamily, 0, &m_graphicsQueue);
+        vkGetDeviceQueue(m_device, m_presentQueueFamily, 0, &m_presentQueue);
         return true;
     }
 

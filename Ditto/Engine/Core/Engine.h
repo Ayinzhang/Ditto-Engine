@@ -15,6 +15,11 @@ struct Engine
 {
     enum State { Edit, Play, Pause, Stop, Exit } state = Edit;
 
+    // Render backend (selected at startup via env DITTO_RHI=vulkan; default GL).
+    // GL and Vulkan cannot share a window, so this drives window creation too.
+    enum class Backend { OpenGL, Vulkan };
+    Backend backend = Backend::OpenGL;
+
     GLFWwindow* window;
     int window_width, window_height;
     // Engine-internal subsystems with no external raw-pointer references are

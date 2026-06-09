@@ -1,5 +1,7 @@
 #include "GLRenderer.h"
 #include "../../../3rdParty/GLAD/glad.h"
+#define GLFW_INCLUDE_NONE
+#include "../../../3rdParty/GLFW/glfw3.h"
 #include "../../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "../../Core/Logger.h"
 #include <cstdint>
@@ -36,6 +38,12 @@ namespace Ditto
             if (rt.fbo) glDeleteFramebuffers(1, &rt.fbo);
             if (rt.rbo) glDeleteRenderbuffers(1, &rt.rbo);
         }
+    }
+
+    // ----------------------------- Frame -----------------------------
+    void GLRenderer::EndFrame()
+    {
+        if (m_window) glfwSwapBuffers(static_cast<GLFWwindow*>(m_window));
     }
 
     // ----------------------------- State -----------------------------

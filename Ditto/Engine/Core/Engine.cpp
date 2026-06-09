@@ -12,7 +12,10 @@
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "CSharpScript.h"
 #include "PathUtils.h"
+#include "Logger.h"
 #include "../Graphics/RHI/GLRenderer.h"
+#include "../Graphics/RHI/Vulkan/VulkanRenderer.h"
+#include <cstdlib>
 
 using namespace std;
 using namespace glm;
@@ -78,20 +81,51 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     if (!glfwInit()) throw runtime_error("GLFW init failed");
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // Backend selection: env DITTO_RHI=vulkan opts into Vulkan; default OpenGL.
+    backend = Backend::OpenGL;
+    {
+        char* rhi = nullptr; size_t rhiLen = 0;
+        if (_dupenv_s(&rhi, &rhiLen, "DITTO_RHI") == 0 && rhi)
+        {
+            std::string v = rhi;
+            free(rhi);
+            if (v == "vulkan" || v == "Vulkan" || v == "vk") backend = Backend::Vulkan;
+        }
+    }
+
+    if (backend == Backend::Vulkan)
+    {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);   // Vulkan: no GL context
+    }
+    else
+    {
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    }
 
     window = glfwCreateWindow(window_width, window_height, "Ditto", nullptr, nullptr);
     if (!window) glfwTerminate(), throw runtime_error("Window create failed");
-    glfwMakeContextCurrent(window);
     glfwSetWindowUserPointer(window, this);
     glfwSetCursorPosCallback(window, Engine::MouseCallBack);
 
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw runtime_error("Failed to initialize GLAD");
-
-    // RHI must be created after a current GL context exists (post-GLAD).
-    renderer = std::make_unique<Ditto::GLRenderer>();
+    if (backend == Backend::Vulkan)
+    {
+        renderer = std::make_unique<Ditto::VulkanRenderer>(window);
+        if (createEditor)
+        {
+            // The editor uses the ImGui OpenGL3 backend; it can't run on a Vulkan
+            // window until the ImGui Vulkan backend (Vk3) lands. Disable for now.
+            Ditto::Logger::Get().Warning("[Engine] Editor disabled under Vulkan until the ImGui Vulkan backend (Vk3) is implemented.");
+            createEditor = false;
+        }
+    }
+    else
+    {
+        glfwMakeContextCurrent(window);
+        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw runtime_error("Failed to initialize GLAD");
+        renderer = std::make_unique<Ditto::GLRenderer>(window);
+    }
 
     resource = std::make_unique<Resource>();
     scene = new Scene();
@@ -205,6 +239,8 @@ void Engine::Run()
 
         glfwGetFramebufferSize(window, &window_width, &window_height);
         if (window_width <= 0 || window_height <= 0) continue;
+
+        renderer->BeginFrame();
         renderer->SetViewport(0, 0, window_width, window_height);
         renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
 
@@ -228,7 +264,7 @@ void Engine::Run()
             }
         }
 
-        if (window) glfwSwapBuffers(window);
+        renderer->EndFrame();
     }
 }
 

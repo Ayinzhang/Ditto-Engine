@@ -14,7 +14,8 @@ namespace Ditto
     class VulkanRenderer : public IRenderer
     {
     public:
-        VulkanRenderer();
+        // `window` is the GLFWwindow* (NO_API) used to create the present surface.
+        explicit VulkanRenderer(void* window);
         ~VulkanRenderer() override;
 
         // True once the instance + device were created successfully.
@@ -57,15 +58,21 @@ namespace Ditto
     private:
         bool CreateInstance();
         bool SetupDebugMessenger();
+        bool CreateSurface();
         bool PickPhysicalDevice();
         bool CreateLogicalDevice();
 
+        void* m_window = nullptr;   // GLFWwindow*
+
         VkInstance m_instance = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
+        VkSurfaceKHR m_surface = VK_NULL_HANDLE;
         VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
         VkQueue m_graphicsQueue = VK_NULL_HANDLE;
+        VkQueue m_presentQueue = VK_NULL_HANDLE;
         uint32_t m_graphicsQueueFamily = UINT32_MAX;
+        uint32_t m_presentQueueFamily = UINT32_MAX;
 
         bool m_validation = false;
     };

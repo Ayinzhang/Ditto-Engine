@@ -54,6 +54,14 @@ namespace Ditto
     public:
         virtual ~IRenderer() = default;
 
+        // ---- Frame lifecycle ----
+        // GL: BeginFrame is a no-op, EndFrame swaps buffers. Vulkan: BeginFrame
+        // acquires a swapchain image + begins the command buffer/render pass,
+        // EndFrame ends + submits + presents. Default no-ops so a backend can
+        // opt in incrementally.
+        virtual void BeginFrame() {}
+        virtual void EndFrame() {}
+
         // ---- State commands (stateless; safe to call mid-ImGui-frame) ----
         virtual void SetViewport(int x, int y, int w, int h) = 0;
         virtual void SetScissor(bool enabled, int x = 0, int y = 0, int w = 0, int h = 0) = 0;
