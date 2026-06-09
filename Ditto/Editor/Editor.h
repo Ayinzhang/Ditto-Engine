@@ -55,6 +55,8 @@ struct Editor
     static constexpr size_t kUndoDepth = 64;
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
+    void* m_glfwWindow = nullptr;       // GLFWwindow* (for lazy ImGui backend init)
+    bool m_imguiBackendInit = false;    // ImGui platform+renderer backend initialized
     int frame; float fps, ppf, deltaTime;
     
     std::string m_tempScenePath;

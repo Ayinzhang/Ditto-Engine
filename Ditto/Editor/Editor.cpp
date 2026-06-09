@@ -156,8 +156,10 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     ImGui::GetStyle().Colors[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
     ImGui::GetStyle().Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0, 0, 0, 0);
 
-    ImGui_ImplGlfw_InitForOpenGL((GLFWwindow*)window, true);
-    ImGui_ImplOpenGL3_Init("#version 450");
+    // The ImGui platform+renderer backend is initialized lazily on the first
+    // Draw(), because it routes through engine->renderer (assigned by the caller
+    // AFTER this constructor) and must match the active backend (GL or Vulkan).
+    m_glfwWindow = window;
 
     showSavePopup = false;
     showLoadPopup = false;
@@ -206,8 +208,7 @@ Editor::~Editor()
     delete m_projectWindow;
     delete m_inspectorWindow;
 
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    if (engine && engine->renderer && m_imguiBackendInit) engine->renderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }
 
@@ -215,11 +216,17 @@ void Editor::Draw()
 {
     isSceneActive = false;
 
-    // Lazy init: by the first Draw, engine (and engine->renderer) is set, so the
-    // icon textures can be created through the RHI. Idempotent.
+    // Lazy init (engine->renderer is available by the first Draw): the ImGui
+    // backend and icon textures are created through the active RHI backend.
+    if (!m_imguiBackendInit && engine && engine->renderer)
+    {
+        engine->renderer->ImGuiInit(m_glfwWindow);
+        m_imguiBackendInit = true;
+    }
     InitFileIcons();
 
-    ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
+    if (engine && engine->renderer) engine->renderer->ImGuiNewFrame();
+    ImGui::NewFrame();
     
     // Global Ctrl+S shortcut - save current scene
     if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_S))
@@ -304,7 +311,7 @@ void Editor::Draw()
         }
         
         ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (engine && engine->renderer) engine->renderer->ImGuiRenderDrawData(ImGui::GetDrawData());
         return;
     }
 
@@ -324,7 +331,8 @@ void Editor::Draw()
     // DockSpace end
     ImGui::End();
 
-    ImGui::Render(); ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    ImGui::Render();
+    if (engine && engine->renderer) engine->renderer->ImGuiRenderDrawData(ImGui::GetDrawData());
     if (isSceneActive) engine->sceneCamera = engine->sceneCamera;
 }
 

@@ -4,6 +4,9 @@
 #include "../../../3rdParty/GLFW/glfw3.h"
 #include "../../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "../../Core/Logger.h"
+#include "../../../3rdParty/ImGui/imgui.h"
+#include "../../../3rdParty/ImGui/imgui_impl_glfw.h"
+#include "../../../3rdParty/ImGui/imgui_impl_opengl3.h"
 #include <cstdint>
 
 namespace Ditto
@@ -44,6 +47,27 @@ namespace Ditto
     void GLRenderer::EndFrame()
     {
         if (m_window) glfwSwapBuffers(static_cast<GLFWwindow*>(m_window));
+    }
+
+    // ----------------------------- ImGui -----------------------------
+    void GLRenderer::ImGuiInit(void* window)
+    {
+        ImGui_ImplGlfw_InitForOpenGL(static_cast<GLFWwindow*>(window), true);
+        ImGui_ImplOpenGL3_Init("#version 450");
+    }
+    void GLRenderer::ImGuiShutdown()
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+    }
+    void GLRenderer::ImGuiNewFrame()
+    {
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+    }
+    void GLRenderer::ImGuiRenderDrawData(void* drawData)
+    {
+        ImGui_ImplOpenGL3_RenderDrawData(static_cast<ImDrawData*>(drawData));
     }
 
     // ----------------------------- State -----------------------------

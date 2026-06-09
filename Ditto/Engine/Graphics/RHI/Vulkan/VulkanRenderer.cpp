@@ -2,6 +2,9 @@
 #include "../../../Core/Logger.h"
 #define GLFW_INCLUDE_VULKAN
 #include "../../../../3rdParty/GLFW/glfw3.h"
+#include "../../../../3rdParty/ImGui/imgui.h"
+#include "../../../../3rdParty/ImGui/imgui_impl_glfw.h"
+#include "../../../../3rdParty/ImGui/imgui_impl_vulkan.h"
 #include <cstring>
 #include <vector>
 #include <algorithm>
@@ -64,6 +67,16 @@ namespace Ditto
 
         if (m_device)
         {
+            // Defensive ImGui/texture teardown (normally done by ImGuiShutdown()).
+            for (auto& t : m_textures)
+            {
+                if (t.view)   vkDestroyImageView(m_device, t.view, nullptr);
+                if (t.image)  vkDestroyImage(m_device, t.image, nullptr);
+                if (t.memory) vkFreeMemory(m_device, t.memory, nullptr);
+            }
+            if (m_sampler)   vkDestroySampler(m_device, m_sampler, nullptr);
+            if (m_imguiPool) vkDestroyDescriptorPool(m_device, m_imguiPool, nullptr);
+
             for (auto s : m_renderFinished) if (s) vkDestroySemaphore(m_device, s, nullptr);
             for (auto s : m_imageAvailable) if (s) vkDestroySemaphore(m_device, s, nullptr);
             for (auto f : m_inFlight)       if (f) vkDestroyFence(m_device, f, nullptr);
@@ -571,9 +584,207 @@ namespace Ditto
     void VulkanRenderer::DestroyStorageBuffer(StorageBufferHandle) {}
     PipelineHandle VulkanRenderer::CreatePipeline(const std::string&, const std::string&) { return {}; }
     void VulkanRenderer::DestroyPipeline(PipelineHandle) {}
-    TextureHandle VulkanRenderer::CreateTexture(const unsigned char*, int, int, int) { return {}; }
-    void VulkanRenderer::DestroyTexture(TextureHandle) {}
-    void* VulkanRenderer::GetImGuiTextureID(TextureHandle) { return nullptr; }
+    // ------------------------------- ImGui --------------------------------
+    void VulkanRenderer::ImGuiInit(void* window)
+    {
+        if (!m_ready || m_imguiInit) return;
+
+        VkDescriptorPoolSize poolSizes[] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 256 } };
+        VkDescriptorPoolCreateInfo pci{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        pci.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pci.maxSets = 256;
+        pci.poolSizeCount = 1;
+        pci.pPoolSizes = poolSizes;
+        vkCreateDescriptorPool(m_device, &pci, nullptr, &m_imguiPool);
+
+        VkSamplerCreateInfo sci{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+        sci.magFilter = VK_FILTER_LINEAR;
+        sci.minFilter = VK_FILTER_LINEAR;
+        sci.addressModeU = sci.addressModeV = sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sci.maxLod = 1.0f;
+        vkCreateSampler(m_device, &sci, nullptr, &m_sampler);
+
+        ImGui_ImplGlfw_InitForVulkan(static_cast<GLFWwindow*>(window), true);
+
+        ImGui_ImplVulkan_InitInfo init{};
+        init.ApiVersion = VK_API_VERSION_1_3;
+        init.Instance = m_instance;
+        init.PhysicalDevice = m_physicalDevice;
+        init.Device = m_device;
+        init.QueueFamily = m_graphicsQueueFamily;
+        init.Queue = m_graphicsQueue;
+        init.DescriptorPool = m_imguiPool;
+        init.MinImageCount = (uint32_t)m_swapchainImages.size();
+        init.ImageCount = (uint32_t)m_swapchainImages.size();
+        init.PipelineInfoMain.RenderPass = m_renderPass;
+        init.PipelineInfoMain.Subpass = 0;
+        init.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        ImGui_ImplVulkan_Init(&init);
+
+        m_imguiInit = true;
+    }
+
+    void VulkanRenderer::ImGuiShutdown()
+    {
+        if (!m_imguiInit) return;
+        vkDeviceWaitIdle(m_device);
+
+        for (auto& t : m_textures)
+        {
+            if (t.descriptor) ImGui_ImplVulkan_RemoveTexture(t.descriptor);
+            if (t.view)   vkDestroyImageView(m_device, t.view, nullptr);
+            if (t.image)  vkDestroyImage(m_device, t.image, nullptr);
+            if (t.memory) vkFreeMemory(m_device, t.memory, nullptr);
+        }
+        m_textures.clear();
+
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        if (m_sampler)   { vkDestroySampler(m_device, m_sampler, nullptr); m_sampler = VK_NULL_HANDLE; }
+        if (m_imguiPool) { vkDestroyDescriptorPool(m_device, m_imguiPool, nullptr); m_imguiPool = VK_NULL_HANDLE; }
+        m_imguiInit = false;
+    }
+
+    void VulkanRenderer::ImGuiNewFrame()
+    {
+        if (!m_imguiInit) return;
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+    }
+
+    void VulkanRenderer::ImGuiRenderDrawData(void* drawData)
+    {
+        // Records into the current command buffer, which BeginFrame put inside the
+        // swapchain render pass.
+        if (!m_imguiInit || !m_frameActive) return;
+        ImGui_ImplVulkan_RenderDrawData(static_cast<ImDrawData*>(drawData), m_commandBuffers[m_currentFrame]);
+    }
+
+    // ------------------------------ Textures ------------------------------
+    uint32_t VulkanRenderer::FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags props) const
+    {
+        VkPhysicalDeviceMemoryProperties mem;
+        vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &mem);
+        for (uint32_t i = 0; i < mem.memoryTypeCount; ++i)
+            if ((typeBits & (1u << i)) && (mem.memoryTypes[i].propertyFlags & props) == props)
+                return i;
+        return 0;
+    }
+
+    VkCommandBuffer VulkanRenderer::BeginSingleTime()
+    {
+        VkCommandBufferAllocateInfo ai{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+        ai.commandPool = m_commandPool;
+        ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        ai.commandBufferCount = 1;
+        VkCommandBuffer cmd;
+        vkAllocateCommandBuffers(m_device, &ai, &cmd);
+        VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cmd, &bi);
+        return cmd;
+    }
+
+    void VulkanRenderer::EndSingleTime(VkCommandBuffer cmd)
+    {
+        vkEndCommandBuffer(cmd);
+        VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+        si.commandBufferCount = 1;
+        si.pCommandBuffers = &cmd;
+        vkQueueSubmit(m_graphicsQueue, 1, &si, VK_NULL_HANDLE);
+        vkQueueWaitIdle(m_graphicsQueue);
+        vkFreeCommandBuffers(m_device, m_commandPool, 1, &cmd);
+    }
+
+    TextureHandle VulkanRenderer::CreateTexture(const unsigned char* pixels, int w, int h, int /*channels*/)
+    {
+        if (!m_imguiInit || !pixels || w <= 0 || h <= 0) return {};   // need ImGui pool for AddTexture
+        const VkDeviceSize size = (VkDeviceSize)w * h * 4;            // Engine uploads RGBA8
+
+        // Staging buffer.
+        VkBuffer staging; VkDeviceMemory stagingMem;
+        VkBufferCreateInfo bci{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bci.size = size; bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT; bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        vkCreateBuffer(m_device, &bci, nullptr, &staging);
+        VkMemoryRequirements mr; vkGetBufferMemoryRequirements(m_device, staging, &mr);
+        VkMemoryAllocateInfo mai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        mai.allocationSize = mr.size;
+        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        vkAllocateMemory(m_device, &mai, nullptr, &stagingMem);
+        vkBindBufferMemory(m_device, staging, stagingMem, 0);
+        void* mapped; vkMapMemory(m_device, stagingMem, 0, size, 0, &mapped);
+        memcpy(mapped, pixels, (size_t)size);
+        vkUnmapMemory(m_device, stagingMem);
+
+        // Device-local image.
+        VkTextureRes t;
+        VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        ici.imageType = VK_IMAGE_TYPE_2D;
+        ici.extent = { (uint32_t)w, (uint32_t)h, 1 };
+        ici.mipLevels = 1; ici.arrayLayers = 1;
+        ici.format = VK_FORMAT_R8G8B8A8_UNORM;
+        ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ici.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        ici.samples = VK_SAMPLE_COUNT_1_BIT;
+        ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        vkCreateImage(m_device, &ici, nullptr, &t.image);
+        vkGetImageMemoryRequirements(m_device, t.image, &mr);
+        mai.allocationSize = mr.size;
+        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vkAllocateMemory(m_device, &mai, nullptr, &t.memory);
+        vkBindImageMemory(m_device, t.image, t.memory, 0);
+
+        // Upload: UNDEFINED -> TRANSFER_DST -> copy -> SHADER_READ_ONLY.
+        VkCommandBuffer cmd = BeginSingleTime();
+        VkImageMemoryBarrier b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.image = t.image;
+        b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        b.srcAccessMask = 0; b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+
+        VkBufferImageCopy region{};
+        region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+        region.imageExtent = { (uint32_t)w, (uint32_t)h, 1 };
+        vkCmdCopyBufferToImage(cmd, staging, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+        b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+        EndSingleTime(cmd);
+
+        vkDestroyBuffer(m_device, staging, nullptr);
+        vkFreeMemory(m_device, stagingMem, nullptr);
+
+        VkImageViewCreateInfo vci{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+        vci.image = t.image; vci.viewType = VK_IMAGE_VIEW_TYPE_2D; vci.format = VK_FORMAT_R8G8B8A8_UNORM;
+        vci.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        vkCreateImageView(m_device, &vci, nullptr, &t.view);
+
+        t.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        m_textures.push_back(t);
+        return TextureHandle{ (uint32_t)m_textures.size() };
+    }
+
+    void VulkanRenderer::DestroyTexture(TextureHandle h)
+    {
+        if (h.id == 0 || h.id > m_textures.size()) return;
+        VkTextureRes& t = m_textures[h.id - 1];
+        if (t.descriptor) ImGui_ImplVulkan_RemoveTexture(t.descriptor);
+        if (t.view)   vkDestroyImageView(m_device, t.view, nullptr);
+        if (t.image)  vkDestroyImage(m_device, t.image, nullptr);
+        if (t.memory) vkFreeMemory(m_device, t.memory, nullptr);
+        t = VkTextureRes{};
+    }
+
+    void* VulkanRenderer::GetImGuiTextureID(TextureHandle h)
+    {
+        if (h.id == 0 || h.id > m_textures.size()) return nullptr;
+        return (void*)m_textures[h.id - 1].descriptor;   // VkDescriptorSet as ImTextureID
+    }
     RenderTargetHandle VulkanRenderer::CreateRenderTarget(int, int) { return {}; }
     void VulkanRenderer::BeginRenderTarget(RenderTargetHandle) {}
     void VulkanRenderer::EndRenderTarget() {}

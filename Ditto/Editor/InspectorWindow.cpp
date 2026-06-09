@@ -147,8 +147,13 @@ void InspectorWindow::Draw()
 
                 Ditto::IRenderer* previewR = PreviewRenderer(m_editor);
                 void* previewTexId = previewR ? previewR->GetImGuiTextureID(previewR->GetColorTexture(m_previewRT)) : nullptr;
-                ImGui::Image(previewTexId, ImVec2(btnWidth, btnHeight),
-                    ImVec2(0, 1), ImVec2(1, 0));
+                // Guard against a null texture id (e.g. render targets not yet
+                // implemented on the active backend) -- passing null to ImGui::Image
+                // can crash the Vulkan backend.
+                if (previewTexId)
+                    ImGui::Image(previewTexId, ImVec2(btnWidth, btnHeight), ImVec2(0, 1), ImVec2(1, 0));
+                else
+                    ImGui::TextDisabled("(preview unavailable on this backend)");
 
                 // Mouse drag to rotate
                 if (!m_modelInitialized || (ImGui::IsItemHovered() && ImGui::IsMouseDown(0)))

@@ -112,24 +112,18 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     if (backend == Backend::Vulkan && !explicitBackend)
     {
         bool capable = true;
-#ifndef DITTO_HAS_IMGUI_VULKAN
-        if (createEditor) capable = false;   // editor mode needs ImGui-Vulkan
+#ifndef DITTO_VULKAN_DEFAULT_EDITOR
+        if (createEditor) capable = false;   // editor: keep GL default until verified
 #endif
 #ifndef DITTO_VULKAN_SCENE
-        if (!createEditor) capable = false;  // game mode needs Vulkan scene rendering
+        if (!createEditor) capable = false;  // game mode needs Vulkan scene rendering (Vk4)
 #endif
         if (!capable)
         {
-            Ditto::Logger::Get().Info("[Engine] Vulkan backend incomplete for this mode; using OpenGL (set DITTO_RHI=vk to force Vulkan).");
+            Ditto::Logger::Get().Info("[Engine] Vulkan not yet the default for this mode; using OpenGL (set DITTO_RHI=vk to force Vulkan).");
             backend = Backend::OpenGL;
         }
     }
-
-    // The editor's ImGui backend is OpenGL until Vk3. It cannot run on a Vulkan
-    // (NO_API) window, so force it off whenever Vulkan is actually active.
-#ifndef DITTO_HAS_IMGUI_VULKAN
-    if (backend == Backend::Vulkan) createEditor = false;
-#endif
 
     // Create the window + renderer for `backend`; returns false on failure so the
     // caller can fall back to OpenGL.

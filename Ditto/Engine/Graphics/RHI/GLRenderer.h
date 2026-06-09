@@ -21,6 +21,11 @@ namespace Ditto
         void BeginFrame() override {}
         void EndFrame() override;   // glfwSwapBuffers
 
+        void ImGuiInit(void* window) override;
+        void ImGuiShutdown() override;
+        void ImGuiNewFrame() override;
+        void ImGuiRenderDrawData(void* drawData) override;
+
         // State
         void SetViewport(int x, int y, int w, int h) override;
         void SetScissor(bool enabled, int x, int y, int w, int h) override;

@@ -25,6 +25,12 @@ namespace Ditto
         void BeginFrame() override;
         void EndFrame() override;
 
+        // ---- ImGui ----
+        void ImGuiInit(void* window) override;
+        void ImGuiShutdown() override;
+        void ImGuiNewFrame() override;
+        void ImGuiRenderDrawData(void* drawData) override;
+
         // ---- State ----
         void SetViewport(int x, int y, int w, int h) override;
         void SetScissor(bool enabled, int x, int y, int w, int h) override;
@@ -108,6 +114,23 @@ namespace Ditto
         bool m_frameActive = false;   // a command buffer is currently recording
         bool m_ready = false;         // full init succeeded
         glm::vec4 m_clearColor{ 0.0f, 0.0f, 0.0f, 1.0f };
+
+        // ImGui + textures.
+        VkDescriptorPool m_imguiPool = VK_NULL_HANDLE;
+        bool m_imguiInit = false;
+        VkSampler m_sampler = VK_NULL_HANDLE;
+        struct VkTextureRes
+        {
+            VkImage image = VK_NULL_HANDLE;
+            VkDeviceMemory memory = VK_NULL_HANDLE;
+            VkImageView view = VK_NULL_HANDLE;
+            VkDescriptorSet descriptor = VK_NULL_HANDLE;   // ImGui texture id
+        };
+        std::vector<VkTextureRes> m_textures;
+
+        uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags props) const;
+        VkCommandBuffer BeginSingleTime();
+        void EndSingleTime(VkCommandBuffer cmd);
 
         bool m_validation = false;
     };

@@ -317,6 +317,7 @@
     <ClInclude Include="3rdParty\ImGui\imgui.h" />
     <ClInclude Include="3rdParty\ImGui\imgui_impl_glfw.h" />
     <ClInclude Include="3rdParty\ImGui\imgui_impl_opengl3.h" />
+    <ClInclude Include="3rdParty\ImGui\imgui_impl_vulkan.h" />
     <ClInclude Include="3rdParty\ImGui\imgui_impl_opengl3_loader.h" />
     <ClInclude Include="3rdParty\ImGui\imgui_impl_win32.h" />
     <ClInclude Include="3rdParty\ImGui\imgui_internal.h" />
@@ -513,6 +514,7 @@
     <ClCompile Include="3rdParty\ImGui\imgui_draw.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_impl_glfw.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="3rdParty\ImGui\imgui_impl_vulkan.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_impl_win32.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp" />

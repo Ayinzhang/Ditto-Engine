@@ -102,6 +102,9 @@
     <ClInclude Include="3rdParty\ImGui\imgui_impl_opengl3.h">
       <Filter>三方库\ImGui</Filter>
     </ClInclude>
+    <ClInclude Include="3rdParty\ImGui\imgui_impl_vulkan.h">
+      <Filter>三方库\ImGui</Filter>
+    </ClInclude>
     <ClInclude Include="3rdParty\ImGui\imgui_impl_win32.h">
       <Filter>三方库\ImGui</Filter>
     </ClInclude>
@@ -1537,6 +1540,9 @@
       <Filter>三方库\ImGui</Filter>
     </ClCompile>
     <ClCompile Include="3rdParty\ImGui\imgui_impl_opengl3.cpp">
+      <Filter>三方库\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdParty\ImGui\imgui_impl_vulkan.cpp">
       <Filter>三方库\ImGui</Filter>
     </ClCompile>
     <ClCompile Include="3rdParty\ImGui\imgui_impl_win32.cpp">

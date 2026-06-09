@@ -62,6 +62,16 @@ namespace Ditto
         virtual void BeginFrame() {}
         virtual void EndFrame() {}
 
+        // ---- Dear ImGui backend (platform + renderer), implemented per-backend.
+        // ImGuiInit sets up the GLFW platform + the renderer backend; ImGuiNewFrame
+        // runs both backends' NewFrame; ImGuiRenderDrawData records the draw data
+        // (into the current command buffer on Vulkan). The caller still owns
+        // ImGui::CreateContext/NewFrame/Render/DestroyContext.
+        virtual void ImGuiInit(void* window) {}
+        virtual void ImGuiShutdown() {}
+        virtual void ImGuiNewFrame() {}
+        virtual void ImGuiRenderDrawData(void* drawData) {}
+
         // ---- State commands (stateless; safe to call mid-ImGui-frame) ----
         virtual void SetViewport(int x, int y, int w, int h) = 0;
         virtual void SetScissor(bool enabled, int x = 0, int y = 0, int w = 0, int h = 0) = 0;
