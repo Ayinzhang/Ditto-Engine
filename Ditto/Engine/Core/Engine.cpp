@@ -17,6 +17,14 @@
 #include "../Graphics/RHI/Vulkan/VulkanRenderer.h"
 #include <cstdlib>
 
+// Vulkan capabilities are built and verified: the ImGui Vulkan backend drives the
+// editor (Vk3) and the SPIR-V pipeline renders the scene (Vk4). Enabling these makes
+// Vulkan the real default for both editor and game modes; the backend-selection gate
+// below still falls back to OpenGL if Vulkan device/swapchain init fails at runtime,
+// and DITTO_RHI=gl forces OpenGL.
+#define DITTO_VULKAN_DEFAULT_EDITOR
+#define DITTO_VULKAN_SCENE
+
 using namespace std;
 using namespace glm;
 namespace fs = std::filesystem;

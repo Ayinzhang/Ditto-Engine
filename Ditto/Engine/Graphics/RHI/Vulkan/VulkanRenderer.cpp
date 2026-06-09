@@ -58,12 +58,15 @@ namespace Ditto
         if (!CreateSyncObjects()) return;
 
         // FrameUniforms UBO ring (one per frame in flight), host-visible + mapped.
+        // Each frame's buffer holds kUboSlots slots so the Scene and Game viewports
+        // can each write their own uniforms within a frame (see SetFrameUniforms).
+        constexpr VkDeviceSize kUboBufSize = (VkDeviceSize)kUboSlots * kUboSlotSize;
         for (int i = 0; i < kFramesInFlight; ++i)
         {
-            CreateBuffer(256, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            CreateBuffer(kUboBufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                 m_uboBuf[i], m_uboMem[i]);
-            vkMapMemory(m_device, m_uboMem[i], 0, 256, 0, &m_uboMapped[i]);
+            vkMapMemory(m_device, m_uboMem[i], 0, kUboBufSize, 0, &m_uboMapped[i]);
         }
         if (!CreateUboDescriptors()) return;
 
@@ -574,6 +577,8 @@ namespace Ditto
 
         vkResetFences(m_device, 1, &m_inFlight[m_currentFrame]);
 
+        m_uboSlot = 0;   // restart the per-frame UBO ring (one slot per viewport)
+
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
         vkResetCommandBuffer(cmd, 0);
         VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -696,14 +701,16 @@ namespace Ditto
     {
         // Shared set-0 layout (UBO @ binding 0), used by all pipelines. Regular
         // (not push), so set 1 can be the single allowed push-descriptor set.
+        // DYNAMIC so the per-viewport UBO slot is selected via a dynamic offset at
+        // bind time (one descriptor set, many slots within the frame's buffer).
         VkDescriptorSetLayoutBinding ub{};
-        ub.binding = 0; ub.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; ub.descriptorCount = 1;
+        ub.binding = 0; ub.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC; ub.descriptorCount = 1;
         ub.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         VkDescriptorSetLayoutCreateInfo lc{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
         lc.bindingCount = 1; lc.pBindings = &ub;
         if (vkCreateDescriptorSetLayout(m_device, &lc, nullptr, &m_uboSetLayout) != VK_SUCCESS) return false;
 
-        VkDescriptorPoolSize ps{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kFramesInFlight };
+        VkDescriptorPoolSize ps{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, kFramesInFlight };
         VkDescriptorPoolCreateInfo pc{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
         pc.maxSets = kFramesInFlight; pc.poolSizeCount = 1; pc.pPoolSizes = &ps;
         if (vkCreateDescriptorPool(m_device, &pc, nullptr, &m_uboPool) != VK_SUCCESS) return false;
@@ -715,12 +722,13 @@ namespace Ditto
         if (vkAllocateDescriptorSets(m_device, &ai, m_uboSets) != VK_SUCCESS) return false;
 
         // Point each frame's set at its UBO buffer (contents update via mapped memory).
+        // range = one slot; the active slot is chosen by the dynamic offset at bind.
         for (int i = 0; i < kFramesInFlight; ++i)
         {
-            VkDescriptorBufferInfo bi{ m_uboBuf[i], 0, VK_WHOLE_SIZE };
+            VkDescriptorBufferInfo bi{ m_uboBuf[i], 0, kUboSlotSize };
             VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
             w.dstSet = m_uboSets[i]; w.dstBinding = 0; w.descriptorCount = 1;
-            w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w.pBufferInfo = &bi;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC; w.pBufferInfo = &bi;
             vkUpdateDescriptorSets(m_device, 1, &w, 0, nullptr);
         }
         return true;
@@ -1177,10 +1185,12 @@ namespace Ditto
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->pipeline);
 
-        // Bind set 0 (this frame's FrameUniforms UBO). Set 1 (storage buffers) is
-        // pushed per-draw in DrawInstanced.
+        // Bind set 0 (this frame's FrameUniforms UBO) at the current ring slot's
+        // dynamic offset. SetFrameUniforms (called next) writes that slot and rebinds
+        // with the same offset. Set 1 (storage buffers) is pushed per-draw in DrawInstanced.
+        const uint32_t dynOffset = m_uboSlot * kUboSlotSize;
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout,
-            0, 1, &m_uboSets[m_currentFrame], 0, nullptr);
+            0, 1, &m_uboSets[m_currentFrame], 1, &dynOffset);
     }
 
     void VulkanRenderer::SetFrameUniforms(const FrameUniforms& u)
@@ -1200,7 +1210,21 @@ namespace Ditto
         d.lightColor = u.lightColor;  d._p1 = 0.0f;
         d.lightDir = u.lightDir;      d.lightIntensity = u.lightIntensity;
 
-        if (m_uboMapped[m_currentFrame]) memcpy(m_uboMapped[m_currentFrame], &d, sizeof(d));
+        static_assert(sizeof(Std140) <= kUboSlotSize, "FrameUniforms exceeds UBO slot size");
+
+        // Write this viewport's uniforms into its own ring slot, then point set 0 at
+        // that slot. Without per-call slots, a second viewport's SetFrameUniforms would
+        // overwrite the first's bytes before the GPU executes either draw (everything
+        // is recorded into one command buffer), stretching the earlier viewport.
+        const uint32_t dynOffset = m_uboSlot * kUboSlotSize;
+        if (m_uboMapped[m_currentFrame])
+            memcpy((char*)m_uboMapped[m_currentFrame] + dynOffset, &d, sizeof(d));
+
+        if (m_frameActive && m_boundPipeline && m_boundPipeline->layout)
+            vkCmdBindDescriptorSets(m_commandBuffers[m_currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_boundPipeline->layout, 0, 1, &m_uboSets[m_currentFrame], 1, &dynOffset);
+
+        m_uboSlot = (m_uboSlot + 1) % kUboSlots;
     }
 
     void VulkanRenderer::BindStorageBuffer(int binding, StorageBufferHandle h)

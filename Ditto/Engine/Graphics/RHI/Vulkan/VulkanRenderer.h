@@ -172,9 +172,16 @@ namespace Ditto
         VkBuffer m_uboBuf[kFramesInFlight] = {};
         VkDeviceMemory m_uboMem[kFramesInFlight] = {};
         void* m_uboMapped[kFramesInFlight] = {};
-        VkDescriptorSetLayout m_uboSetLayout = VK_NULL_HANDLE;   // shared set-0 layout
+        VkDescriptorSetLayout m_uboSetLayout = VK_NULL_HANDLE;   // shared set-0 layout (dynamic UBO)
         VkDescriptorPool m_uboPool = VK_NULL_HANDLE;
         VkDescriptorSet m_uboSets[kFramesInFlight] = {};
+        // The UBO is a ring of slots within each frame: every SetFrameUniforms call
+        // (e.g. the Scene then Game viewport) writes its own slot, and the draws that
+        // follow bind that slot via a dynamic offset. Avoids one viewport's uniforms
+        // overwriting another's within a frame.
+        static constexpr uint32_t kUboSlotSize = 256;   // >= sizeof(FrameUniforms), 256-aligned
+        static constexpr uint32_t kUboSlots = 16;
+        uint32_t m_uboSlot = 0;
 
         // Push descriptors (avoids descriptor-pool/set management for scene draws).
         PFN_vkCmdPushDescriptorSetKHR m_pushDescriptor = nullptr;
