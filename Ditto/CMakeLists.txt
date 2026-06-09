@@ -27,6 +27,9 @@ else()
     message(STATUS "Using system GLFW")
 endif()
 
+# Vulkan (RHI backend). Uses the VULKAN_SDK environment set by the LunarG SDK.
+find_package(Vulkan REQUIRED)
+
 # Executable
 add_executable(Ditto ${SOURCES})
 
@@ -42,6 +45,7 @@ target_include_directories(Ditto PRIVATE
 # Link libraries - use local GLFW library
 target_link_libraries(Ditto PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLFW/glfw3.lib
+    Vulkan::Vulkan
     opengl32
     gdi32
     user32

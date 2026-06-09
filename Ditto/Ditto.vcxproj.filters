@@ -999,6 +999,9 @@
     <ClInclude Include="Engine\Graphics\RHI\GLRenderer.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.h">
+      <Filter>头文件\Engine\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Core\GameObject.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
@@ -1561,6 +1564,9 @@
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp">
+      <Filter>源文件\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.cpp">
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Core\GameObject.cpp">

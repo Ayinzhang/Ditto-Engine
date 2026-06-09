@@ -342,6 +342,7 @@
     <ClInclude Include="Engine\Graphics\Camera.h" />
     <ClInclude Include="Engine\Graphics\RHI\IRenderer.h" />
     <ClInclude Include="Engine\Graphics\RHI\GLRenderer.h" />
+    <ClInclude Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.h" />
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
     <ClInclude Include="Engine\Physics\ComputePhysics.h" />
     <ClInclude Include="Engine\Physics\GJK.h" />
@@ -532,6 +533,7 @@
     <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp" />
     <ClCompile Include="Engine\Graphics\Camera.cpp" />
     <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp" />
+    <ClCompile Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.cpp" />
     <ClCompile Include="Engine\Main.cpp" />
     <ClCompile Include="Engine\Physics\CollisionShape.cpp" />
     <ClCompile Include="Engine\Physics\ComputePhysics.cpp" />
@@ -599,7 +601,13 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Label="UserMacros">
+    <!-- Prefer the VULKAN_SDK environment variable (set by the LunarG installer);
+         fall back to the absolute install path until the env var propagates to
+         new processes (a reboot / VS restart picks it up). -->
+    <VulkanSDK Condition="'$(VULKAN_SDK)' != ''">$(VULKAN_SDK)</VulkanSDK>
+    <VulkanSDK Condition="'$(VulkanSDK)' == ''">C:\VulkanSDK\1.4.350.0</VulkanSDK>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -646,6 +654,7 @@
       </AdditionalOptions>
       <DisableLanguageExtensions>false</DisableLanguageExtensions>
       <OpenMPSupport>false</OpenMPSupport>
+      <AdditionalIncludeDirectories>$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -653,6 +662,8 @@
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
       <AdditionalOptions>/NODEFAULTLIB:libc.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:libcd.lib /NODEFAULTLIB:libcmtd.lib /NODEFAULTLIB:msvcrt.lib
  %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>setlocal
@@ -675,11 +686,14 @@ cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.cspro
       <AdditionalOptions>/FS
       </AdditionalOptions>
       <OpenMPSupport>false</OpenMPSupport>
+      <AdditionalIncludeDirectories>$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
+      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>setlocal
