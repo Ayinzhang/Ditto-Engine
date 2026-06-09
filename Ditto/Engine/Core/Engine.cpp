@@ -81,50 +81,101 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     if (!glfwInit()) throw runtime_error("GLFW init failed");
 
-    // Backend selection: env DITTO_RHI=vulkan opts into Vulkan; default OpenGL.
-    backend = Backend::OpenGL;
+    // ---- Backend selection: default Vulkan; env DITTO_RHI overrides ----
+    backend = Backend::Vulkan;
+    bool explicitBackend = false;   // user pinned a backend via DITTO_RHI
     {
         char* rhi = nullptr; size_t rhiLen = 0;
         if (_dupenv_s(&rhi, &rhiLen, "DITTO_RHI") == 0 && rhi)
         {
             std::string v = rhi;
             free(rhi);
-            if (v == "vulkan" || v == "Vulkan" || v == "vk") backend = Backend::Vulkan;
+            if (v == "gl" || v == "opengl" || v == "OpenGL")       { backend = Backend::OpenGL;  explicitBackend = true; }
+            else if (v == "dx" || v == "dx12" || v == "directx")   { backend = Backend::DirectX; explicitBackend = true; }
+            else if (v == "vk" || v == "vulkan" || v == "Vulkan")  { backend = Backend::Vulkan;  explicitBackend = true; }
         }
     }
 
-    if (backend == Backend::Vulkan)
+    // DirectX backend not implemented yet -> fall back to OpenGL.
+    if (backend == Backend::DirectX)
     {
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);   // Vulkan: no GL context
-    }
-    else
-    {
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        Ditto::Logger::Get().Warning("[Engine] DirectX backend not implemented yet; falling back to OpenGL.");
+        backend = Backend::OpenGL;
     }
 
-    window = glfwCreateWindow(window_width, window_height, "Ditto", nullptr, nullptr);
-    if (!window) glfwTerminate(), throw runtime_error("Window create failed");
-    glfwSetWindowUserPointer(window, this);
-    glfwSetCursorPosCallback(window, Engine::MouseCallBack);
-
-    if (backend == Backend::Vulkan)
+    // Capability gating: Vulkan is the default, but it can't yet drive the editor
+    // (needs the ImGui Vulkan backend, Vk3) or render the scene (needs the SPIR-V
+    // pipeline, Vk4). When Vulkan is the DEFAULT (not explicitly requested) and a
+    // required capability isn't built, fall back to OpenGL so the default app keeps
+    // working. An explicit DITTO_RHI=vk still runs Vulkan (for bring-up testing).
+    // Flip the default fully once DITTO_HAS_IMGUI_VULKAN + DITTO_VULKAN_SCENE exist.
+    if (backend == Backend::Vulkan && !explicitBackend)
     {
-        renderer = std::make_unique<Ditto::VulkanRenderer>(window);
-        if (createEditor)
+        bool capable = true;
+#ifndef DITTO_HAS_IMGUI_VULKAN
+        if (createEditor) capable = false;   // editor mode needs ImGui-Vulkan
+#endif
+#ifndef DITTO_VULKAN_SCENE
+        if (!createEditor) capable = false;  // game mode needs Vulkan scene rendering
+#endif
+        if (!capable)
         {
-            // The editor uses the ImGui OpenGL3 backend; it can't run on a Vulkan
-            // window until the ImGui Vulkan backend (Vk3) lands. Disable for now.
-            Ditto::Logger::Get().Warning("[Engine] Editor disabled under Vulkan until the ImGui Vulkan backend (Vk3) is implemented.");
-            createEditor = false;
+            Ditto::Logger::Get().Info("[Engine] Vulkan backend incomplete for this mode; using OpenGL (set DITTO_RHI=vk to force Vulkan).");
+            backend = Backend::OpenGL;
         }
     }
-    else
+
+    // The editor's ImGui backend is OpenGL until Vk3. It cannot run on a Vulkan
+    // (NO_API) window, so force it off whenever Vulkan is actually active.
+#ifndef DITTO_HAS_IMGUI_VULKAN
+    if (backend == Backend::Vulkan) createEditor = false;
+#endif
+
+    // Create the window + renderer for `backend`; returns false on failure so the
+    // caller can fall back to OpenGL.
+    auto makeWindowRenderer = [&](Backend b) -> bool
     {
-        glfwMakeContextCurrent(window);
-        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) throw runtime_error("Failed to initialize GLAD");
-        renderer = std::make_unique<Ditto::GLRenderer>(window);
+        glfwDefaultWindowHints();
+        if (b == Backend::Vulkan)
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);   // Vulkan: no GL context
+        else
+        {
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        }
+
+        window = glfwCreateWindow(window_width, window_height, "Ditto", nullptr, nullptr);
+        if (!window) return false;
+        glfwSetWindowUserPointer(window, this);
+        glfwSetCursorPosCallback(window, Engine::MouseCallBack);
+
+        if (b == Backend::Vulkan)
+        {
+            auto vk = std::make_unique<Ditto::VulkanRenderer>(window);
+            if (!vk->IsValid()) return false;   // device/swapchain init failed
+            renderer = std::move(vk);
+        }
+        else
+        {
+            glfwMakeContextCurrent(window);
+            if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) return false;
+            renderer = std::make_unique<Ditto::GLRenderer>(window);
+        }
+        return true;
+    };
+
+    if (!makeWindowRenderer(backend))
+    {
+        if (backend != Backend::OpenGL)
+        {
+            Ditto::Logger::Get().Warning("[Engine] backend init failed; falling back to OpenGL.");
+            renderer.reset();
+            if (window) { glfwDestroyWindow(window); window = nullptr; }
+            backend = Backend::OpenGL;
+            if (!makeWindowRenderer(Backend::OpenGL)) { glfwTerminate(); throw runtime_error("Window/renderer create failed"); }
+        }
+        else { glfwTerminate(); throw runtime_error("Window/renderer create failed"); }
     }
 
     resource = std::make_unique<Resource>();
