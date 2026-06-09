@@ -21,6 +21,10 @@ namespace Ditto
         // True once the instance + device were created successfully.
         bool IsValid() const { return m_device != VK_NULL_HANDLE; }
 
+        // ---- Frame ----
+        void BeginFrame() override;
+        void EndFrame() override;
+
         // ---- State ----
         void SetViewport(int x, int y, int w, int h) override;
         void SetScissor(bool enabled, int x, int y, int w, int h) override;
@@ -62,6 +66,18 @@ namespace Ditto
         bool PickPhysicalDevice();
         bool CreateLogicalDevice();
 
+        // Swapchain + frame resources.
+        bool CreateSwapchain();
+        void CreateImageViews();
+        bool CreateRenderPass();
+        void CreateFramebuffers();
+        bool CreateCommandResources();
+        bool CreateSyncObjects();
+        void CleanupSwapchain();
+        bool RecreateSwapchain();
+
+        static constexpr int kFramesInFlight = 2;
+
         void* m_window = nullptr;   // GLFWwindow*
 
         VkInstance m_instance = VK_NULL_HANDLE;
@@ -73,6 +89,25 @@ namespace Ditto
         VkQueue m_presentQueue = VK_NULL_HANDLE;
         uint32_t m_graphicsQueueFamily = UINT32_MAX;
         uint32_t m_presentQueueFamily = UINT32_MAX;
+
+        VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
+        VkFormat m_swapchainFormat{};
+        VkExtent2D m_swapchainExtent{};
+        std::vector<VkImage> m_swapchainImages;
+        std::vector<VkImageView> m_swapchainImageViews;
+        std::vector<VkFramebuffer> m_framebuffers;
+        VkRenderPass m_renderPass = VK_NULL_HANDLE;
+        VkCommandPool m_commandPool = VK_NULL_HANDLE;
+        std::vector<VkCommandBuffer> m_commandBuffers;   // [kFramesInFlight]
+        std::vector<VkSemaphore> m_imageAvailable;       // [kFramesInFlight]
+        std::vector<VkSemaphore> m_renderFinished;       // [swapchain image count]
+        std::vector<VkFence> m_inFlight;                 // [kFramesInFlight]
+
+        uint32_t m_currentFrame = 0;
+        uint32_t m_imageIndex = 0;
+        bool m_frameActive = false;   // a command buffer is currently recording
+        bool m_ready = false;         // full init succeeded
+        glm::vec4 m_clearColor{ 0.0f, 0.0f, 0.0f, 1.0f };
 
         bool m_validation = false;
     };
