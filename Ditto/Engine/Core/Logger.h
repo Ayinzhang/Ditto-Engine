@@ -3,6 +3,7 @@
 #include <vector>
 #include <mutex>
 #include <cstddef>
+#include <sstream>
 
 // ---------------------------------------------------------------------------
 // Ditto Logger
@@ -70,3 +71,7 @@ namespace Ditto
 #define DITTO_LOG_INFO(msg)  ::Ditto::Logger::Get().Info(msg)
 #define DITTO_LOG_WARN(msg)  ::Ditto::Logger::Get().Warning(msg)
 #define DITTO_LOG_ERROR(msg) ::Ditto::Logger::Get().Error(msg)
+
+#define DITTO_LOG_INFO_STREAM(expr)  do { std::ostringstream dittoLogStream; dittoLogStream << expr; ::Ditto::Logger::Get().Info(dittoLogStream.str()); } while (false)
+#define DITTO_LOG_WARN_STREAM(expr)  do { std::ostringstream dittoLogStream; dittoLogStream << expr; ::Ditto::Logger::Get().Warning(dittoLogStream.str()); } while (false)
+#define DITTO_LOG_ERROR_STREAM(expr) do { std::ostringstream dittoLogStream; dittoLogStream << expr; ::Ditto::Logger::Get().Error(dittoLogStream.str()); } while (false)

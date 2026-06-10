@@ -1,6 +1,7 @@
 #include "Scene.h"
 #include "../../Engine/Resources/Resource.h"
 #include "PathUtils.h"
+#include "Logger.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -25,11 +26,11 @@ Scene::Scene()
     name = "Default";
     g_currentScene = this;
 
-    rootGameObject = new GameObject(name);
+    rootGameObject = std::make_unique<GameObject>(name);
     rootGameObject->name = name;
 
-    geometryBatches[RendererComponent::Cube] = new GeometryInstances(RendererComponent::Cube);
-    geometryBatches[RendererComponent::Sphere] = new GeometryInstances(RendererComponent::Sphere);
+    geometryBatches[RendererComponent::Cube] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
+    geometryBatches[RendererComponent::Sphere] = std::make_unique<GeometryInstances>(RendererComponent::Sphere);
 }
 
 Scene::~Scene()
@@ -42,7 +43,6 @@ Scene::~Scene()
     {
         if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
                         renderer->DestroyStorageBuffer(pair.second->colorSBO); }
-        delete pair.second;
     }
     for (auto& pair : baseGeometries)
         if (renderer) renderer->DestroyMesh(pair.second.mesh);
@@ -51,7 +51,6 @@ Scene::~Scene()
     {
         if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
                         renderer->DestroyStorageBuffer(pair.second->colorSBO); }
-        delete pair.second;
     }
     for (auto& pair : customGeometries)
         if (renderer) renderer->DestroyMesh(pair.second.mesh);
@@ -65,9 +64,9 @@ Scene::~Scene()
 // must never be deleted (doing so would double-free nodes).
 void Scene::DestroyAllObjects()
 {
-    delete rootGameObject;       // recursively deletes the whole tree
-    // Recreate a fresh root, mirroring the scene name (Unity-style).
-    rootGameObject = new GameObject(name);
+    // Recreate a fresh root, mirroring the scene name (Unity-style). The
+    // assignment destroys the old tree (recursively) before taking ownership.
+    rootGameObject = std::make_unique<GameObject>(name);
     rootGameObject->name = name;
 
     gameObjects.clear();
@@ -89,7 +88,7 @@ void Scene::UnregisterSubtree(GameObject* obj)
         auto it = std::find(gameObjects.begin(), gameObjects.end(), node);
         if (it != gameObjects.end()) gameObjects.erase(it);
         if (mainLight == node) mainLight = nullptr;
-        for (GameObject* child : node->children) visit(child);
+        for (const auto& child : node->children) visit(child.get());
     };
     visit(obj);
 }
@@ -114,10 +113,10 @@ void Scene::CollectRenderData()
         {
             if (!obj->enabled) return;
             if (!mainLight && obj->GetComponent<LightComponent>()) mainLight = obj;
-            for (auto child : obj->children) findLight(child);
+            for (const auto& child : obj->children) findLight(child.get());
         };
 
-    findLight(rootGameObject);
+    findLight(rootGameObject.get());
 
     std::function<void(GameObject*)> collect = [&](GameObject* obj)
         {
@@ -134,12 +133,12 @@ void Scene::CollectRenderData()
                     // Custom mesh: lazily build its geometry/batch, then route to it.
                     EnsureCustomGeometry(renderer->meshPath);
                     auto it = customBatches.find(renderer->meshPath);
-                    if (it != customBatches.end()) batch = it->second;
+                    if (it != customBatches.end()) batch = it->second.get();
                 }
                 else
                 {
                     auto it = geometryBatches.find(renderer->type);
-                    if (it != geometryBatches.end()) batch = it->second;
+                    if (it != geometryBatches.end()) batch = it->second.get();
                 }
 
                 if (batch)
@@ -150,10 +149,10 @@ void Scene::CollectRenderData()
                 }
             }
 
-            for (auto child : obj->children) collect(child);
+            for (const auto& child : obj->children) collect(child.get());
         };
 
-    collect(rootGameObject);
+    collect(rootGameObject.get());
 }
 
 // Upload one batch's per-instance model/color arrays into its storage buffers.
@@ -181,8 +180,8 @@ static void DrawBatch(Ditto::IRenderer* r, const BaseGeometry& geometry, Geometr
 
 void Scene::UpdateSSBOs()
 {
-    for (auto& pair : geometryBatches) UploadBatch(renderer, pair.second);
-    for (auto& pair : customBatches)   UploadBatch(renderer, pair.second);
+    for (auto& pair : geometryBatches) UploadBatch(renderer, pair.second.get());
+    for (auto& pair : customBatches)   UploadBatch(renderer, pair.second.get());
 }
 
 void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
@@ -209,7 +208,7 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     {
         auto geoIt = baseGeometries.find(pair.second->type);
         if (geoIt == baseGeometries.end()) continue;
-        DrawBatch(renderer, geoIt->second, pair.second);
+        DrawBatch(renderer, geoIt->second, pair.second.get());
     }
 
     // Custom-mesh batches (keyed by meshPath).
@@ -217,7 +216,7 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     {
         auto geoIt = customGeometries.find(pair.first);
         if (geoIt == customGeometries.end()) continue;
-        DrawBatch(renderer, geoIt->second, pair.second);
+        DrawBatch(renderer, geoIt->second, pair.second.get());
     }
 }
 
@@ -261,10 +260,10 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
     if (!renderer || model.vertexData.empty())
     {
         if (model.vertexData.empty())
-            std::cerr << "[Scene] Custom mesh has no geometry: " << resolved << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Scene] Custom mesh has no geometry: " << resolved);
         // Cache empties so we don't re-attempt the load every frame.
         customGeometries[meshPath] = BaseGeometry{};
-        customBatches[meshPath] = new GeometryInstances(RendererComponent::Cube);
+        customBatches[meshPath] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
         return;
     }
 
@@ -274,9 +273,9 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
 
     customGeometries[meshPath] = geo;
     // `type` is unused for custom batches (geometry comes from customGeometries).
-    customBatches[meshPath] = new GeometryInstances(RendererComponent::Cube);
-    std::cout << "[Scene] Loaded custom mesh: " << resolved
-              << " (" << model.vertexData.size() / 6 << " verts)" << std::endl;
+    customBatches[meshPath] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
+    DITTO_LOG_INFO_STREAM("[Scene] Loaded custom mesh: " << resolved
+        << " (" << model.vertexData.size() / 6 << " verts)");
 }
 
 glm::vec3 Scene::GetLightColor() const
@@ -326,9 +325,9 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
     glm::vec3 rayOrigin = glm::vec3(invView[3]);
     glm::vec3 rayDir = glm::normalize(glm::vec3(invView * rayEye));
 
-    std::cout << "[Raycast] MousePos: (" << mousePos.x << ", " << mousePos.y << ")" << std::endl;
-    std::cout << "[Raycast] RayOrigin: (" << rayOrigin.x << ", " << rayOrigin.y << ", " << rayOrigin.z << ")" << std::endl;
-    std::cout << "[Raycast] RayDir: (" << rayDir.x << ", " << rayDir.y << ", " << rayDir.z << ")" << std::endl;
+    DITTO_LOG_INFO_STREAM("[Raycast] MousePos: (" << mousePos.x << ", " << mousePos.y << ")");
+    DITTO_LOG_INFO_STREAM("[Raycast] RayOrigin: (" << rayOrigin.x << ", " << rayOrigin.y << ", " << rayOrigin.z << ")");
+    DITTO_LOG_INFO_STREAM("[Raycast] RayDir: (" << rayDir.x << ", " << rayDir.y << ", " << rayDir.z << ")");
 
     GameObject* closest = nullptr;
     float closestDist = FLT_MAX;
@@ -336,8 +335,8 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
 
     auto getMeshData = [&](RendererComponent::Type type) -> MeshData* {
         if (!resource) return nullptr;
-        if (type == RendererComponent::Cube) return resource->cubeMesh;
-        if (type == RendererComponent::Sphere) return resource->sphereMesh;
+        if (type == RendererComponent::Cube) return resource->cubeMesh.get();
+        if (type == RendererComponent::Sphere) return resource->sphereMesh.get();
         return nullptr;
     };
 
@@ -374,11 +373,11 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
         
         if (!mesh)
         {
-            std::cout << "[Raycast] Object '" << obj->name << "' has no mesh data" << std::endl;
+            DITTO_LOG_INFO_STREAM("[Raycast] Object '" << obj->name << "' has no mesh data");
             return;
         }
 
-        std::cout << "[Raycast] Checking object: " << obj->name << " (mesh vertices: " << mesh->vertices.size() << ", indices: " << mesh->indices.size() << ")" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Raycast] Checking object: " << obj->name << " (mesh vertices: " << mesh->vertices.size() << ", indices: " << mesh->indices.size() << ")");
 
         float tMin = FLT_MAX;
         bool hit = false;
@@ -411,7 +410,7 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
 
         if (hit)
         {
-            std::cout << "[Raycast] Hit object: " << obj->name << " at distance " << tMin << std::endl;
+            DITTO_LOG_INFO_STREAM("[Raycast] Hit object: " << obj->name << " at distance " << tMin);
             if (tMin < closestDist)
             {
                 closestDist = tMin;
@@ -421,17 +420,17 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
     };
 
     // Always traverse from rootGameObject (single-ownership model).
-    std::cout << "[Raycast] Traversing rootGameObject hierarchy: " << rootGameObject->name << std::endl;
+    DITTO_LOG_INFO_STREAM("[Raycast] Traversing rootGameObject hierarchy: " << rootGameObject->name);
     std::function<void(GameObject*)> traverseHierarchy = [&](GameObject* obj)
     {
         if (!obj) return;
         checkObject(obj);
-        for (auto* child : obj->children)
-            traverseHierarchy(child);
+        for (const auto& child : obj->children)
+            traverseHierarchy(child.get());
     };
-    traverseHierarchy(rootGameObject);
+    traverseHierarchy(rootGameObject.get());
 
-    std::cout << "[Raycast] Checked " << checkedCount << " objects, closest: " << (closest ? closest->name : "none") << std::endl;
+    DITTO_LOG_INFO_STREAM("[Raycast] Checked " << checkedCount << " objects, closest: " << (closest ? closest->name : "none"));
 
     return closest;
 }
@@ -473,12 +472,12 @@ void Scene::WriteToStream(std::ostream& file)
 
 bool Scene::SaveScene(const std::string& filepath)
 {
-    std::cout << "[Scene::SaveScene] Starting save to: " << filepath << std::endl;
+    DITTO_LOG_INFO_STREAM("[Scene::SaveScene] Starting save to: " << filepath);
 
     std::ofstream file(filepath, std::ios::binary | std::ios::trunc);
     if (!file.is_open())
     {
-        std::cerr << "[Scene::SaveScene] Failed to open file for writing: " << filepath << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Scene::SaveScene] Failed to open file for writing: " << filepath);
         return false;
     }
 
@@ -486,12 +485,12 @@ bool Scene::SaveScene(const std::string& filepath)
     {
         WriteToStream(file);
         file.close();
-        std::cout << "[Scene::SaveScene] Save completed." << std::endl;
+        DITTO_LOG_INFO("[Scene::SaveScene] Save completed.");
         return true;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Scene::SaveScene] Error saving scene: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Scene::SaveScene] Error saving scene: " << e.what());
         file.close();
         return false;
     }
@@ -513,12 +512,12 @@ bool Scene::RestoreSnapshot(const std::string& data)
 
 bool Scene::LoadScene(const std::string& filepath)
 {
-    std::cout << "[Scene::LoadScene] Starting load from: " << filepath << std::endl;
+    DITTO_LOG_INFO_STREAM("[Scene::LoadScene] Starting load from: " << filepath);
 
     std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open())
     {
-        std::cerr << "[Scene::LoadScene] Failed to open file for reading: " << filepath << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Failed to open file for reading: " << filepath);
         return false;
     }
     return ReadFromStream(file);
@@ -530,19 +529,19 @@ bool Scene::ReadFromStream(std::istream& file)
     {
         SceneHeader header;
         file.read(reinterpret_cast<char*>(&header), sizeof(header));
-        std::cout << "[Scene::LoadScene] Header: magic=" << header.magic[0] << header.magic[1] << header.magic[2] 
-                  << ", version=" << header.version << ", gameObjectCount=" << header.gameObjectCount 
-                  << ", fileSize=" << header.fileSize << std::endl;
+        DITTO_LOG_INFO_STREAM("[Scene::LoadScene] Header: magic=" << header.magic[0] << header.magic[1] << header.magic[2]
+            << ", version=" << header.version << ", gameObjectCount=" << header.gameObjectCount
+            << ", fileSize=" << header.fileSize);
         
         if (memcmp(header.magic, SCENE_MAGIC, 4) != 0)
         {
-            std::cerr << "[Scene::LoadScene] Invalid scene file: wrong magic number" << std::endl;
+            DITTO_LOG_ERROR("[Scene::LoadScene] Invalid scene file: wrong magic number");
             return false;
         }
         if (header.version == 0 || header.version > SCENE_VERSION)
         {
-            std::cerr << "[Scene::LoadScene] Unsupported scene version: " << header.version
-                << " (this build reads up to: " << SCENE_VERSION << ")" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Unsupported scene version: " << header.version
+                << " (this build reads up to: " << SCENE_VERSION << ")");
             return false;
         }
         // Expose the loading version so component deserializers can read
@@ -554,47 +553,47 @@ bool Scene::ReadFromStream(std::istream& file)
         std::vector<char> nameBuffer(nameLength + 1, '\0');
         file.read(nameBuffer.data(), nameLength);
         name = std::string(nameBuffer.data());
-        std::cout << "[Scene::LoadScene] Scene name: " << name << std::endl;
+        DITTO_LOG_INFO_STREAM("[Scene::LoadScene] Scene name: " << name);
 
         ClearScene();
 
-        std::cout << "[Scene::LoadScene] Deserializing rootGameObject..." << std::endl;
+        DITTO_LOG_INFO("[Scene::LoadScene] Deserializing rootGameObject...");
         rootGameObject->Deserialize(file);
         rootGameObject->name = name;
-        std::cout << "[Scene::LoadScene] rootGameObject deserialized: " << rootGameObject->name
-                  << ", children: " << rootGameObject->children.size() << std::endl;
+        DITTO_LOG_INFO_STREAM("[Scene::LoadScene] rootGameObject deserialized: " << rootGameObject->name
+            << ", children: " << rootGameObject->children.size());
 
         std::function<void(GameObject*)> collectRootObjects = [&](GameObject* obj) {
-            for (auto child : obj->children)
+            for (const auto& child : obj->children)
             {
                 if (child->children.empty())
                 {
                     // Leaf node
-                    gameObjects.push_back(child);
+                    gameObjects.push_back(child.get());
                 }
                 else
                 {
                     // Non-leaf node, continue traversal
-                    collectRootObjects(child);
-                    gameObjects.push_back(child);
+                    collectRootObjects(child.get());
+                    gameObjects.push_back(child.get());
                 }
             }
         };
-        collectRootObjects(rootGameObject);
-        std::cout << "[Scene::LoadScene] Collected " << gameObjects.size() << " objects to gameObjects list" << std::endl;
+        collectRootObjects(rootGameObject.get());
+        DITTO_LOG_INFO_STREAM("[Scene::LoadScene] Collected " << gameObjects.size() << " objects to gameObjects list");
 
         // Find main light
         mainLight = nullptr;
         std::function<void(GameObject*)> findLight = [&](GameObject* obj) {
             if (!mainLight && obj->GetComponent<LightComponent>())
                 mainLight = obj;
-            for (auto child : obj->children)
-                findLight(child);
+            for (const auto& child : obj->children)
+                findLight(child.get());
         };
-        findLight(rootGameObject);
+        findLight(rootGameObject.get());
 
         // Report raycast-capable objects
-        std::cout << "[Scene::LoadScene] === Raycast-capable objects ===" << std::endl;
+        DITTO_LOG_INFO("[Scene::LoadScene] === Raycast-capable objects ===");
         int raycastObjCount = 0;
         std::function<void(GameObject*)> reportRaycastObjects = [&](GameObject* obj) {
             if (!obj) return;
@@ -602,27 +601,26 @@ bool Scene::ReadFromStream(std::istream& file)
             TransformComponent* transform = obj->GetComponent<TransformComponent>();
             if (renderer && transform)
             {
-                std::cout << "[Scene::LoadScene] Raycast object: " << obj->name 
-                          << " (enabled=" << obj->enabled 
-                          << ", renderer=" << (renderer->enabled ? "enabled" : "disabled")
-                          << ", transform=" << (transform->enabled ? "enabled" : "disabled")
-                          << ", type=" << (renderer->type == RendererComponent::Cube ? "Cube" : "Sphere")
-                          << ", pos=[" << transform->position.x << ", " << transform->position.y << ", " << transform->position.z << "])" 
-                          << std::endl;
+                DITTO_LOG_INFO_STREAM("[Scene::LoadScene] Raycast object: " << obj->name
+                    << " (enabled=" << obj->enabled
+                    << ", renderer=" << (renderer->enabled ? "enabled" : "disabled")
+                    << ", transform=" << (transform->enabled ? "enabled" : "disabled")
+                    << ", type=" << (renderer->type == RendererComponent::Cube ? "Cube" : "Sphere")
+                    << ", pos=[" << transform->position.x << ", " << transform->position.y << ", " << transform->position.z << "])");
                 raycastObjCount++;
             }
-            for (auto child : obj->children)
-                reportRaycastObjects(child);
+            for (const auto& child : obj->children)
+                reportRaycastObjects(child.get());
         };
         // Single-ownership: always start from rootGameObject.
-        reportRaycastObjects(rootGameObject);
-        std::cout << "[Scene::LoadScene] Total raycast-capable objects: " << raycastObjCount << std::endl;
+        reportRaycastObjects(rootGameObject.get());
+        DITTO_LOG_INFO_STREAM("[Scene::LoadScene] Total raycast-capable objects: " << raycastObjCount);
 
         return true;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error loading scene: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("Error loading scene: " << e.what());
         ClearScene();
         name = "Load Failed";
         return false;   // istream& has no close(); LoadScene's ifstream closes via RAII

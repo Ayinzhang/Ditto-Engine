@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <memory>
 #include <iosfwd>   // std::ostream / std::istream forward decls (serialize to file OR memory)
 #include <cstdint>
 #include "../../3rdParty/GLM/glm.hpp"
@@ -51,10 +52,14 @@ struct GameObject
     int compMask = 0;
     std::string name;
 
+    // Single-ownership tree: each GameObject owns its children; `parent` is a
+    // non-owning back-pointer.
     GameObject* parent = nullptr;
-    std::vector<GameObject*> children;
+    std::vector<std::unique_ptr<GameObject>> children;
 
-    std::vector<Component*> components;
+    // Owned components; `removeComps` is a non-owning pending-removal list of
+    // markers into `components`, resolved by ProcessRemovals().
+    std::vector<std::unique_ptr<Component>> components;
     std::vector<Component*> removeComps;
 
     GameObject(const std::string _name = "New GameObject");
@@ -62,19 +67,25 @@ struct GameObject
     GameObject(GameObject* other);
     ~GameObject();
 
-    void AddChild(GameObject* child);
-    void RemoveChild(GameObject* child);
-    void RemoveFromParent();
+    // Adopt a new (not-yet-owned) object; returns a raw observer to it.
+    GameObject* AddChild(std::unique_ptr<GameObject> child);
+    // Reparent an object currently owned elsewhere in the tree (editor
+    // drag-drop). Self/cycle guards as before; no-op if they fail.
+    void AddChild(GameObject* existingChild);
+    // Unlink `child` from this->children and hand its ownership to the caller
+    // (nulls child->parent). Returns nullptr if not found.
+    std::unique_ptr<GameObject> DetachChild(GameObject* child);
     bool IsDescendantOf(GameObject* ancestor) const;
 
     template<DerivedFromComponent T, typename... Args>
     T* AddComponent(Args&&... args)
     {
-        T* newComp = new T(std::forward<Args>(args)...);
+        auto owned = std::make_unique<T>(std::forward<Args>(args)...);
+        T* newComp = owned.get();
         newComp->gameObject = this;
-        components.push_back(newComp);
+        components.push_back(std::move(owned));
         compMask |= newComp->index;   // bitwise OR: idempotent if the same component type is added again
-        return newComp;
+        return newComp;               // raw observer; the GameObject owns the component
     }
 
     template<DerivedFromComponent T>
@@ -87,8 +98,8 @@ struct GameObject
         if constexpr (requires { T::TypeBit; })
             if ((compMask & T::TypeBit) == 0) return nullptr;
 
-        for (Component* comp : components)
-            if (T* result = dynamic_cast<T*>(comp))
+        for (const auto& comp : components)
+            if (T* result = dynamic_cast<T*>(comp.get()))
                 return result;
         return nullptr;
     }

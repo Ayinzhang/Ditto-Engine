@@ -17,6 +17,7 @@
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
 #include "../Engine/Core/CSharpScript.h"
+#include "../Engine/Core/Logger.h"
 #define GLFW_INCLUDE_NONE
 #include "../3rdParty/GLFW/glfw3.h"
 #include "../3rdParty/GLAD/glad.h"
@@ -45,7 +46,7 @@ static std::string FindEditorAssetsPath()
         if (fs::exists(path + "/Settings") || fs::exists(path + "/Icon")) return path;
     }
     
-    std::cerr << "[Editor] Warning: Editor assets not found, using default" << std::endl;
+    DITTO_LOG_WARN("[Editor] Editor assets not found, using default");
     return "Assets";
 }
 
@@ -115,7 +116,7 @@ static std::string FindVCVarsPath()
     if (!result.empty())
         return result;
 
-    std::cerr << "[Editor] Warning: vcvars64.bat not found, compilation may fail" << std::endl;
+    DITTO_LOG_WARN("[Editor] vcvars64.bat not found, compilation may fail");
     return "";
 }
 
@@ -183,9 +184,9 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     // but `engine` is only assigned by the caller AFTER this constructor runs.
 
     // Initialize window components
-    m_projectWindow = new ProjectWindow(this);
-    m_inspectorWindow = new InspectorWindow(this);
-    m_sceneWindow = new SceneWindow(this);
+    m_projectWindow = std::make_unique<ProjectWindow>(this);
+    m_inspectorWindow = std::make_unique<InspectorWindow>(this);
+    m_sceneWindow = std::make_unique<SceneWindow>(this);
     
     // Set script log callback
     CSharpScriptSystem::SetEditor(this);
@@ -204,9 +205,11 @@ Editor::~Editor()
     CleanupModelPreview();
     CleanupFileIcons();
 
-    // Cleanup window components
-    delete m_projectWindow;
-    delete m_inspectorWindow;
+    // Destroy window components BEFORE tearing ImGui down (their teardown may
+    // touch renderer/ImGui state). The old code also leaked m_sceneWindow.
+    m_projectWindow.reset();
+    m_inspectorWindow.reset();
+    m_sceneWindow.reset();
 
     if (engine && engine->renderer && m_imguiBackendInit) engine->renderer->ImGuiShutdown();
     ImGui::DestroyContext();
@@ -293,11 +296,11 @@ void Editor::Draw()
                         fs::path oldPath(renameProjectOldPath);
                         fs::path newPath = oldPath.parent_path() / renameProjectBuffer;
                         fs::rename(oldPath, newPath);
-                        std::cout << "[Editor] Renamed project: " << renameProjectOldPath << " -> " << newPath.string() << std::endl;
+                        DITTO_LOG_INFO_STREAM("[Editor] Renamed project: " << renameProjectOldPath << " -> " << newPath.string() );
                     }
                     catch (const std::exception& e)
                     {
-                        std::cerr << "Failed to rename project: " << e.what() << std::endl;
+                        DITTO_LOG_ERROR_STREAM("Failed to rename project: " << e.what() );
                     }
                 }
                 ImGui::CloseCurrentPopup();
@@ -333,7 +336,8 @@ void Editor::Draw()
 
     ImGui::Render();
     if (engine && engine->renderer) engine->renderer->ImGuiRenderDrawData(ImGui::GetDrawData());
-    if (isSceneActive) engine->sceneCamera = engine->sceneCamera;
+    // (A no-op `sceneCamera = sceneCamera` self-assignment used to live here;
+    // under unique_ptr it would be a self-move that nulls the camera.)
 }
 
 void Editor::SetupDocking()
@@ -544,13 +548,13 @@ void Editor::DrawToolbar()
             }
             else if (engine->state == Engine::Play)
             {
-                // Already playing — clicking Play returns to Edit (acts as Stop)
+                // Already playing 鈥?clicking Play returns to Edit (acts as Stop)
                 engine->SetEngineState(Engine::Stop);
                 StopAndRestoreScene();
             }
             else if (engine->state == Engine::Pause)
             {
-                // Paused — clicking Play also returns to Edit (acts as Stop);
+                // Paused 鈥?clicking Play also returns to Edit (acts as Stop);
                 // both buttons should go grey to signal "session ended".
                 engine->SetEngineState(Engine::Stop);
                 StopAndRestoreScene();
@@ -586,7 +590,7 @@ void Editor::DrawToolbar()
             }
             else if (engine->state == Engine::Pause)
             {
-                // Already paused — clicking Pause resumes Play
+                // Already paused 鈥?clicking Pause resumes Play
                 engine->SetEngineState(Engine::Play);
             }
             // In Edit state: do nothing (Pause has no meaning before Play)
@@ -728,25 +732,20 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 GameObject* droppedObj = *(GameObject**)payload->Data;
                 if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
                 {
-                    PushUndoSnapshot();
-                    if (droppedObj->parent) droppedObj->RemoveFromParent();
-                    else
-                    {
-                        auto& rootList = engine->scene->gameObjects;
-                        auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
-                        if (it != rootList.end()) rootList.erase(it);
-                    }
-                    obj->AddChild(droppedObj);
-                    engine->scene->MarkDirty();
+                    // Deferred: ancestor draw frames are mid-iteration over
+                    // their children vectors. DrawHierarchy applies this after
+                    // the tree is drawn.
+                    m_pendingReparentSource = droppedObj;
+                    m_pendingReparentTarget = obj;
                 }
             }
             ImGui::EndDragDropTarget();
         }
-        
+
         // Children
         if (isExpanded) {
-            for (auto child : obj->children)
-                DrawGameObjectNode(child, false, depth + 1);
+            for (auto& child : obj->children)
+                DrawGameObjectNode(child.get(), false, depth + 1);
         }
     } else {
         // Leaf node: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
@@ -795,16 +794,9 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 GameObject* droppedObj = *(GameObject**)payload->Data;
                 if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
                 {
-                    PushUndoSnapshot();
-                    if (droppedObj->parent) droppedObj->RemoveFromParent();
-                    else
-                    {
-                        auto& rootList = engine->scene->gameObjects;
-                        auto it = std::find(rootList.begin(), rootList.end(), droppedObj);
-                        if (it != rootList.end()) rootList.erase(it);
-                    }
-                    obj->AddChild(droppedObj);
-                    engine->scene->MarkDirty();
+                    // Deferred: see the expanded-node drop target above.
+                    m_pendingReparentSource = droppedObj;
+                    m_pendingReparentTarget = obj;
                 }
             }
             ImGui::EndDragDropTarget();
@@ -815,7 +807,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
     if (ImGui::BeginPopupContextItem(("GameObjectContext_" + std::to_string((uintptr_t)obj)).c_str()))
     {
         // Only show save option when scene root object is selected
-        bool isSelectedRoot = (selectedObject == engine->scene->rootGameObject);
+        bool isSelectedRoot = (selectedObject == engine->scene->rootGameObject.get());
         if (isSelectedRoot)
         {
             if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
@@ -828,14 +820,14 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         if (ImGui::MenuItem("Create Child"))
         {
             PushUndoSnapshot();
-            GameObject* newObj = new GameObject("New GameObject");
-            obj->AddChild(newObj);
+            GameObject* newObj = obj->AddChild(std::make_unique<GameObject>("New GameObject"));
             selectedObject = newObj;
             selectedFile.Clear();
             engine->scene->MarkDirty();
         }
-        if (ImGui::MenuItem("Copy")) CopySelectedObject();
-        if (ImGui::MenuItem("Delete")) DeleteSelectedObject();
+        // Deferred: both mutate an ancestor's children vector mid-draw.
+        if (ImGui::MenuItem("Copy")) m_pendingCopy = true;
+        if (ImGui::MenuItem("Delete")) m_pendingDelete = true;
         ImGui::EndPopup();
     }
 
@@ -854,12 +846,12 @@ void Editor::DrawHierarchy()
         if (ImGui::MenuItem("Create Directional Light"))
         {
             PushUndoSnapshot();
-            GameObject* lightObj = new GameObject("DirLight");
+            // Single-ownership: always attach to rootGameObject.
+            GameObject* lightObj = engine->scene->rootGameObject->AddChild(
+                std::make_unique<GameObject>("DirLight"));
             lightObj->AddComponent<LightComponent>();
             lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
             lightObj->GetComponent<TransformComponent>()->UpdateTransform();
-            // Single-ownership: always attach to rootGameObject.
-            engine->scene->rootGameObject->AddChild(lightObj);
             selectedObject = lightObj;
             selectedFile.Clear();
             engine->scene->MarkDirty();
@@ -870,10 +862,10 @@ void Editor::DrawHierarchy()
             if (ImGui::MenuItem("Create Cube"))
             {
                 PushUndoSnapshot();
-                GameObject* cube = new GameObject("Cube");
-                cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
                 // Single-ownership: always attach to rootGameObject.
-                engine->scene->rootGameObject->AddChild(cube);
+                GameObject* cube = engine->scene->rootGameObject->AddChild(
+                    std::make_unique<GameObject>("Cube"));
+                cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
                 selectedObject = cube;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
@@ -881,10 +873,10 @@ void Editor::DrawHierarchy()
             if (ImGui::MenuItem("Create Sphere"))
             {
                 PushUndoSnapshot();
-                GameObject* sphere = new GameObject("Sphere");
-                sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
                 // Single-ownership: always attach to rootGameObject.
-                engine->scene->rootGameObject->AddChild(sphere);
+                GameObject* sphere = engine->scene->rootGameObject->AddChild(
+                    std::make_unique<GameObject>("Sphere"));
+                sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
                 selectedObject = sphere;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
@@ -901,11 +893,10 @@ void Editor::DrawHierarchy()
             GameObject* droppedObj = *(GameObject**)payload->Data;
             if (droppedObj)
             {
-                PushUndoSnapshot();
-                // Single-ownership: AddChild() already rejects self-loops and
-                // handles reparenting (RemoveFromParent internally).
-                engine->scene->rootGameObject->AddChild(droppedObj);
-                engine->scene->MarkDirty();
+                // Deferred alongside the per-node drop targets (uniform path;
+                // AddChild's guards reject self-loops at apply time).
+                m_pendingReparentSource = droppedObj;
+                m_pendingReparentTarget = engine->scene->rootGameObject.get();
             }
         }
         ImGui::EndDragDropTarget();
@@ -914,7 +905,22 @@ void Editor::DrawHierarchy()
     // Single-ownership: the entire hierarchy starts from rootGameObject.
     // The root itself is shown at depth 0 (isRoot=true) so the user can
     // select it to perform scene-wide operations.
-    DrawGameObjectNode(engine->scene->rootGameObject, true);
+    DrawGameObjectNode(engine->scene->rootGameObject.get(), true);
+
+    // Apply deferred hierarchy mutations now that no children iterators are
+    // live (see Editor.h: mutating mid-draw destroys elements under the
+    // ancestors' range-for loops).
+    if (m_pendingReparentSource && m_pendingReparentTarget)
+    {
+        PushUndoSnapshot();
+        m_pendingReparentTarget->AddChild(m_pendingReparentSource);   // reparent overload
+        engine->scene->MarkDirty();
+    }
+    m_pendingReparentSource = nullptr;
+    m_pendingReparentTarget = nullptr;
+
+    if (m_pendingCopy)   { m_pendingCopy = false;   CopySelectedObject(); }
+    if (m_pendingDelete) { m_pendingDelete = false; DeleteSelectedObject(); }
 
     // Save window state
     {
@@ -1411,13 +1417,13 @@ void Editor::CopySelectedObject()
 {
     if (!selectedObject || !engine || !engine->scene) return;
     PushUndoSnapshot();
-    GameObject* newObj = new GameObject(selectedObject);
-    newObj->parent = nullptr;
-    if (selectedObject->parent)
-        selectedObject->parent->AddChild(newObj);
-    else
-        engine->scene->gameObjects.push_back(newObj);
-    selectedObject = newObj;
+    auto clone = std::make_unique<GameObject>(selectedObject);
+    // Attach next to the original; fall back to the root (the old fallback
+    // pushed an owned object into the non-owning gameObjects view -- a leak).
+    GameObject* attachTo = selectedObject->parent
+        ? selectedObject->parent
+        : engine->scene->rootGameObject.get();
+    selectedObject = attachTo->AddChild(std::move(clone));
     engine->scene->MarkDirty();  // Mark scene as modified
 }
 
@@ -1425,39 +1431,24 @@ void Editor::DeleteSelectedObject()
 {
     if (!selectedObject || !engine || !engine->scene) return;
 
-    if (selectedObject == engine->scene->rootGameObject)
+    if (selectedObject == engine->scene->rootGameObject.get())
     {
         return;
     }
 
     PushUndoSnapshot();   // capture pre-delete state (covers menu + Delete key)
 
+    // Single-root model: every deletable object has a parent (root is guarded
+    // above). Take ownership out of the tree, scrub the non-owning observer
+    // list, then let `owned` destroy the subtree at scope end.
     GameObject* parent = selectedObject->parent;
-    bool wasRoot = (parent == nullptr);
+    std::unique_ptr<GameObject> owned = parent->DetachChild(selectedObject);
 
-    if (parent)
-        parent->RemoveChild(selectedObject);
-    else
-    {
-        auto& rootList = engine->scene->gameObjects;
-        auto it = std::find(rootList.begin(), rootList.end(), selectedObject);
-        if (it != rootList.end()) rootList.erase(it);
-    }
-
-    // Remove the whole subtree from the non-owning observer list before the
-    // recursive delete, otherwise gameObjects would keep dangling pointers to
-    // the freed descendants.
     engine->scene->UnregisterSubtree(selectedObject);
+    owned.reset();
 
-    delete selectedObject;
+    selectedObject = parent;
 
-    if (parent)
-        selectedObject = parent;
-    else if (!engine->scene->gameObjects.empty())
-        selectedObject = engine->scene->gameObjects.back();
-    else
-        selectedObject = nullptr;
-    
     engine->scene->MarkDirty();  // Mark scene as modified
 }
 
@@ -1470,7 +1461,7 @@ void Editor::DeleteSelectedFile()
         selectedFile.Clear();
     }
     catch (const std::exception& e) {
-        std::cerr << "Delete file failed: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("Delete file failed: " << e.what() );
     }
 }
 
@@ -1493,7 +1484,7 @@ void Editor::DuplicateSelectedFile()
         selectedFile.name = selectedFile.name + "_copy";
     }
     catch (const std::exception& e) {
-        std::cerr << "Duplicate file failed: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("Duplicate file failed: " << e.what() );
     }
 }
 
@@ -1575,7 +1566,7 @@ void Editor::DrawProjectSelector()
             }
             catch (const std::exception& e)
             {
-                std::cerr << "Failed to delete project: " << e.what() << std::endl;
+                DITTO_LOG_ERROR_STREAM("Failed to delete project: " << e.what() );
             }
         }
     }
@@ -1625,20 +1616,20 @@ void Editor::OpenProject(const std::string& projectPath)
         if (proj && !proj->lastScene.empty())
         {
             std::string fullPath = proj->path + "/" + proj->lastScene;
-            std::cout << "[Editor] Loading last scene: " << fullPath << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] Loading last scene: " << fullPath );
             
             if (engine && engine->scene)
             {
                 if (engine->scene->LoadScene(fullPath.c_str()))
                 {
-                    std::cout << "[Editor] Scene loaded successfully: " << engine->scene->name << std::endl;
-                    std::cout << "[Editor] GameObject count: " << engine->scene->gameObjects.size() << std::endl;
+                    DITTO_LOG_INFO_STREAM("[Editor] Scene loaded successfully: " << engine->scene->name );
+                    DITTO_LOG_INFO_STREAM("[Editor] GameObject count: " << engine->scene->gameObjects.size() );
                     // Single-ownership: rootGameObject is always present.
-                    std::cout << "[Editor] RootGameObject children: " << engine->scene->rootGameObject->children.size() << std::endl;
+                    DITTO_LOG_INFO_STREAM("[Editor] RootGameObject children: " << engine->scene->rootGameObject->children.size() );
                 }
                 else
                 {
-                    std::cerr << "[Editor] Failed to load scene: " << fullPath << std::endl;
+                    DITTO_LOG_ERROR_STREAM("[Editor] Failed to load scene: " << fullPath );
                     // Create default scene. ClearScene() rebuilds the root
                     // using the current scene name, so set the name first.
                     engine->scene->name = "Default";
@@ -1657,13 +1648,14 @@ void Editor::OpenProject(const std::string& projectPath)
         }
         else
         {
-            std::cout << "[Editor] No last scene to load, creating default scene" << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] No last scene to load, creating default scene" );
             // Create default scene
             if (engine && engine->scene)
             {
-                engine->scene->ClearScene();
+                // ClearScene() rebuilds the root using the current scene name,
+                // so set the name first (the old order also leaked a root).
                 engine->scene->name = "Default";
-                engine->scene->rootGameObject = new GameObject("Default");
+                engine->scene->ClearScene();
                 strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
                 sceneDirty = false;
                 engine->scene->onModified = [this]() {
@@ -1728,7 +1720,7 @@ std::vector<std::string> Editor::GetProjectScenes()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error reading scenes: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("Error reading scenes: " << e.what() );
     }
 
     return scenes;
@@ -1738,7 +1730,7 @@ void Editor::OnScriptComponentDropped(const std::string& scriptPath)
 {
     if (!selectedObject)
     {
-        std::cout << "[Editor] No object selected to add script" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] No object selected to add script" );
         return;
     }
 
@@ -1749,7 +1741,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
 {
     if (!obj)
     {
-        std::cout << "[Editor] No object to add script" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] No object to add script" );
         return;
     }
 
@@ -1758,21 +1750,18 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
     std::string ext = p.extension().string();
     std::string scriptName = p.stem().string();
     
-    std::cout << "[Editor] Adding script: " << scriptName << " (" << ext << ") to " << obj->name << std::endl;
+    DITTO_LOG_INFO_STREAM("[Editor] Adding script: " << scriptName << " (" << ext << ") to " << obj->name );
     
     if (ext == ".cs")
     {
         PushUndoSnapshot();   // adding a script component is undoable
-        // C# script - create CSharpScriptComponent
-        CSharpScriptComponent* csScript = new CSharpScriptComponent();
+        // C# script - route through AddComponent (sets gameObject + compMask
+        // and gives the GameObject ownership).
+        CSharpScriptComponent* csScript = obj->AddComponent<CSharpScriptComponent>();
         csScript->scriptPath = scriptPath;
         csScript->scriptName = std::filesystem::path(scriptPath).filename().stem().string();
-        csScript->gameObject = obj;
         csScript->ParseScriptFields();
-        
-        obj->components.push_back(csScript);
-        obj->compMask |= csScript->index;   // bitwise OR, consistent with GameObject::AddComponent
-        std::cout << "[Editor] C# script added: " << csScript->scriptName << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] C# script added: " << csScript->scriptName );
         
         // Mark scene as modified
         sceneDirty = true;
@@ -1783,7 +1772,7 @@ void Editor::SaveCurrentScene()
 {
     if (!engine || !engine->scene)
     {
-        std::cerr << "[Editor] No scene to save" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Editor] No scene to save" );
         return;
     }
 
@@ -1802,11 +1791,11 @@ void Editor::SaveCurrentScene()
         savePath = "Assets/Scenes/" + engine->scene->name + ".bin";
     }
     
-    std::cout << "[Editor] Saving scene to: " << savePath << std::endl;
+    DITTO_LOG_INFO_STREAM("[Editor] Saving scene to: " << savePath );
     
     if (engine->scene->SaveScene(savePath.c_str()))
     {
-        std::cout << "[Editor] Scene saved successfully" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] Scene saved successfully" );
         sceneDirty = false;  // Clear modification flag
         
         // Update project config
@@ -1818,7 +1807,7 @@ void Editor::SaveCurrentScene()
     }
     else
     {
-        std::cerr << "[Editor] Failed to save scene" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Editor] Failed to save scene" );
     }
 }
 
@@ -1826,14 +1815,14 @@ void Editor::BuildProject()
 {
     if (!engine || !engine->scene)
     {
-        std::cerr << "[Editor] No scene to build" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Editor] No scene to build" );
         return;
     }
 
     Project* proj = ProjectManager::GetInstance().GetCurrentProject();
     if (!proj)
     {
-        std::cerr << "[Editor] No project loaded" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Editor] No project loaded" );
         return;
     }
 
@@ -1859,7 +1848,7 @@ void Editor::BuildProject()
             std::string assetsDst = outputDir;
             fs::remove_all(assetsDst + "/Assets");
             fs::copy(assetsSrc, assetsDst + "/Assets", fs::copy_options::recursive);
-            std::cout << "[Editor] Copied Assets to " << assetsDst << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] Copied Assets to " << assetsDst );
         }
 
         // 2. Save current scene
@@ -1875,7 +1864,7 @@ void Editor::BuildProject()
         {
             std::string sceneDst = outputDir + "/Assets/Scenes/" + sceneName + ".bin";
             fs::copy(sceneSrc, sceneDst, fs::copy_options::overwrite_existing);
-            std::cout << "[Editor] Copied scene: " << sceneDst << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] Copied scene: " << sceneDst );
         }
 
         // Copy project.json to root directory
@@ -1883,7 +1872,7 @@ void Editor::BuildProject()
         if (fs::exists(projectJsonSrc))
         {
             fs::copy(projectJsonSrc, outputDir + "/project.json", fs::copy_options::overwrite_existing);
-            std::cout << "[Editor] Copied project.json to " << outputDir << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] Copied project.json to " << outputDir );
         }
 
         // 3. Copy executable
@@ -1892,7 +1881,7 @@ void Editor::BuildProject()
         if (fs::exists(exeSrc))
         {
             fs::copy(exeSrc, exeDst, fs::copy_options::overwrite_existing);
-            std::cout << "[Editor] Copied executable: " << exeDst << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] Copied executable: " << exeDst );
         }
         else
         {
@@ -1900,7 +1889,7 @@ void Editor::BuildProject()
             if (fs::exists(exeSrc))
             {
                 fs::copy(exeSrc, exeDst, fs::copy_options::overwrite_existing);
-                std::cout << "[Editor] Copied executable: " << exeDst << std::endl;
+                DITTO_LOG_INFO_STREAM("[Editor] Copied executable: " << exeDst );
             }
             else
             {
@@ -1908,7 +1897,7 @@ void Editor::BuildProject()
                 if (fs::exists(exeSrc))
                 {
                     fs::copy(exeSrc, exeDst, fs::copy_options::overwrite_existing);
-                    std::cout << "[Editor] Copied executable: " << exeDst << std::endl;
+                    DITTO_LOG_INFO_STREAM("[Editor] Copied executable: " << exeDst );
                 }
             }
         }
@@ -1933,7 +1922,7 @@ void Editor::BuildProject()
                 {
                     std::string dllDst = outputDir + "/" + entry.path().filename().string();
                     fs::copy(entry.path(), dllDst, fs::copy_options::overwrite_existing);
-                    std::cout << "[Editor] Copied DLL: " << dllDst << std::endl;
+                    DITTO_LOG_INFO_STREAM("[Editor] Copied DLL: " << dllDst );
                 }
             }
         }
@@ -1947,9 +1936,9 @@ void Editor::BuildProject()
         batFile << "\"" << proj->name << ".exe\"\n";
         batFile << "pause\n";
         batFile.close();
-        std::cout << "[Editor] Created startup script: " << batPath << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] Created startup script: " << batPath );
         
-        std::cout << "[Editor] Build completed: " << outputDir << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] Build completed: " << outputDir );
         
         // 6. Open output directory in Explorer
         std::wstring outputDirW = fs::absolute(outputDir).wstring();
@@ -1957,7 +1946,7 @@ void Editor::BuildProject()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Editor] Build failed: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Editor] Build failed: " << e.what() );
     }
 }
 
@@ -1966,7 +1955,7 @@ void Editor::BuildScripts()
     Project* proj = ProjectManager::GetInstance().GetCurrentProject();
     if (!proj)
     {
-        std::cerr << "[Editor] No project loaded" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Editor] No project loaded" );
         return;
     }
     
@@ -1976,7 +1965,7 @@ void Editor::BuildScripts()
     
     if (!fs::exists(scriptsDir))
     {
-        std::cout << "[Editor] Scripts directory does not exist: " << scriptsDir << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] Scripts directory does not exist: " << scriptsDir );
         return;
     }
     
@@ -1992,11 +1981,11 @@ void Editor::BuildScripts()
     
     if (cppFiles.empty())
     {
-        std::cout << "[Editor] No script files found" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Editor] No script files found" );
         return;
     }
     
-    std::cout << "[Editor] Building " << cppFiles.size() << " script(s)..." << std::endl;
+    DITTO_LOG_INFO_STREAM("[Editor] Building " << cppFiles.size() << " script(s)..." );
     
     // Convert to absolute paths
     fs::path projPathAbs = fs::absolute(proj->path);
@@ -2031,8 +2020,8 @@ void Editor::BuildScripts()
     
     batFile.close();
     
-    std::cout << "[Editor] Please run: " << batPath << std::endl;
-    std::cout << "[Editor] Or manually compile your scripts and place DLL at: " << outputDll << std::endl;
+    DITTO_LOG_INFO_STREAM("[Editor] Please run: " << batPath );
+    DITTO_LOG_INFO_STREAM("[Editor] Or manually compile your scripts and place DLL at: " << outputDll );
     
     // Try to execute directly
     STARTUPINFOA si = {sizeof(si)};
@@ -2050,11 +2039,11 @@ void Editor::BuildScripts()
         // Check if DLL was generated
         if (fs::exists(outputDll))
         {
-            std::cout << "[Editor] DLL built: " << outputDll << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] DLL built: " << outputDll );
         }
         else
         {
-            std::cout << "[Editor] DLL not found after build. Check the console window for errors." << std::endl;
+            DITTO_LOG_INFO_STREAM("[Editor] DLL not found after build. Check the console window for errors." );
         }
     }
 }
@@ -2091,7 +2080,7 @@ void Editor::InitFileIcons()
     
     // Get icon directory path
     m_assetsPath = FindEditorAssetsPath() + "/Icon";
-    std::cout << "[FileIcon] Initializing from: " << m_assetsPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[FileIcon] Initializing from: " << m_assetsPath );
     
     // Load file icons
     for (int i = 0; i < 7; i++) {
@@ -2118,7 +2107,7 @@ void Editor::InitFileIcons()
     m_stopIcon = LoadIcon(m_assetsPath + "/Scene.png"); // placeholder; swap to "Stop.png" when available
 
     m_fileIconsInitialized = true;
-    std::cout << "[FileIcon] Initialized successfully" << std::endl;
+    DITTO_LOG_INFO_STREAM("[FileIcon] Initialized successfully" );
 }
 
 Ditto::TextureHandle Editor::LoadIcon(const std::string& iconPath)
@@ -2126,7 +2115,7 @@ Ditto::TextureHandle Editor::LoadIcon(const std::string& iconPath)
     namespace fs = std::filesystem;
 
     if (!fs::exists(iconPath)) {
-        std::cerr << "[FileIcon] File not found: " << iconPath << std::endl;
+        DITTO_LOG_ERROR_STREAM("[FileIcon] File not found: " << iconPath );
         return {};
     }
     if (!engine || !engine->renderer) return {};
@@ -2136,14 +2125,14 @@ Ditto::TextureHandle Editor::LoadIcon(const std::string& iconPath)
     unsigned char* data = stbi_load(iconPath.c_str(), &width, &height, &channels, 4);
 
     if (!data) {
-        std::cerr << "[FileIcon] Failed to load: " << iconPath << std::endl;
+        DITTO_LOG_ERROR_STREAM("[FileIcon] Failed to load: " << iconPath );
         return {};
     }
 
     Ditto::TextureHandle tex = engine->renderer->CreateTexture(data, width, height, 4);
     stbi_image_free(data);
 
-    std::cout << "[FileIcon] Loaded: " << iconPath << " (" << width << "x" << height << ")" << std::endl;
+    DITTO_LOG_INFO_STREAM("[FileIcon] Loaded: " << iconPath << " (" << width << "x" << height << ")" );
     return tex;
 }
 
@@ -2210,5 +2199,6 @@ void Editor::CleanupFileIcons()
     m_playIcon = m_pauseIcon = m_stopIcon = {};
 
     m_fileIconsInitialized = false;
-    std::cout << "[FileIcon] Cleaned up" << std::endl;
+    DITTO_LOG_INFO_STREAM("[FileIcon] Cleaned up" );
 }
+

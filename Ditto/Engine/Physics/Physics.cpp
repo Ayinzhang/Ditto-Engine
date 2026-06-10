@@ -32,32 +32,34 @@ void Physics::UpdatePhysics(float dt)
         ApplyPositionCorrections();
     }
 
-    for (auto collider : colliders) collider->transform->UpdateTransform();
+    for (auto& collider : colliders) collider->transform->UpdateTransform();
 }
 
 void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 {
-    for (auto collider : colliders) delete collider; colliders.clear();
-    if (bvhTree) delete bvhTree;
+    // Resetting first also fixes the old dangling bvhTree: it was deleted but
+    // not nulled, so an empty collect left it pointing at freed memory.
+    colliders.clear();
+    bvhTree.reset();
 
     for (GameObject* root : gameobjects) CollectCollidersRecursive(root, colliders);
 
     if (!colliders.empty())
-        bvhTree = new BVHTree(colliders);
+    {
+        std::vector<Collider*> rawColliders;
+        rawColliders.reserve(colliders.size());
+        for (auto& collider : colliders) rawColliders.push_back(collider.get());
+        bvhTree = std::make_unique<BVHTree>(rawColliders);
+    }
 }
 
 void Physics::ClearColliders()
 {
-    for (auto collider : colliders) delete collider;
     colliders.clear();
-    if (bvhTree)
-    {
-        delete bvhTree;
-        bvhTree = nullptr;
-    }
+    bvhTree.reset();
 }
 
-void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic)
+void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique_ptr<Collider>>& outColliders, bool parentIsDynamic)
 {
     if (!obj->enabled) return;
 
@@ -67,7 +69,8 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>&
 
     if (transform && renderer && rigidbody)
     {
-        Collider* collider = new Collider();
+        auto owned = std::make_unique<Collider>();
+        Collider* collider = owned.get();
         collider->transform = transform;
         collider->rigidbody = rigidbody;
 
@@ -83,23 +86,23 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>&
 
         switch (renderer->type)
         {
-        case RendererComponent::Cube:  collider->mesh = engine->resource->cubeMesh; break;
-        case RendererComponent::Sphere:collider->mesh = engine->resource->sphereMesh; break;
+        case RendererComponent::Cube:  collider->mesh = engine->resource->cubeMesh.get(); break;
+        case RendererComponent::Sphere:collider->mesh = engine->resource->sphereMesh.get(); break;
         default: break;
         }
 
         rigidbody->CalculateInertia(renderer->type, transform->scale);
         collider->localAABB = AABB(collider->mesh->aabbMin, collider->mesh->aabbMax);
-		collider->UpdateWorldAABB(); outColliders.push_back(collider); collider->id = outColliders.size();
+		collider->UpdateWorldAABB(); outColliders.push_back(std::move(owned)); collider->id = outColliders.size();
     }
 
     bool nextParentIsDynamic = parentIsDynamic || (rigidbody && rigidbody ->type == RigidbodyComponent::Dynamic);
-    for (GameObject* child : obj->children) CollectCollidersRecursive(child, outColliders, nextParentIsDynamic);
+    for (const auto& child : obj->children) CollectCollidersRecursive(child.get(), outColliders, nextParentIsDynamic);
 }
 
 void Physics::IntegrateForce(float dt)
 {
-    for (Collider* collider : colliders)
+    for (auto& collider : colliders)
     {
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
         {
@@ -126,8 +129,9 @@ void Physics::IntegrateForce(float dt)
 
 void Physics::HandleBroadCollisions()
 {
-    for (Collider* collider : colliders)
+    for (auto& colliderPtr : colliders)
     {
+        Collider* collider = colliderPtr.get();
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic)
         {
             std::vector<Collider*> potentialCollisions;

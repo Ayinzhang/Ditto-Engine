@@ -1,4 +1,5 @@
 #include "LayoutManager.h"
+#include "../Engine/Core/Logger.h"
 #include "../3rdParty/ImGui/imgui.h"
 #include <fstream>
 #include <iostream>
@@ -37,7 +38,7 @@ bool LayoutManager::SaveLayout(const std::string& layoutName)
     
     if (!iniData || iniSize == 0)
     {
-        std::cerr << "Failed to get ImGui settings" << std::endl;
+        DITTO_LOG_ERROR_STREAM("Failed to get ImGui settings" );
         return false;
     }
     
@@ -45,14 +46,14 @@ bool LayoutManager::SaveLayout(const std::string& layoutName)
     std::ofstream file(filePath, std::ios::binary);
     if (!file.is_open())
     {
-        std::cerr << "Failed to save layout: " << filePath << std::endl;
+        DITTO_LOG_ERROR_STREAM("Failed to save layout: " << filePath );
         return false;
     }
     
     file.write(iniData, iniSize);
     file.close();
     
-    std::cout << "Layout saved: " << filePath << " (" << iniSize << " bytes)" << std::endl;
+    DITTO_LOG_INFO_STREAM("Layout saved: " << filePath << " (" << iniSize << " bytes)" );
     return true;
 }
 
@@ -64,7 +65,7 @@ bool LayoutManager::LoadLayout(const std::string& layoutName)
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
-        std::cerr << "Failed to load layout: " << filePath << std::endl;
+        DITTO_LOG_ERROR_STREAM("Failed to load layout: " << filePath );
         return false;
     }
     
@@ -74,7 +75,7 @@ bool LayoutManager::LoadLayout(const std::string& layoutName)
     std::vector<char> buffer(size);
     if (!file.read(buffer.data(), size))
     {
-        std::cerr << "Failed to read layout file: " << filePath << std::endl;
+        DITTO_LOG_ERROR_STREAM("Failed to read layout file: " << filePath );
         return false;
     }
     file.close();
@@ -85,7 +86,7 @@ bool LayoutManager::LoadLayout(const std::string& layoutName)
     // Mark needs reinitialization of Dock
     needsReloadDock = true;
     
-    std::cout << "Layout loaded: " << filePath << " (" << size << " bytes)" << std::endl;
+    DITTO_LOG_INFO_STREAM("Layout loaded: " << filePath << " (" << size << " bytes)" );
     return true;
 }
 
@@ -98,18 +99,18 @@ bool LayoutManager::DeleteLayout(const std::string& layoutName)
         if (fs::exists(filePath))
         {
             fs::remove(filePath);
-            std::cout << "Layout deleted: " << filePath << std::endl;
+            DITTO_LOG_INFO_STREAM("Layout deleted: " << filePath );
             return true;
         }
         else
         {
-            std::cerr << "Layout file does not exist: " << filePath << std::endl;
+            DITTO_LOG_ERROR_STREAM("Layout file does not exist: " << filePath );
             return false;
         }
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error deleting layout: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("Error deleting layout: " << e.what() );
         return false;
     }
 }
@@ -133,8 +134,9 @@ std::vector<std::string> LayoutManager::GetAllLayoutNames()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error reading layout directory: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("Error reading layout directory: " << e.what() );
     }
     
     return layoutNames;
 }
+

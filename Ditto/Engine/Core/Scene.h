@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include <functional>
+#include <memory>
 #include "GameObject.h"
 #include "../Physics/Physics.h"
 #include "../Graphics/RHI/IRenderer.h"
@@ -32,23 +33,21 @@ struct GeometryInstances
 struct Scene
 {
     std::string name;
-    // Ownership: `rootGameObject` always OWNS the entire object tree (created
-    // in the Scene constructor with `new GameObject(false)`, i.e. no
-    // components). `gameObjects` is a NON-OWNING flattened view mirroring
-    // `rootGameObject->children`; it is purely for fast iteration/lookup and
-    // must never be deleted.
+    // Ownership: `rootGameObject` always OWNS the entire object tree.
+    // `gameObjects` is a NON-OWNING flattened view mirroring
+    // `rootGameObject->children`; it is purely for fast iteration/lookup.
     std::vector<GameObject*> gameObjects;
-    GameObject* rootGameObject = nullptr;
+    std::unique_ptr<GameObject> rootGameObject;
 
     GameObject* mainLight = nullptr;
     std::unordered_map<RendererComponent::Type, BaseGeometry> baseGeometries;
-    std::unordered_map<RendererComponent::Type, GeometryInstances*> geometryBatches;
+    std::unordered_map<RendererComponent::Type, std::unique_ptr<GeometryInstances>> geometryBatches;
 
     // Custom-mesh rendering runs as a parallel, lazily-populated pipeline keyed
     // by the renderer's meshPath. The built-in Cube/Sphere path above is left
     // untouched. GL buffers + batches here are owned by the Scene.
     std::unordered_map<std::string, BaseGeometry> customGeometries;
-    std::unordered_map<std::string, GeometryInstances*> customBatches;
+    std::unordered_map<std::string, std::unique_ptr<GeometryInstances>> customBatches;
 
     Resource* resource = nullptr;
     // Non-owning RHI pointer (owned by Engine). Set in InitializeBaseGeometries.

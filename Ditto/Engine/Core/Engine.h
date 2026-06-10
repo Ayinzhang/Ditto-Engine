@@ -22,18 +22,18 @@ struct Engine
     enum class Backend { OpenGL, Vulkan, DirectX };
     Backend backend = Backend::Vulkan;
 
-    GLFWwindow* window;
+    GLFWwindow* window;   // owned by GLFW (glfwDestroyWindow in ~Engine)
     int window_width, window_height;
-    // Engine-internal subsystems with no external raw-pointer references are
-    // owned via unique_ptr (RAII). `scene`, `sceneCamera`/`gameCamera` and
-    // `editor` are intentionally left raw: they are referenced as raw pointers
-    // across the editor UI, so migrating them would ripple widely.
+    // All subsystems are owned via unique_ptr (RAII). The editor UI keeps
+    // working with raw observer pointers obtained via .get()/->.
+    // NOTE: ~Engine still resets these in an explicit order (scene must free
+    // its GPU handles through `renderer` before the renderer dies).
     std::unique_ptr<Resource> resource;
-    Scene* scene;
-    Editor* editor;
+    std::unique_ptr<Scene> scene;
+    std::unique_ptr<Editor> editor;
     int physicsCnt;
     float deltaTime, lastTime, curTime, physicsTime;
-    Camera* sceneCamera, *gameCamera;
+    std::unique_ptr<Camera> sceneCamera, gameCamera;
     bool enableMouse;
     float keySpeed, mouseSpeed;
     double lastX, lastY;

@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include "GJK.h"
 #include "CollisionShape.h"
 #include "../../3rdParty/GLM/gtc/quaternion.hpp"
@@ -22,9 +23,9 @@ struct CollisionData {
 struct Physics
 {
     Engine* engine;
-    BVHTree* bvhTree = nullptr;
-    std::vector<Collider*> colliders;
-    std::vector<std::pair<Collider*, Collider*>> colliderPairs;
+    std::unique_ptr<BVHTree> bvhTree;
+    std::vector<std::unique_ptr<Collider>> colliders;
+    std::vector<std::pair<Collider*, Collider*>> colliderPairs;   // observers into `colliders`
     std::vector<CollisionData> collisionData;
 
     float t = 0, deltaTime = 1.0f / 60; int iterations = 4;
@@ -38,7 +39,7 @@ struct Physics
     float positionCorrectionFactor = 0.8f;
 
     virtual void GenerateColliders(const std::vector<GameObject*>& gameobjects);
-    virtual void CollectCollidersRecursive(GameObject* obj, std::vector<Collider*>& outColliders, bool parentIsDynamic = false);
+    virtual void CollectCollidersRecursive(GameObject* obj, std::vector<std::unique_ptr<Collider>>& outColliders, bool parentIsDynamic = false);
     virtual void ClearColliders();  // 清除所有碰撞体
     virtual void UpdatePhysics(float dt);
 

@@ -1,4 +1,5 @@
 #include "Core/Engine.h"
+#include "Core/Logger.h"
 
 #include <iostream>
 #include <fstream>
@@ -55,7 +56,7 @@ public:
             }
             else
             {
-                cerr << "[Ditto] Unknown argument: " << a << endl;
+                DITTO_LOG_ERROR_STREAM("[Ditto] Unknown argument: " << a);
                 return nullopt;
             }
         }
@@ -65,8 +66,7 @@ public:
 
     static void PrintUsage(const char* exeName)
     {
-        cout
-            << "Ditto Engine\n"
+        DITTO_LOG_INFO_STREAM("Ditto Engine\n"
             << "Usage: " << exeName << " [options]\n"
             << "\n"
             << "Options:\n"
@@ -76,7 +76,7 @@ public:
             << "  -h, --help, /?        Show this help and exit.\n"
             << "\n"
             << "If a game.config file exists next to the executable, Game mode is\n"
-            << "entered automatically. CLI flags override the file.\n";
+            << "entered automatically. CLI flags override the file.");
     }
 };
 
@@ -160,7 +160,7 @@ static bool IsValidProjectPath(const string& path, string* outError = nullptr)
 
 static void ReportFatal(const string& message)
 {
-    cerr << "[Ditto] FATAL: " << message << endl;
+    DITTO_LOG_ERROR_STREAM("[Ditto] FATAL: " << message);
 
 #ifdef _WIN32
     MessageBoxA(nullptr, message.c_str(), "Ditto Engine - Fatal Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
@@ -184,7 +184,7 @@ int main(int argc, char* argv[])
     }
 
     const string exeDir = GetExeDirectory();
-    cout << "[Ditto] EXE directory: " << exeDir << endl;
+    DITTO_LOG_INFO_STREAM("[Ditto] EXE directory: " << exeDir);
 
     const fs::path gameConfigPath = fs::path(exeDir) / "game.config";
     const bool hasConfigFile = fs::exists(gameConfigPath);
@@ -199,21 +199,21 @@ int main(int argc, char* argv[])
         auto cfg = ConfigParser::ParseFile(gameConfigPath);
         if (!cfg)
         {
-            cerr << "[Ditto] Warning: could not read " << gameConfigPath  << endl;
+            DITTO_LOG_WARN_STREAM("[Ditto] could not read " << gameConfigPath);
         }
         else
         {
             if (!cfg->found)
             {
-                cerr << "[Ditto] Warning: game.config has no 'startupScene' key" << endl;
+                DITTO_LOG_WARN("[Ditto] game.config has no 'startupScene' key");
             }
             projectPath = exeDir;
             if (!cfg->startupScene.empty())
                 startupScene = cfg->startupScene;
 
-            cout << "[Ditto] Game mode (game.config detected)" << endl;
-            cout << "[Ditto] Project path: " << projectPath << endl;
-            cout << "[Ditto] Startup scene: " << startupScene << endl;
+            DITTO_LOG_INFO("[Ditto] Game mode (game.config detected)");
+            DITTO_LOG_INFO_STREAM("[Ditto] Project path: " << projectPath);
+            DITTO_LOG_INFO_STREAM("[Ditto] Startup scene: " << startupScene);
         }
     }
 

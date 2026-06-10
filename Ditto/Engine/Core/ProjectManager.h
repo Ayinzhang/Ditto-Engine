@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <memory>
 #include <filesystem>
 #include "Scene.h"
 
@@ -30,7 +31,7 @@ public:
     
     void CloseProject();
     
-    Project* GetCurrentProject() { return currentProject; }
+    Project* GetCurrentProject() { return currentProject.get(); }
     
     std::string GetProjectAssetsPath() const;
     std::string GetProjectScenesPath() const;
@@ -42,7 +43,7 @@ private:
     ProjectManager& operator=(const ProjectManager&) = delete;
 
     std::string projectsDirectory;
-    Project* currentProject = nullptr;
+    std::unique_ptr<Project> currentProject;
     
     void EnsureDirectoryExists(const std::string& path);
     std::string GetProjectFilePath(const Project& project) const;

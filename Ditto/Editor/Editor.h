@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <memory>
 #include "ProjectWindow.h"
 #include "InspectorWindow.h"
 #include "BuildSystem.h"
@@ -127,6 +128,17 @@ struct Editor
     void DrawGameObjectNode(GameObject* obj, bool isRoot = false, int depth = 0);
     void CopySelectedObject();
     void DeleteSelectedObject();
+
+    // Deferred hierarchy mutations. Structural changes (reparent / delete /
+    // duplicate) requested from inside DrawGameObjectNode would invalidate the
+    // `children` iterators of every ancestor draw frame (the vectors hold
+    // unique_ptr now, so an erase destroys the object on the spot). The
+    // handlers only RECORD the request here; DrawHierarchy applies it after
+    // the whole tree has been drawn.
+    GameObject* m_pendingReparentSource = nullptr;
+    GameObject* m_pendingReparentTarget = nullptr;
+    bool m_pendingCopy = false;
+    bool m_pendingDelete = false;
     void DeleteSelectedFile();
     void DuplicateSelectedFile();
 
@@ -169,8 +181,9 @@ private:
     void* IconTexID(Ditto::TextureHandle h);
     int GetIconIndex(const std::string& ext);
 
-    // Window components
-    ProjectWindow* m_projectWindow = nullptr;
-    InspectorWindow* m_inspectorWindow = nullptr;
-    SceneWindow* m_sceneWindow = nullptr;
+    // Window components (owned; SceneWindow is forward-declared, so ~Editor
+    // must stay defined in Editor.cpp where SceneWindow.h is included).
+    std::unique_ptr<ProjectWindow> m_projectWindow;
+    std::unique_ptr<InspectorWindow> m_inspectorWindow;
+    std::unique_ptr<SceneWindow> m_sceneWindow;
 };

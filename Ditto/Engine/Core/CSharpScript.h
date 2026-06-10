@@ -1,6 +1,7 @@
 #pragma once
 #include "GameObject.h"
 #include "MonoRuntime.h"
+#include "Logger.h"
 #include <fstream>
 #include <variant>
 #include <vector>
@@ -71,10 +72,10 @@ template<typename Func>
 inline void ForEachScriptComponent(GameObject* obj, Func&& func)
 {
     if (!obj) return;
-    for (Component* comp : obj->components)
+    for (const auto& comp : obj->components)
     {
         if (comp->index == ComponentIndex::CSharpScript)
-            func(static_cast<CSharpScriptComponent*>(comp));
+            func(static_cast<CSharpScriptComponent*>(comp.get()));
     }
 }
 
@@ -100,7 +101,7 @@ struct CSharpScriptSystem
     static void SetLogCallback(LogCallback callback) { s_logCallback = callback; }
     static void Log(const std::string& message) { 
         if (s_logCallback) s_logCallback(message); 
-        else std::cout << message << std::endl;
+        else Ditto::Logger::Get().Info(message);
     }
     
     static void SetEditor(void* editor) { s_editor = editor; }

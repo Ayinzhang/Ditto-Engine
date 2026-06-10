@@ -3,12 +3,13 @@
 #endif
 
 #include "ComputePhysics.h"
+#include "../Core/Logger.h"
 #include "../Core/Engine.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
 
-// ���ߺ��������������ɫ��
+// 锟斤拷锟竭猴拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟缴拷锟?
 static GLuint CompileComputeShader(const std::string& source) {
     GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
     const char* src = source.c_str();
@@ -20,7 +21,7 @@ static GLuint CompileComputeShader(const std::string& source) {
     if (!success) {
         char infoLog[512];
         glGetShaderInfoLog(shader, 512, nullptr, infoLog);
-        std::cerr << "Compute Shader Compilation Failed:\n" << infoLog << std::endl;
+        DITTO_LOG_ERROR_STREAM("Compute Shader Compilation Failed:\n" << infoLog );
     }
     GLuint program = glCreateProgram();
     glAttachShader(program, shader);
@@ -29,7 +30,7 @@ static GLuint CompileComputeShader(const std::string& source) {
     if (!success) {
         char infoLog[512];
         glGetProgramInfoLog(program, 512, nullptr, infoLog);
-        std::cerr << "Compute Shader Linking Failed:\n" << infoLog << std::endl;
+        DITTO_LOG_ERROR_STREAM("Compute Shader Linking Failed:\n" << infoLog );
     }
     glDeleteShader(shader);
     return program;
@@ -59,7 +60,7 @@ ComputePhysics::~ComputePhysics() {
 }
 
 void ComputePhysics::CompileShaders() {
-    // ������ɫ��
+    // 锟斤拷锟斤拷锟斤拷色锟斤拷
     integrateForceProgram = CompileComputeShader(R"(
         #version 430 core
         layout(local_size_x = 64) in;
@@ -88,9 +89,9 @@ void ComputePhysics::CompileShaders() {
                 rb.angularVelocity *= pow(1.0 - angularDamping, dt);
 
                 tr.position.xyz += rb.velocity.xyz * dt;
-                tr.rotation.xyz += rb.angularVelocity.xyz * dt; // �򵥻��֣�ʵ��Ӧ�淶����Ԫ��
+                tr.rotation.xyz += rb.angularVelocity.xyz * dt; // 锟津单伙拷锟街ｏ拷实锟斤拷应锟芥范锟斤拷锟斤拷元锟斤拷
 
-                col.isDirty = 1; // �����Ҫ�������� AABB
+                col.isDirty = 1; // 锟斤拷锟斤拷锟揭拷锟斤拷锟斤拷锟斤拷锟?AABB
             }
 
             rigidbodies[idx] = rb;
@@ -99,7 +100,7 @@ void ComputePhysics::CompileShaders() {
         }
     )");
 
-    // �������� AABB ��ɫ��
+    // 锟斤拷锟斤拷锟斤拷锟斤拷 AABB 锟斤拷色锟斤拷
     updateAABBProgram = CompileComputeShader(R"(
         #version 430 core
         layout(local_size_x = 64) in;
@@ -107,7 +108,7 @@ void ComputePhysics::CompileShaders() {
         layout(std430, binding = 2) buffer Collider { ColliderGPU colliders[]; };
         layout(std430, binding = 3) buffer MeshVertex { vec3 vertices[]; };
 
-        // ��������������Ԫ��������ת����
+        // 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷元锟斤拷锟斤拷锟斤拷锟斤拷转锟斤拷锟斤拷
         mat4 quatToMat4(vec4 q) {
             float xx = q.x * q.x;
             float yy = q.y * q.y;
@@ -153,11 +154,11 @@ void ComputePhysics::CompileShaders() {
         }
     )");
 
-    // Broad phase ��ɫ������������
+    // Broad phase 锟斤拷色锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
     broadPhaseProgram = CompileComputeShader(R"(
         #version 430 core
         layout(local_size_x = 64) in;
-        layout(std430, binding = 0) buffer Rigidbody { RigidbodyGPU rigidbodies[]; }; // ��Ҫ�ж϶�̬
+        layout(std430, binding = 0) buffer Rigidbody { RigidbodyGPU rigidbodies[]; }; // 锟斤拷要锟叫断讹拷态
         layout(std430, binding = 2) buffer Collider { ColliderGPU colliders[]; };
         layout(std430, binding = 4) buffer Pair { CollisionPairGPU pairs[]; };
         layout(binding = 0, offset = 0) uniform atomic_uint pairCounter;
@@ -166,7 +167,7 @@ void ComputePhysics::CompileShaders() {
         uniform vec3 worldMax;
         uniform ivec3 gridRes;
 
-        // �������������㵥Ԫ������
+        // 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟姐单元锟斤拷锟斤拷锟斤拷
         int getCell(vec3 p) {
             vec3 f = (p - worldMin) / (worldMax - worldMin);
             ivec3 cell = ivec3(f * vec3(gridRes));
@@ -179,14 +180,14 @@ void ComputePhysics::CompileShaders() {
             if (idx >= colliders.length()) return;
 
             ColliderGPU colA = colliders[idx];
-            if (rigidbodies[colA.rigidbodyIdx].type != 1) return; // ֻ������̬����
+            if (rigidbodies[colA.rigidbodyIdx].type != 1) return; // 只锟斤拷锟斤拷锟斤拷态锟斤拷锟斤拷
 
-            // �򻯣�ֱ������������������� AABB ���ԣ�������ʾ��
+            // 锟津化ｏ拷直锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟?AABB 锟斤拷锟皆ｏ拷锟斤拷锟斤拷锟斤拷示锟斤拷
             for (uint j = 0; j < colliders.length(); ++j) {
                 if (j == idx) continue;
                 ColliderGPU colB = colliders[j];
-                if (rigidbodies[colB.rigidbodyIdx].type == 1 && idx >= j) continue; // ��̬-��ֻ̬����һ��
-                // ��� AABB �ص�
+                if (rigidbodies[colB.rigidbodyIdx].type == 1 && idx >= j) continue; // 锟斤拷态-锟斤拷态只锟斤拷锟斤拷一锟斤拷
+                // 锟斤拷锟?AABB 锟截碉拷
                 if (colA.worldAABBMax.x < colB.worldAABBMin.x || colA.worldAABBMin.x > colB.worldAABBMax.x) continue;
                 if (colA.worldAABBMax.y < colB.worldAABBMin.y || colA.worldAABBMin.y > colB.worldAABBMax.y) continue;
                 if (colA.worldAABBMax.z < colB.worldAABBMin.z || colA.worldAABBMin.z > colB.worldAABBMax.z) continue;
@@ -198,7 +199,7 @@ void ComputePhysics::CompileShaders() {
         }
     )");
 
-    // Narrow phase ��ɫ����GJK+EPA �򻯰棩
+    // Narrow phase 锟斤拷色锟斤拷锟斤拷GJK+EPA 锟津化版）
     narrowPhaseProgram = CompileComputeShader(R"(
         #version 430 core
         layout(local_size_x = 64) in;
@@ -207,16 +208,16 @@ void ComputePhysics::CompileShaders() {
         layout(std430, binding = 3) buffer MeshVertex { vec3 vertices[]; };
         layout(std430, binding = 4) buffer Pair { CollisionPairGPU pairs[]; };
         layout(std430, binding = 5) buffer CollisionData { CollisionDataGPU collisions[]; };
-        layout(binding = 1, offset = 0) uniform atomic_uint collisionCounter; // �ڶ���ԭ�Ӽ�����
+        layout(binding = 1, offset = 0) uniform atomic_uint collisionCounter; // 锟节讹拷锟斤拷原锟接硷拷锟斤拷锟斤拷
 
-        uniform uint pairCount; // ʵ����Ҫ��������ײ������
+        uniform uint pairCount; // 实锟斤拷锟斤拷要锟斤拷锟斤拷锟斤拷锟斤拷撞锟斤拷锟斤拷锟斤拷
 
-        // ������������ȡ֧�ֵ㣨�ֲ�����ϵ��
+        // 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷取支锟街点（锟街诧拷锟斤拷锟斤拷系锟斤拷
         vec3 getSupportPoint(ColliderGPU col, vec3 dirWorld, TransformGPU tr) {
-            // ������任���ֲ�
+            // 锟斤拷锟斤拷锟斤拷浠伙拷锟斤拷植锟?
             mat4 rot = quatToMat4(tr.rotation);
             mat3 rotMat = mat3(rot);
-            vec3 dirLocal = transpose(rotMat) * dirWorld; // ���緽��ת�ֲ�
+            vec3 dirLocal = transpose(rotMat) * dirWorld; // 锟斤拷锟界方锟斤拷转锟街诧拷
 
             vec3 localSupport = vec3(0);
             float maxDot = -1e30;
@@ -228,10 +229,10 @@ void ComputePhysics::CompileShaders() {
                     localSupport = v;
                 }
             }
-            return (rotMat * localSupport) + tr.position.xyz; // ��������
+            return (rotMat * localSupport) + tr.position.xyz; // 锟斤拷锟斤拷锟斤拷锟斤拷
         }
 
-        // GJK ��ѭ�����򻯣�������Ƿ���ײ��
+        // GJK 锟斤拷循锟斤拷锟斤拷锟津化ｏ拷锟斤拷锟斤拷锟斤拷欠锟斤拷锟阶诧拷锟?
         bool GJK(ColliderGPU colA, ColliderGPU colB, TransformGPU trA, TransformGPU trB) {
             vec3 dir = vec3(1,0,0);
             vec3 support[4];
@@ -241,11 +242,11 @@ void ComputePhysics::CompileShaders() {
 
             for (int iter = 0; iter < 20; ++iter) {
                 vec3 p = getSupportPoint(colA, dir, trA) - getSupportPoint(colB, -dir, trB);
-                if (dot(p, dir) < 0) return false; // ����ײ
+                if (dot(p, dir) < 0) return false; // 锟斤拷锟斤拷撞
                 support[simplexSize++] = p;
-                // ���µ����β������·�������ʵ���ԣ��˴��򻯷��� true��
+                // 锟斤拷锟铰碉拷锟斤拷锟轿诧拷锟斤拷锟斤拷锟铰凤拷锟斤拷锟斤拷锟斤拷实锟斤拷锟皆ｏ拷锟剿达拷锟津化凤拷锟斤拷 true锟斤拷
                 if (simplexSize == 4) return true;
-                dir = -p; // �򻯷������
+                dir = -p; // 锟津化凤拷锟斤拷锟斤拷锟?
             }
             return false;
         }
@@ -261,7 +262,7 @@ void ComputePhysics::CompileShaders() {
             TransformGPU trB = transforms[colB.transformIdx];
 
             if (GJK(colA, colB, trA, trB)) {
-                // �򻯣��������Ϊ 0.1������Ϊ (1,0,0)���Ӵ���ȡ����
+                // 锟津化ｏ拷锟斤拷锟斤拷锟斤拷锟轿?0.1锟斤拷锟斤拷锟斤拷为 (1,0,0)锟斤拷锟接达拷锟斤拷取锟斤拷锟斤拷
                 uint outIdx = atomicCounterIncrement(collisionCounter);
                 CollisionDataGPU cd;
                 cd.colliderA = pair.colliderA;
@@ -275,7 +276,7 @@ void ComputePhysics::CompileShaders() {
         }
     )");
 
-    // �����ײ��ɫ�������г�����
+    // 锟斤拷锟斤拷锟阶诧拷锟缴拷锟斤拷锟斤拷锟斤拷谐锟斤拷锟斤拷锟?
     solveCollisionsProgram = CompileComputeShader(R"(
         #version 430 core
         layout(local_size_x = 64) in;
@@ -301,9 +302,9 @@ void ComputePhysics::CompileShaders() {
             TransformGPU trA = transforms[idA];
             TransformGPU trB = transforms[idB];
 
-            if (rbA.type == 0 && rbB.type == 0) return; // ������̬�������
+            if (rbA.type == 0 && rbB.type == 0) return; // 锟斤拷锟斤拷锟斤拷态锟斤拷锟斤拷锟斤拷锟?
 
-            // ����������򻯣����Խ��ٶȣ�
+            // 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷蚧锟斤拷锟斤拷越锟斤拷俣龋锟?
             float invMassA = (rbA.type == 1) ? 1.0 / rbA.mass : 0.0;
             float invMassB = (rbB.type == 1) ? 1.0 / rbB.mass : 0.0;
             float totalInvMass = invMassA + invMassB;
@@ -312,20 +313,20 @@ void ComputePhysics::CompileShaders() {
             vec3 rA = cd.contactPointA.xyz - trA.position.xyz;
             vec3 rB = cd.contactPointB.xyz - trB.position.xyz;
 
-            // ����ٶ�
-            vec3 velA = rbA.velocity.xyz; // ���Խ��ٶ�
+            // 锟斤拷锟斤拷俣锟?
+            vec3 velA = rbA.velocity.xyz; // 锟斤拷锟皆斤拷锟劫讹拷
             vec3 velB = rbB.velocity.xyz;
             vec3 relVel = velB - velA;
             float normalVel = dot(relVel, normal);
 
-            // ���㷨�����
-            float bias = 0.2 * cd.depth / deltaTime; // λ������ƫ��
+            // 锟斤拷锟姐法锟斤拷锟斤拷锟?
+            float bias = 0.2 * cd.depth / deltaTime; // 位锟斤拷锟斤拷锟斤拷偏锟斤拷
             float j = -(1.0 + restitution) * normalVel + bias;
-            j = max(j, 0.0) / (totalInvMass); // �򻯷�ĸ
+            j = max(j, 0.0) / (totalInvMass); // 锟津化凤拷母
 
             vec3 impulse = j * normal;
 
-            // ֱ��д���ٶȣ����ܴ��ھ�������������������
+            // 直锟斤拷写锟斤拷锟劫度ｏ拷锟斤拷锟杰达拷锟节撅拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
             if (rbA.type == 1) {
                 rbA.velocity.xyz -= impulse * invMassA;
                 rigidbodies[idA].velocity = rbA.velocity;
@@ -337,14 +338,14 @@ void ComputePhysics::CompileShaders() {
         }
     )");
 
-    // λ��������ɫ��
+    // 位锟斤拷锟斤拷锟斤拷锟斤拷色锟斤拷
     positionCorrectionProgram = CompileComputeShader(R"(
         #version 430 core
         layout(local_size_x = 64) in;
         layout(std430, binding = 1) buffer Transform { TransformGPU transforms[]; };
         layout(std430, binding = 2) buffer Collider { ColliderGPU colliders[]; };
         layout(std430, binding = 5) buffer CollisionData { CollisionDataGPU collisions[]; };
-        layout(std430, binding = 0) buffer Rigidbody { RigidbodyGPU rigidbodies[]; }; // ��Ҫ����
+        layout(std430, binding = 0) buffer Rigidbody { RigidbodyGPU rigidbodies[]; }; // 锟斤拷要锟斤拷锟斤拷
 
         uniform float positionCorrectionFactor;
 
@@ -387,7 +388,7 @@ void ComputePhysics::InitGPUResources() {
     if (atomicCounter) glDeleteBuffers(1, &atomicCounter);
     if (atomicCounterNarrow) glDeleteBuffers(1, &atomicCounterNarrow);
 
-    // ��������ԭ�Ӽ�����
+    // 锟斤拷锟斤拷锟斤拷锟斤拷原锟接硷拷锟斤拷锟斤拷
     glGenBuffers(1, &atomicCounter);
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicCounter);
     glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(GLuint), nullptr, GL_DYNAMIC_COPY);
@@ -406,27 +407,27 @@ void ComputePhysics::UploadColliderData() {
     std::vector<glm::vec3> meshVertices;
 
     for (int i = 0; i < numColliders; ++i) {
-        Collider* c = colliders[i];
+        Collider* c = colliders[i].get();
         RigidbodyComponent* rb = c->rigidbody;
         TransformComponent* tr = c->transform;
 
         rbGPU[i].velocity = glm::vec4(rb->velocity, 0);
         rbGPU[i].angularVelocity = glm::vec4(rb->angularVelocity, 0);
-        rbGPU[i].invInertiaLocal = rb->inverseInertia; // �����Ѽ���
+        rbGPU[i].invInertiaLocal = rb->inverseInertia; // 锟斤拷锟斤拷锟窖硷拷锟斤拷
         // GPU path: 1 = Dynamic (integrated), 0 = non-integrated. Kinematic maps
         // to 0 here (infinite-mass obstacle); hierarchy-driven Kinematic motion
         // is a CPU-path feature and is not yet modeled on the GPU solver.
         rbGPU[i].type = (rb->type == RigidbodyComponent::Dynamic) ? 1 : 0;
         rbGPU[i].mass = rb->mass;
-        rbGPU[i].linearDamping = linearDamping;   // ʹ��ȫ��ֵ��Ҳ�ɴ� rb ��ȡ
+        rbGPU[i].linearDamping = linearDamping;   // 使锟斤拷全锟斤拷值锟斤拷也锟缴达拷 rb 锟斤拷取
         rbGPU[i].angularDamping = angularDamping;
         rbGPU[i].useGravity = rb->useGravity ? 1 : 0;
         rbGPU[i]._pad[0] = rbGPU[i]._pad[1] = 0;
 
         trGPU[i].position = glm::vec4(tr->position, 0);
 
-        // ��ŷ���ǣ�vec3��ת��Ϊ��Ԫ����vec4��
-        glm::quat q = glm::quat(tr->rotation); // ���� tr->rotation ��ŷ���ǣ����ȣ�
+        // 锟斤拷欧锟斤拷锟角ｏ拷vec3锟斤拷转锟斤拷为锟斤拷元锟斤拷锟斤拷vec4锟斤拷
+        glm::quat q = glm::quat(tr->rotation); // 锟斤拷锟斤拷 tr->rotation 锟斤拷欧锟斤拷锟角ｏ拷锟斤拷锟饺ｏ拷
         trGPU[i].rotation = glm::vec4(q.x, q.y, q.z, q.w);
 
         colGPU[i].transformIdx = i;
@@ -448,7 +449,7 @@ void ComputePhysics::UploadColliderData() {
         colGPU[i]._pad[0] = colGPU[i]._pad[1] = colGPU[i]._pad[2] = 0;
     }
 
-    // �������ϴ� SSBO
+    // 锟斤拷锟斤拷锟斤拷锟较达拷 SSBO
     glGenBuffers(1, &rigidbodySSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, rigidbodySSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, rbGPU.size() * sizeof(RigidbodyGPU), rbGPU.data(), GL_DYNAMIC_COPY);
@@ -469,7 +470,7 @@ void ComputePhysics::UploadColliderData() {
     glBufferData(GL_SHADER_STORAGE_BUFFER, meshVertices.size() * sizeof(glm::vec3), meshVertices.data(), GL_STATIC_COPY);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, meshVertexSSBO);
 
-    // ��ײ�Ժ���ײ���ݻ���������ʼ��С��
+    // 锟斤拷撞锟皆猴拷锟斤拷撞锟斤拷锟捷伙拷锟斤拷锟斤拷锟斤拷锟斤拷始锟斤拷小锟斤拷
     glGenBuffers(1, &pairSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, pairSSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, maxPairs * sizeof(CollisionPairGPU), nullptr, GL_DYNAMIC_COPY);
@@ -482,7 +483,7 @@ void ComputePhysics::UploadColliderData() {
 }
 
 void ComputePhysics::GenerateColliders(const std::vector<GameObject*>& gameobjects) {
-    // ���û������� colliders����� colliders ������
+    // 锟斤拷锟矫伙拷锟斤拷锟斤拷锟斤拷 colliders锟斤拷锟斤拷锟?colliders 锟斤拷锟斤拷锟斤拷
     Physics::GenerateColliders(gameobjects);
     numColliders = (int)colliders.size();
     if (numColliders == 0) return;
@@ -499,37 +500,37 @@ void ComputePhysics::UpdatePhysics(float dt) {
     t = fmod(t, deltaTime);
 
     for (int step = 0; step < steps; ++step) {
-        // ����
+        // 锟斤拷锟斤拷
         DispatchIntegrateForce(deltaTime);
 
-        // �������� AABB
+        // 锟斤拷锟斤拷锟斤拷锟斤拷 AABB
         DispatchUpdateAABB();
 
         // Broad phase
         DispatchBroadPhase();
 
-        // ��ȡʵ����ײ������
+        // 锟斤拷取实锟斤拷锟斤拷撞锟斤拷锟斤拷锟斤拷
         GLuint pairCount;
         glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicCounter);
         glGetBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &pairCount);
         if (pairCount >= (GLuint)maxPairs) {
-            maxPairs = pairCount + 1024; // ��չ
+            maxPairs = pairCount + 1024; // 锟斤拷展
             ResizePairBuffers(maxPairs);
         }
 
-        // Narrow phase������ʵ�ʶ�������
+        // Narrow phase锟斤拷锟斤拷锟斤拷实锟绞讹拷锟斤拷锟斤拷锟斤拷
         DispatchNarrowPhase(pairCount);
 
-        // �����ײ����ε�����
+        // 锟斤拷锟斤拷锟阶诧拷锟斤拷锟轿碉拷锟斤拷锟斤拷
         for (int iter = 0; iter < iterations; ++iter) {
             DispatchSolveCollisions(iter);
         }
 
-        // λ������
+        // 位锟斤拷锟斤拷锟斤拷
         DispatchPositionCorrection();
     }
 
-    // ���任���ݶ��� CPU���Ա���Ⱦ��
+    // 锟斤拷锟戒换锟斤拷锟捷讹拷锟斤拷 CPU锟斤拷锟皆憋拷锟斤拷染锟斤拷
     ReadbackTransforms();
 }
 
@@ -550,7 +551,7 @@ void ComputePhysics::DispatchUpdateAABB() {
 }
 
 void ComputePhysics::DispatchBroadPhase() {
-    // ����ԭ�Ӽ�����
+    // 锟斤拷锟斤拷原锟接硷拷锟斤拷锟斤拷
     GLuint zero = 0;
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicCounter);
     glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &zero);
@@ -564,7 +565,7 @@ void ComputePhysics::DispatchBroadPhase() {
 }
 
 void ComputePhysics::DispatchNarrowPhase(GLuint pairCount) {
-    // ������ײ���ݼ�����
+    // 锟斤拷锟斤拷锟斤拷撞锟斤拷锟捷硷拷锟斤拷锟斤拷
     GLuint zero = 0;
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicCounterNarrow);
     glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &zero);
@@ -598,11 +599,11 @@ void ComputePhysics::ReadbackTransforms() {
     TransformGPU* transforms = (TransformGPU*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
     if (transforms) {
         for (int i = 0; i < numColliders; ++i) {
-            Collider* c = colliders[i];
+            Collider* c = colliders[i].get();
             c->transform->position = glm::vec3(transforms[i].position);
-            // ����Ԫ��ת��ŷ����
-            glm::quat q(transforms[i].rotation); // ֱ��ʹ�� vec4 ���죬˳��Ϊ (x,y,z,w)
-            c->transform->rotation = glm::eulerAngles(q); // ���� vec3 ŷ���ǣ����ȣ�
+            // 锟斤拷锟斤拷元锟斤拷转锟斤拷欧锟斤拷锟斤拷
+            glm::quat q(transforms[i].rotation); // 直锟斤拷使锟斤拷 vec4 锟斤拷锟届，顺锟斤拷为 (x,y,z,w)
+            c->transform->rotation = glm::eulerAngles(q); // 锟斤拷锟斤拷 vec3 欧锟斤拷锟角ｏ拷锟斤拷锟饺ｏ拷
             c->transform->localDirty = true;
         }
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
@@ -624,3 +625,4 @@ void ComputePhysics::ResizePairBuffers(int requiredPairs) {
     glBufferData(GL_SHADER_STORAGE_BUFFER, maxPairs * sizeof(CollisionDataGPU), nullptr, GL_DYNAMIC_COPY);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, collisionDataSSBO);
 }
+

@@ -37,7 +37,7 @@ bool AABB::Contains(AABB other)
 
 void Collider::UpdateWorldAABB()
 {
-    // »ñÈ¡ÊÀ½ç¾ØÕó£¨×Ô¶¯´¦ÀíÔà±ê¼Ç£¬µÝ¹é¸¸¼¶±ä»»£©
+    // ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç£ï¿½ï¿½Ý¹é¸¸ï¿½ï¿½ï¿½ä»»ï¿½ï¿½
     glm::mat4 worldMat = transform->GetWorldModel();
 
     glm::vec3 corners[8] = {
@@ -63,51 +63,41 @@ void Collider::UpdateWorldAABB()
     isDirty = false;
 }
 
-BVHNode::BVHNode() : isLeaf(true) { data.leaf.collider = nullptr; data.leaf.index = 0;}
+BVHNode::BVHNode() : isLeaf(true) {}
 
-BVHNode::BVHNode(Collider* collider) : isLeaf(true) { data.leaf.collider = collider; data.leaf.index = 0; aabb = collider->aabb;}
+BVHNode::BVHNode(Collider* collider) : isLeaf(true), collider(collider) { aabb = collider->aabb; }
 
-BVHNode::BVHNode(BVHNode* left, BVHNode* right) : isLeaf(false) 
+BVHNode::BVHNode(std::unique_ptr<BVHNode> left, std::unique_ptr<BVHNode> right) : isLeaf(false)
 {
-	data.child.left = left; data.child.right = right;
-	left->parent = this; right->parent = this;
+	this->left = std::move(left); this->right = std::move(right);
+	this->left->parent = this; this->right->parent = this;
 
-	aabb = left->aabb; aabb.Expand(right->aabb);
+	aabb = this->left->aabb; aabb.Expand(this->right->aabb);
 }
 
-void BVHNode::UpdateAABB() 
+void BVHNode::UpdateAABB()
 {
-	if (isLeaf) { if (data.leaf.collider) aabb = data.leaf.collider->aabb; }
-	else { aabb = data.child.left->aabb; aabb.Expand(data.child.right->aabb); }
+	if (isLeaf) { if (collider) aabb = collider->aabb; }
+	else { aabb = left->aabb; aabb.Expand(right->aabb); }
 }
 
-void BVHNode::Release() 
-{
-	if (!isLeaf) 
-	{
-		data.child.left->Release(); data.child.right->Release();
-		delete data.child.left; delete data.child.right;
-	}
-}
-
-BVHTree::BVHTree(std::vector<Collider*> colliders) : root(nullptr) 
+BVHTree::BVHTree(std::vector<Collider*> colliders)
 {
     if (colliders.empty()) return;
     root = BuildTopDown(colliders, 0, colliders.size());
 }
 
-BVHTree::~BVHTree() 
-{
-    if (root) { root->Release(); delete root; }
-}
+// unique_ptr children tear the tree down recursively (O(log n) depth on this
+// balanced build -- no stack risk at scene scale).
+BVHTree::~BVHTree() = default;
 
-BVHNode* BVHTree::BuildTopDown(std::vector<Collider*> colliders, int start, int end) {
+std::unique_ptr<BVHNode> BVHTree::BuildTopDown(std::vector<Collider*> colliders, int start, int end) {
     int count = end - start;
 
-    if (count == 1) 
+    if (count == 1)
     {
-        BVHNode* node = new BVHNode(colliders[start]);
-        leafNodes.push_back(node); return node;
+        auto node = std::make_unique<BVHNode>(colliders[start]);
+        leafNodes.push_back(node.get()); return node;
     }
 
 	AABB centroidBounds;
@@ -120,29 +110,29 @@ BVHNode* BVHTree::BuildTopDown(std::vector<Collider*> colliders, int start, int 
         return a->aabb.GetCenter()[axis] < b->aabb.GetCenter()[axis];});
 
     int mid = start + count / 2;
-    return new BVHNode(BuildTopDown(colliders, start, mid), BuildTopDown(colliders, mid, end));
+    return std::make_unique<BVHNode>(BuildTopDown(colliders, start, mid), BuildTopDown(colliders, mid, end));
 }
 
 void BVHTree::UpdateBVHTree() 
 {
     if (!root) return;
-    UpdateAllAABBs(root);
+    UpdateAllAABBs(root.get());
     SampleAndRebuild();
 }
 
-void BVHTree::UpdateAllAABBs(BVHNode* node) 
+void BVHTree::UpdateAllAABBs(BVHNode* node)
 {
     if (!node) return;
 
-    if (node->isLeaf) 
+    if (node->isLeaf)
     {
-        Collider* collider = node->data.leaf.collider;
+        Collider* collider = node->collider;
         if (collider && collider->isDirty) { collider->UpdateWorldAABB(); node->aabb = collider->aabb; }
     }
-    else 
+    else
     {
-        UpdateAllAABBs(node->data.child.left);
-        UpdateAllAABBs(node->data.child.right);
+        UpdateAllAABBs(node->left.get());
+        UpdateAllAABBs(node->right.get());
         node->UpdateAABB();
     }
 }
@@ -155,59 +145,57 @@ void BVHTree::SampleAndRebuild()
     currentSampleIndex = (currentSampleIndex + 1) % leafNodes.size();
 }
 
-void BVHTree::ReinsertNode(BVHNode* node) 
+void BVHTree::ReinsertNode(BVHNode* node)
 {
     if (!node || !node->parent) return;
 
-    AABB nodeAABB = node->aabb;
-    Collider* collider = node->data.leaf.collider;
+    Collider* collider = node->collider;
 
-    RemoveNodeFromTree(node);
+    // `detached` owns the unlinked leaf; it is destroyed at scope end
+    // (replaces the old manual `delete node`).
+    auto detached = DetachLeaf(node);
 
-    if (collider) 
+    if (collider)
     {
-        BVHNode* newNode = new BVHNode(collider);
-        leafNodes[currentSampleIndex] = newNode;
-        InsertLeafNode(newNode);
-        delete node;
+        auto newNode = std::make_unique<BVHNode>(collider);
+        leafNodes[currentSampleIndex] = newNode.get();
+        InsertLeafNode(std::move(newNode));
     }
 }
 
-void BVHTree::InsertLeafNode(BVHNode* leaf) 
+void BVHTree::InsertLeafNode(std::unique_ptr<BVHNode> leaf)
 {
-    if (!root) { root = leaf; leaf->parent = nullptr; return;}
+    if (!root) { leaf->parent = nullptr; root = std::move(leaf); return; }
 
-    BVHNode* bestNode = FindBestInsertionNode(leaf->aabb);
+    BVHNode* bestNode = FindBestInsertionNode(leaf->aabb);   // non-null: root exists
 
-    if (!bestNode) 
-    {
-        BVHNode* newRoot = new BVHNode(root, leaf);
-        root = newRoot; return;
-    }
-
+    // Splice a new internal node into bestNode's slot, pairing bestNode with
+    // the incoming leaf.
     BVHNode* parent = bestNode->parent;
-    BVHNode* newInternal = new BVHNode(bestNode, leaf);
-
-    if (parent) 
+    if (!parent)   // bestNode == root
     {
-        if (parent->data.child.left == bestNode) parent->data.child.left = newInternal;
-        else parent->data.child.right = newInternal;
-        newInternal->parent = parent;
+        root = std::make_unique<BVHNode>(std::move(root), std::move(leaf));
+        RefitUpwards(root.get());
+        return;
     }
-    else root = newInternal;
 
-    RefitUpwards(newInternal);
+    std::unique_ptr<BVHNode>& slot = (parent->left.get() == bestNode) ? parent->left : parent->right;
+    auto newInternal = std::make_unique<BVHNode>(std::move(slot), std::move(leaf));
+    newInternal->parent = parent;
+    slot = std::move(newInternal);
+
+    RefitUpwards(slot.get());
 }
 
 BVHNode* BVHTree::FindBestInsertionNode(AABB bounds) 
 {
     if (!root) return nullptr;
 
-    BVHNode* bestNode = root;
+    BVHNode* bestNode = root.get();
     float bestCost = std::numeric_limits<float>::max();
 
     std::queue<BVHNode*> queue;
-    queue.push(root);
+    queue.push(root.get());
 
     while (!queue.empty()) 
     {
@@ -219,7 +207,7 @@ BVHNode* BVHTree::FindBestInsertionNode(AABB bounds)
             bestNode = node;
         }
 
-        if (!node->isLeaf) { queue.push(node->data.child.left); queue.push(node->data.child.right); }
+        if (!node->isLeaf) { queue.push(node->left.get()); queue.push(node->right.get()); }
     }
 
     return bestNode;
@@ -241,50 +229,56 @@ void BVHTree::RefitUpwards(BVHNode* node)
     }
 }
 
-void BVHTree::RemoveNodeFromTree(BVHNode* node) 
+std::unique_ptr<BVHNode> BVHTree::DetachLeaf(BVHNode* node)
 {
-    if (!node || !node->parent) return;
+    if (!node || !node->parent) return nullptr;
 
     BVHNode* parent = node->parent;
-    BVHNode* sibling = (parent->data.child.left == node) ? parent->data.child.right : parent->data.child.left;
+    auto& nodeSlot    = (parent->left.get() == node) ? parent->left : parent->right;
+    auto& siblingSlot = (parent->left.get() == node) ? parent->right : parent->left;
 
-    if (parent == root) 
+    auto detached = std::move(nodeSlot);
+    auto sibling  = std::move(siblingSlot);
+    detached->parent = nullptr;
+
+    // The sibling takes the parent's place; the emptied parent is destroyed
+    // when its owning slot is overwritten below.
+    if (parent == root.get())
     {
-        root = sibling;
+        root = std::move(sibling);
         if (root) root->parent = nullptr;
-        delete parent;
     }
-    else 
+    else
     {
         BVHNode* grandParent = parent->parent;
-        if (grandParent->data.child.left == parent) grandParent->data.child.left = sibling;
-        else grandParent->data.child.right = sibling;
+        auto& parentSlot = (grandParent->left.get() == parent) ? grandParent->left : grandParent->right;
         sibling->parent = grandParent;
+        parentSlot = std::move(sibling);
 
-        delete parent;
         RefitUpwards(grandParent);
     }
+    return detached;
 }
 
-std::vector<Collider*> BVHTree::Query(AABB bounds) 
+std::vector<Collider*> BVHTree::Query(AABB bounds)
 {
     std::vector<Collider*> results;
-    if (root) QueryRecursive(root, bounds, results);
+    if (root) QueryRecursive(root.get(), bounds, results);
     return results;
 }
 
-void BVHTree::QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>& results) 
+void BVHTree::QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>& results)
 {
     if (!node || !node->aabb.CheckCollision(bounds)) return;
 
-    if (node->isLeaf) 
+    if (node->isLeaf)
     {
-        Collider* collider = node->data.leaf.collider;
+        Collider* collider = node->collider;
         if (collider && collider->aabb.CheckCollision(bounds)) results.push_back(collider);
     }
-    else 
+    else
     {
-        QueryRecursive(node->data.child.left, bounds, results);
-        QueryRecursive(node->data.child.right, bounds, results);
+        QueryRecursive(node->left.get(), bounds, results);
+        QueryRecursive(node->right.get(), bounds, results);
     }
 }

@@ -17,14 +17,6 @@
 #include "../Graphics/RHI/Vulkan/VulkanRenderer.h"
 #include <cstdlib>
 
-// Vulkan capabilities are built and verified: the ImGui Vulkan backend drives the
-// editor (Vk3) and the SPIR-V pipeline renders the scene (Vk4). Enabling these makes
-// Vulkan the real default for both editor and game modes; the backend-selection gate
-// below still falls back to OpenGL if Vulkan device/swapchain init fails at runtime,
-// and DITTO_RHI=gl forces OpenGL.
-#define DITTO_VULKAN_DEFAULT_EDITOR
-#define DITTO_VULKAN_SCENE
-
 using namespace std;
 using namespace glm;
 namespace fs = std::filesystem;
@@ -34,8 +26,8 @@ static std::string FindShaderPath(const std::string& shaderName)
 {
     fs::path resolved = PathUtils::ResolveAsset("Shaders/" + shaderName);
     if (!fs::exists(resolved))
-        std::cerr << "[Engine] Warning: Shader not found: " << shaderName
-                  << " (looked at " << resolved.string() << ")" << std::endl;
+        DITTO_LOG_WARN_STREAM("[Engine] Shader not found: " << shaderName
+            << " (looked at " << resolved.string() << ")");
     return resolved.string();
 }
 
@@ -45,8 +37,8 @@ static std::string FindShaderPathInDir(const std::string& baseDir, const std::st
 {
     fs::path resolved = PathUtils::ResolveAsset("Shaders/" + shaderName, baseDir);
     if (!fs::exists(resolved))
-        std::cerr << "[Engine] Warning: Shader not found: " << shaderName
-                  << " (looked at " << resolved.string() << ")" << std::endl;
+        DITTO_LOG_WARN_STREAM("[Engine] Shader not found: " << shaderName
+            << " (looked at " << resolved.string() << ")");
     return resolved.string();
 }
 
@@ -74,10 +66,10 @@ void ForEachGameObject(Scene* scene, Func&& func)
         // subtree.
         if (obj->removeComps.empty())
             func(obj);
-        for (GameObject* child : obj->children)
-            traverse(child);
+        for (const auto& child : obj->children)
+            traverse(child.get());
     };
-    traverse(scene->rootGameObject);
+    traverse(scene->rootGameObject.get());
 }
 
 void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
@@ -89,48 +81,28 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     if (!glfwInit()) throw runtime_error("GLFW init failed");
 
-    // ---- Backend selection: default Vulkan; env DITTO_RHI overrides ----
+    // ---- Backend selection: Vulkan first; OpenGL only as runtime fallback ----
     backend = Backend::Vulkan;
-    bool explicitBackend = false;   // user pinned a backend via DITTO_RHI
     {
         char* rhi = nullptr; size_t rhiLen = 0;
         if (_dupenv_s(&rhi, &rhiLen, "DITTO_RHI") == 0 && rhi)
         {
             std::string v = rhi;
             free(rhi);
-            if (v == "gl" || v == "opengl" || v == "OpenGL")       { backend = Backend::OpenGL;  explicitBackend = true; }
-            else if (v == "dx" || v == "dx12" || v == "directx")   { backend = Backend::DirectX; explicitBackend = true; }
-            else if (v == "vk" || v == "vulkan" || v == "Vulkan")  { backend = Backend::Vulkan;  explicitBackend = true; }
+            if (v == "gl" || v == "opengl" || v == "OpenGL")
+                Ditto::Logger::Get().Warning("[Engine] DITTO_RHI=gl ignored; Vulkan is the primary backend and OpenGL is only used if Vulkan init fails.");
+            else if (v == "dx" || v == "dx12" || v == "directx")
+                backend = Backend::DirectX;
+            else if (v == "vk" || v == "vulkan" || v == "Vulkan")
+                backend = Backend::Vulkan;
         }
     }
 
-    // DirectX backend not implemented yet -> fall back to OpenGL.
+    // DirectX backend not implemented yet -> stay on the Vulkan-first path.
     if (backend == Backend::DirectX)
     {
-        Ditto::Logger::Get().Warning("[Engine] DirectX backend not implemented yet; falling back to OpenGL.");
-        backend = Backend::OpenGL;
-    }
-
-    // Capability gating: Vulkan is the default, but it can't yet drive the editor
-    // (needs the ImGui Vulkan backend, Vk3) or render the scene (needs the SPIR-V
-    // pipeline, Vk4). When Vulkan is the DEFAULT (not explicitly requested) and a
-    // required capability isn't built, fall back to OpenGL so the default app keeps
-    // working. An explicit DITTO_RHI=vk still runs Vulkan (for bring-up testing).
-    // Flip the default fully once DITTO_HAS_IMGUI_VULKAN + DITTO_VULKAN_SCENE exist.
-    if (backend == Backend::Vulkan && !explicitBackend)
-    {
-        bool capable = true;
-#ifndef DITTO_VULKAN_DEFAULT_EDITOR
-        if (createEditor) capable = false;   // editor: keep GL default until verified
-#endif
-#ifndef DITTO_VULKAN_SCENE
-        if (!createEditor) capable = false;  // game mode needs Vulkan scene rendering (Vk4)
-#endif
-        if (!capable)
-        {
-            Ditto::Logger::Get().Info("[Engine] Vulkan not yet the default for this mode; using OpenGL (set DITTO_RHI=vk to force Vulkan).");
-            backend = Backend::OpenGL;
-        }
+        Ditto::Logger::Get().Warning("[Engine] DirectX backend not implemented yet; using Vulkan.");
+        backend = Backend::Vulkan;
     }
 
     // Create the window + renderer for `backend`; returns false on failure so the
@@ -181,9 +153,9 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     }
 
     resource = std::make_unique<Resource>();
-    scene = new Scene();
-    sceneCamera = new Camera(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
-    gameCamera = new Camera(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
+    scene = std::make_unique<Scene>();
+    sceneCamera = std::make_unique<Camera>(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
+    gameCamera = std::make_unique<Camera>(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
 
     // Shaders: editor mode resolves from the executable location; game mode
     // resolves relative to the loaded project directory.
@@ -193,7 +165,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     if (createEditor)
     {
-        editor = new Editor(window, false, "");
+        editor = std::make_unique<Editor>(window, false, "");
         editor->engine = this;
     }
 
@@ -215,9 +187,9 @@ Engine::Engine(bool isGameMode, const std::string& projectPath, const std::strin
     gameProjectPath = projectPath;
     startupSceneName = startupScene;
 
-    std::cout << "[Engine] Game mode constructor" << std::endl;
-    std::cout << "[Engine] Project path: " << projectPath << std::endl;
-    std::cout << "[Engine] Startup scene: " << startupScene << std::endl;
+    DITTO_LOG_INFO("[Engine] Game mode constructor");
+    DITTO_LOG_INFO_STREAM("[Engine] Project path: " << projectPath);
+    DITTO_LOG_INFO_STREAM("[Engine] Startup scene: " << startupScene);
 
     InitCommon(/*createEditor=*/false, /*shaderBaseDir=*/projectPath);
 
@@ -228,15 +200,17 @@ Engine::~Engine()
 {
     CSharpScriptSystem::Shutdown();
 
-    // Raw-owned members are released here, in the original safe order (scene is
-    // freed before `resource`, which it referenced). unique_ptr members
-    // (resource, shader, physics) release automatically afterwards.
-    if (editor) delete editor;
-    if (sceneCamera) delete sceneCamera; if (gameCamera) delete gameCamera; if (scene) delete scene;
+    // Destruction order is load-bearing -- reset explicitly instead of relying
+    // on member declaration order: the Scene frees its GPU handles through
+    // `renderer`, so it must die first; the renderer must die while the GL
+    // context is still current (before the window).
+    editor.reset();
+    sceneCamera.reset(); gameCamera.reset();
+    scene.reset();
 
     // Release the renderer (owns all GL objects: pipelines, meshes, buffers,
     // textures) while the context is STILL current, before tearing down the
-    // window. The Scene/editor were deleted above and freed their handles first.
+    // window. The Scene/editor were destroyed above and freed their handles first.
     renderer.reset();
 
     if (window) glfwDestroyWindow(window); glfwTerminate();
@@ -256,7 +230,7 @@ void Engine::Run()
         {
             if (enteredPlay)
             {
-                ForEachGameObject(scene, [](GameObject* obj)
+                ForEachGameObject(scene.get(), [](GameObject* obj)
                 {
                     ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                     {
@@ -278,7 +252,7 @@ void Engine::Run()
             physicsCnt++;
             physicsTime += glfwGetTime() - physStart;
 
-            ForEachGameObject(scene, [](GameObject* obj)
+            ForEachGameObject(scene.get(), [](GameObject* obj)
             {
                 ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                 {
@@ -346,7 +320,7 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
     renderer->SetBlendState(false);
     renderer->SetDepthState(true);
 
-    Camera* cam = isGameView ? gameCamera : sceneCamera;
+    Camera* cam = isGameView ? gameCamera.get() : sceneCamera.get();
     mat4 view = cam->GetViewMatrix();
     mat4 projection = perspective(radians(45.0f), (float)w / (float)h, 0.1f, 100.0f);
 
@@ -389,7 +363,7 @@ void Engine::ProcessInput()
     static bool ctrlRPressedLastFrame = false;
     bool ctrlRPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
     if (ctrlRPressedNow && !ctrlRPressedLastFrame) {
-        ForEachGameObject(scene, [](GameObject* obj)
+        ForEachGameObject(scene.get(), [](GameObject* obj)
         {
             ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
             {
@@ -440,11 +414,11 @@ void Engine::SetEngineState(State newState)
                 if (scene && scene->rootGameObject)
                 {
                     std::vector<GameObject*> rootObjects;
-                    rootObjects.push_back(scene->rootGameObject);
+                    rootObjects.push_back(scene->rootGameObject.get());
                     physics->GenerateColliders(rootObjects);
                 }
 
-                ForEachGameObject(scene, [](GameObject* obj)
+                ForEachGameObject(scene.get(), [](GameObject* obj)
                 {
                     ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                     {
@@ -460,7 +434,7 @@ void Engine::SetEngineState(State newState)
         }
         case Stop:
         {
-            ForEachGameObject(scene, [](GameObject* obj)
+            ForEachGameObject(scene.get(), [](GameObject* obj)
             {
                 ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
                 {
@@ -528,7 +502,7 @@ void Engine::LoadGameScene()
                         size_t end = line.find('"', start + 1);
                         if (end == std::string::npos) continue;
                         sceneName = line.substr(start + 1, end - start - 1);
-                        std::cout << "[Engine] Startup scene from config: " << sceneName << std::endl;
+                        DITTO_LOG_INFO_STREAM("[Engine] Startup scene from config: " << sceneName);
                         break;
                     }
                 }
@@ -540,7 +514,7 @@ void Engine::LoadGameScene()
     if (sceneName.empty()) sceneName = "Default";
 
     std::string scenePath = gameProjectPath + "/Assets/Scenes/" + sceneName + ".bin";
-    std::cout << "[Engine] Loading scene: " << scenePath << std::endl;
+    DITTO_LOG_INFO_STREAM("[Engine] Loading scene: " << scenePath);
     
     bool loaded = false;
     
@@ -548,12 +522,12 @@ void Engine::LoadGameScene()
     {
         if (scene->LoadScene(scenePath.c_str()))
         {
-            std::cout << "[Engine] Scene loaded: " << scene->name << std::endl;
+            DITTO_LOG_INFO_STREAM("[Engine] Scene loaded: " << scene->name);
             loaded = true;
         }
         else
         {
-            std::cerr << "[Engine] Failed to load scene: " << scenePath << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Engine] Failed to load scene: " << scenePath);
         }
     }
     
@@ -567,10 +541,10 @@ void Engine::LoadGameScene()
                 if (entry.is_regular_file() && entry.path().extension() == ".bin")
                 {
                     std::string fallback = entry.path().string();
-                    std::cout << "[Engine] Trying fallback scene: " << fallback << std::endl;
+                    DITTO_LOG_INFO_STREAM("[Engine] Trying fallback scene: " << fallback);
                     if (scene && scene->LoadScene(fallback.c_str()))
                     {
-                        std::cout << "[Engine] Fallback scene loaded: " << scene->name << std::endl;
+                        DITTO_LOG_INFO_STREAM("[Engine] Fallback scene loaded: " << scene->name);
                         loaded = true;
                         break;
                     }
@@ -581,7 +555,7 @@ void Engine::LoadGameScene()
     
     if (!loaded)
     {
-        std::cerr << "[Engine] No scene could be loaded!" << std::endl;
+        DITTO_LOG_ERROR("[Engine] No scene could be loaded!");
     }
 
     if (scene && scene->rootGameObject)
@@ -589,11 +563,11 @@ void Engine::LoadGameScene()
         // Single-ownership: physics only needs the root to traverse the
         // whole tree.
         std::vector<GameObject*> rootObjects;
-        rootObjects.push_back(scene->rootGameObject);
+        rootObjects.push_back(scene->rootGameObject.get());
         physics->GenerateColliders(rootObjects);
     }
 
-    ForEachGameObject(scene, [](GameObject* obj)
+    ForEachGameObject(scene.get(), [](GameObject* obj)
     {
         ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
         {
@@ -602,5 +576,5 @@ void Engine::LoadGameScene()
     });
 
     state = Play;
-    std::cout << "[Engine] Game mode active, state = Play" << std::endl;
+    DITTO_LOG_INFO("[Engine] Game mode active, state = Play");
 }

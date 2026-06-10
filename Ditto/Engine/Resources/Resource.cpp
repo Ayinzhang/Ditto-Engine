@@ -1,4 +1,5 @@
 #include "Resource.h"
+#include "../Core/Logger.h"
 #include <filesystem>
 #include <iostream>
 #include <fstream>
@@ -21,9 +22,6 @@ void Resource::Initialize(const std::string& basePath)
     // Determine the base path for model assets.
     if (basePath.empty())
     {
-        cubeModel = nullptr; sphereModel = nullptr;
-        cubeMesh = nullptr; sphereMesh = nullptr;
-
         // Anchor to the executable location rather than guessing relative
         // ladders against the (unpredictable) working directory.
         std::filesystem::path cubePath = PathUtils::ResolveAsset("Models/Cube.obj");
@@ -33,15 +31,12 @@ void Resource::Initialize(const std::string& basePath)
     {
         resourcePath = basePath;
     }
-    
-    // Clean up existing resources if reinitializing
-    delete cubeModel; delete sphereModel;
-    delete cubeMesh; delete sphereMesh;
-    
-    cubeModel = new ModelData(resourcePath + "/Cube.obj");
-    sphereModel = new ModelData(resourcePath + "/Sphere.obj");
-    cubeMesh = new MeshData(resourcePath + "/Cube.obj");
-    sphereMesh = new MeshData(resourcePath + "/Sphere.obj");
+
+    // Assignment releases any previous resources when reinitializing.
+    cubeModel = std::make_unique<ModelData>(resourcePath + "/Cube.obj");
+    sphereModel = std::make_unique<ModelData>(resourcePath + "/Sphere.obj");
+    cubeMesh = std::make_unique<MeshData>(resourcePath + "/Cube.obj");
+    sphereMesh = std::make_unique<MeshData>(resourcePath + "/Sphere.obj");
 }
 
 ModelData::ModelData(const std::string& path)
@@ -132,10 +127,9 @@ ModelData::ModelData(const std::string& path)
     vertexCount = vertexData.size() / 6;
 }
 
-Resource::~Resource()
-{
-    delete cubeModel; delete sphereModel;
-}
+// Defined here (not defaulted in the header) so unique_ptr sees the complete
+// ModelData/MeshData types when instantiating their deleters.
+Resource::~Resource() = default;
 
 ModelData::FaceIndices ModelData::ParseFaceIndices(const std::string& token)
 {
@@ -157,7 +151,7 @@ MeshData::MeshData(const std::string& filePath)
     std::ifstream file(filePath);
     if (!file.is_open())
     {
-        std::cerr << "Failed to open OBJ file: " << filePath << std::endl;
+        DITTO_LOG_ERROR_STREAM("Failed to open OBJ file: " << filePath );
         return;
     }
 
@@ -218,3 +212,4 @@ MeshData::MeshData(const std::string& filePath)
         aabbMax.x = std::max(aabbMax.x, vertex.x); aabbMax.y = std::max(aabbMax.y, vertex.y); aabbMax.z = std::max(aabbMax.z, vertex.z);
     }
 }
+

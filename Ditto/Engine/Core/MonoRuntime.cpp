@@ -1,4 +1,5 @@
 #include "MonoRuntime.h"
+#include "Logger.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -300,7 +301,7 @@ namespace MonoRuntime
         std::string absPath = fs::absolute(path).string();
         if (!fs::exists(absPath))
         {
-            std::cerr << "[Mono] LoadFresh: file not found: " << absPath << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Mono] LoadFresh: file not found: " << absPath );
             return nullptr;
         }
 
@@ -312,7 +313,7 @@ namespace MonoRuntime
         fs::copy_file(srcPath, dstPath, fs::copy_options::overwrite_existing, ec);
         if (ec)
         {
-            std::cerr << "[Mono] LoadFresh: copy failed: " << ec.message() << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Mono] LoadFresh: copy failed: " << ec.message() );
             return nullptr;
         }
 
@@ -320,11 +321,11 @@ namespace MonoRuntime
         MonoAssembly* assembly = p_mono_domain_assembly_open(g_domain, dstStr.c_str());
         if (!assembly)
         {
-            std::cerr << "[Mono] LoadFresh: assembly open failed for " << dstStr << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Mono] LoadFresh: assembly open failed for " << dstStr );
             return nullptr;
         }
 
-        std::cerr << "[Mono] LoadFresh: loaded " << dstStr << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Mono] LoadFresh: loaded " << dstStr );
 
         fs::remove(dstPath, ec);
 
@@ -478,11 +479,10 @@ namespace MonoRuntime
         script->updateMethod = GetMethod(klass, "Update", 0);
         script->onDestroyMethod = GetMethod(klass, "OnDestroy", 0);
 
-        std::cerr << "[Mono] LoadScript: klass=" << klass
-                  << " instance=" << script->instance
-                  << " start=" << script->startMethod
-                  << " update=" << script->updateMethod
-                  << std::endl;
+        DITTO_LOG_INFO_STREAM("[Mono] LoadScript: klass=" << klass
+            << " instance=" << script->instance
+            << " start=" << script->startMethod
+            << " update=" << script->updateMethod);
 
         if (p_mono_gchandle_new && script->instance)
         {
@@ -527,8 +527,8 @@ namespace MonoRuntime
         static int logCount = 0;
         if (logCount < 5)
         {
-            std::cerr << "[Mono] CallUpdate: instance=" << script->instance
-                      << " update=" << script->updateMethod << std::endl;
+            DITTO_LOG_INFO_STREAM("[Mono] CallUpdate: instance=" << script->instance
+                << " update=" << script->updateMethod);
             logCount++;
         }
 
@@ -587,3 +587,4 @@ namespace MonoRuntime
         if (!exc) return;
     }
 }
+

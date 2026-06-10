@@ -3,6 +3,7 @@
 #endif
 
 #include "SceneWindow.h"
+#include "../Engine/Core/Logger.h"
 #include "Editor.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Graphics/Camera.h"
@@ -37,7 +38,7 @@ ImVec2D SceneWindow::WorldToScreen(const glm::vec3& worldPos)
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
 
-    Camera* camera = m_editor->engine->sceneCamera;
+    Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera) return ImVec2D(0, 0);
 
     glm::mat4 view = camera->GetViewMatrix();
@@ -222,7 +223,7 @@ void SceneWindow::DrawRotateGizmo(const glm::vec3& worldPos, float scale)
     ImU32 yCol = (m_highlightedAxis == HandleAxis::Y) ? IM_COL32(255, 200, 0, 255) : yColor;
     ImU32 zCol = (m_highlightedAxis == HandleAxis::Z) ? IM_COL32(255, 200, 0, 255) : zColor;
 
-    Camera* cam = m_editor->engine->sceneCamera;
+    Camera* cam = m_editor->engine->sceneCamera.get();
     glm::vec3 camDir = cam ? glm::normalize(worldPos - cam->position) : glm::vec3(0, 0, -1);
 
     // X axis ring (YZ plane) - red, axis=(1,0,0)
@@ -403,7 +404,7 @@ void SceneWindow::HandleMouseInput()
         ImVec2D currentMousePos(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
         
         // Calculate screen-space axis direction for more accurate dragging
-        Camera* camera = m_editor->engine->sceneCamera;
+        Camera* camera = m_editor->engine->sceneCamera.get();
         glm::vec3 worldPos = transform->position;
         ImVec2D screenPos = WorldToScreen(worldPos);
         
@@ -493,7 +494,7 @@ void SceneWindow::HandleCameraMovement()
     if (!m_editor->isSceneActive)
         return;
 
-    Camera* camera = m_editor->engine->sceneCamera;
+    Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera)
         return;
 
@@ -592,7 +593,7 @@ void SceneWindow::DrawAxisGizmo()
     float padding = 20.0f;
     ImVec2 center(windowPos.x + windowSize.x - gizmoSize * 0.5f - padding, windowPos.y + gizmoSize * 0.5f + padding);
     
-    Camera* camera = m_editor->engine->sceneCamera;
+    Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera) return;
     
     // Get camera's basis vectors (right, up, forward)
@@ -688,7 +689,7 @@ void SceneWindow::HandleCameraRotation()
     if (!m_editor->isSceneActive)
         return;
     
-    Camera* camera = m_editor->engine->sceneCamera;
+    Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera)
         return;
     
@@ -742,7 +743,7 @@ void SceneWindow::HandleObjectSelection()
     if (!m_editor->engine->scene)
         return;
 
-    Camera* camera = m_editor->engine->sceneCamera;
+    Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera)
         return;
 
@@ -768,13 +769,14 @@ void SceneWindow::HandleObjectSelection()
         m_editor->activeSelection = hitObject;
         m_editor->selectedObject = hitObject;
         m_editor->selectedFile.Clear();
-        std::cout << "[SceneWindow] Selected object: " << hitObject->name << std::endl;
+        DITTO_LOG_INFO_STREAM("[SceneWindow] Selected object: " << hitObject->name );
     }
     else
     {
         // Deselect if clicked on empty space
         m_editor->activeSelection = nullptr;
         m_editor->selectedObject = nullptr;
-        std::cout << "[SceneWindow] Deselected object" << std::endl;
+        DITTO_LOG_INFO_STREAM("[SceneWindow] Deselected object" );
     }
 }
+

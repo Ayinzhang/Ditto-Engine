@@ -39,7 +39,7 @@ void ParallelPhysics::IntegrateForce(float dt) {
     if (n == 0) return;
 
     threadPool.ParallelFor(0, n, [this, dt](size_t i) {
-        Collider* collider = colliders[i];
+        Collider* collider = colliders[i].get();
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
             auto* transform = collider->transform;
             auto* rb = collider->rigidbody;
@@ -99,7 +99,7 @@ void ParallelPhysics::HandleBroadCollisions() {
         size_t end = std::min(start + chunkSize, numDyn);
         auto& local = localPairs[blockIdx];
         for (size_t idx = start; idx < end; ++idx) {
-            Collider* collider = colliders[dynamicIndices[idx]];
+            Collider* collider = colliders[dynamicIndices[idx]].get();
             std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
             for (Collider* other : potential) {
                 if (other == collider) continue;

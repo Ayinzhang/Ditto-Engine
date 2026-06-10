@@ -4,6 +4,7 @@
 
 #include "Scene.h"
 #include "GameObject.h"
+#include "Logger.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
@@ -61,8 +62,9 @@ GameObject::GameObject(GameObject* other)
     locked = other->locked;
     name = other->name;
     compMask = 0;   // rebuilt by AddComponent below; never copy a possibly-stale mask
-    for (Component* comp : other->components)
+    for (const auto& compPtr : other->components)
     {
+        Component* comp = compPtr.get();
         if (auto t = dynamic_cast<TransformComponent*>(comp))
             AddComponent<TransformComponent>(t);
         else if (auto l = dynamic_cast<LightComponent*>(comp))
@@ -82,47 +84,47 @@ GameObject::GameObject(GameObject* other)
             newCs->enabled    = cs->enabled;
         }
     }
-    for (GameObject* child : other->children)
+    for (const auto& child : other->children)
     {
-        GameObject* newChild = new GameObject(child);
+        auto newChild = std::make_unique<GameObject>(child.get());
         newChild->parent = this;
-        children.push_back(newChild);
+        children.push_back(std::move(newChild));
     }
 }
 
-GameObject::~GameObject()
-{
-    for (GameObject* child : children)
-    {
-        child->parent = nullptr;
-        delete child;
-    }
-    children.clear();
-    for (Component* comp : components) delete comp;
-}
+// children + components: unique_ptr vectors tear the tree down recursively.
+GameObject::~GameObject() = default;
 
-void GameObject::AddChild(GameObject* child)
+GameObject* GameObject::AddChild(std::unique_ptr<GameObject> child)
 {
-    if (!child || child == this) return;
-    if (child->IsDescendantOf(this)) return;
-    if (child->parent) child->RemoveFromParent();
+    if (!child || child.get() == this) return nullptr;
+    if (child->IsDescendantOf(this)) return nullptr;
     child->parent = this;
-    children.push_back(child);
+    children.push_back(std::move(child));
+    return children.back().get();
 }
 
-void GameObject::RemoveChild(GameObject* child)
+void GameObject::AddChild(GameObject* existingChild)
 {
-    auto it = std::find(children.begin(), children.end(), child);
-    if (it != children.end())
-    {
-        children.erase(it);
-        child->parent = nullptr;
-    }
+    if (!existingChild || existingChild == this) return;
+    // Cycle guard must run BEFORE detaching (IsDescendantOf walks parents).
+    if (existingChild->IsDescendantOf(this)) return;
+    if (!existingChild->parent) return;   // every live non-root object has an owner
+
+    auto owned = existingChild->parent->DetachChild(existingChild);
+    if (owned) AddChild(std::move(owned));
 }
 
-void GameObject::RemoveFromParent()
+std::unique_ptr<GameObject> GameObject::DetachChild(GameObject* child)
 {
-    if (parent) parent->RemoveChild(this);
+    auto it = std::find_if(children.begin(), children.end(),
+        [child](const std::unique_ptr<GameObject>& c) { return c.get() == child; });
+    if (it == children.end()) return nullptr;
+
+    auto owned = std::move(*it);
+    children.erase(it);
+    owned->parent = nullptr;
+    return owned;
 }
 
 bool GameObject::IsDescendantOf(GameObject* ancestor) const
@@ -146,12 +148,15 @@ void GameObject::ProcessRemovals()
 {
     for (Component* comp : removeComps)
     {
-        auto it = std::find(components.begin(), components.end(), comp);
+        auto it = std::find_if(components.begin(), components.end(),
+            [comp](const std::unique_ptr<Component>& c) { return c.get() == comp; });
         if (it != components.end())
         {
-            delete* it;
-            components.erase(it);
+            // Clear the mask bit BEFORE erasing: erase destroys the component,
+            // and `comp` aliases it (the old code read comp->index after the
+            // delete -- a use-after-free).
             compMask &= ~comp->index;
+            components.erase(it);
         }
     }
     removeComps.clear();
@@ -195,9 +200,9 @@ void GameObject::OnInspectorGUI()
     
     ImGui::Separator();
 
-    for (auto comp : components)
+    for (auto& comp : components)
     {
-        ImGui::PushID(comp);
+        ImGui::PushID(comp.get());
         comp->OnInspectorGUI();
         ImGui::PopID();
         ImGui::Separator();
@@ -207,7 +212,7 @@ void GameObject::OnInspectorGUI()
 
 void GameObject::Serialize(std::ostream& file) const
 {
-    std::cout << "[GameObject::Serialize] Serializing: " << name << ", components: " << components.size() << ", children: " << children.size() << std::endl;
+    DITTO_LOG_INFO_STREAM("[GameObject::Serialize] Serializing: " << name << ", components: " << components.size() << ", children: " << children.size() );
     
     file.write(reinterpret_cast<const char*>(&enabled), sizeof(enabled));
     file.write(reinterpret_cast<const char*>(&locked), sizeof(locked));
@@ -216,7 +221,7 @@ void GameObject::Serialize(std::ostream& file) const
 
     uint32_t componentCount = static_cast<uint32_t>(components.size());
     file.write(reinterpret_cast<const char*>(&componentCount), sizeof(componentCount));
-    for (Component* comp : components)
+    for (const auto& comp : components)
     {
         file.write(reinterpret_cast<const char*>(&comp->index), sizeof(comp->index));
         file.write(reinterpret_cast<const char*>(&comp->enabled), sizeof(comp->enabled));
@@ -225,8 +230,8 @@ void GameObject::Serialize(std::ostream& file) const
 
     uint32_t childCount = static_cast<uint32_t>(children.size());
     file.write(reinterpret_cast<const char*>(&childCount), sizeof(childCount));
-    std::cout << "[GameObject::Serialize] Writing childCount: " << childCount << " for " << name << std::endl;
-    for (GameObject* child : children)
+    DITTO_LOG_INFO_STREAM("[GameObject::Serialize] Writing childCount: " << childCount << " for " << name );
+    for (const auto& child : children)
         child->Serialize(file);
 }
 
@@ -237,14 +242,13 @@ void GameObject::Deserialize(std::istream& file)
     name = ReadString(file);
     file.read(reinterpret_cast<char*>(&compMask), sizeof(compMask));
     
-    std::cout << "[GameObject::Deserialize] Deserializing: " << name << std::endl;
+    DITTO_LOG_INFO_STREAM("[GameObject::Deserialize] Deserializing: " << name );
 
-    for (Component* comp : components) delete comp;
     components.clear();
 
     uint32_t componentCount = 0;
     file.read(reinterpret_cast<char*>(&componentCount), sizeof(componentCount));
-    std::cout << "[GameObject::Deserialize] Reading componentCount: " << componentCount << " for " << name << std::endl;
+    DITTO_LOG_INFO_STREAM("[GameObject::Deserialize] Reading componentCount: " << componentCount << " for " << name );
     for (uint32_t i = 0; i < componentCount; i++)
     {
         int index = 0;
@@ -252,14 +256,14 @@ void GameObject::Deserialize(std::istream& file)
         bool compEnabled = true;
         file.read(reinterpret_cast<char*>(&compEnabled), sizeof(compEnabled));
 
-        Component* newComp = nullptr;
+        std::unique_ptr<Component> newComp;
         switch (index)
         {
-        case CI::Transform:    newComp = new TransformComponent(); break;
-        case CI::Light:        newComp = new LightComponent(); break;
-        case CI::Renderer:     newComp = new RendererComponent(); break;
-        case CI::Rigidbody:    newComp = new RigidbodyComponent(); break;
-        case CI::CSharpScript: newComp = new CSharpScriptComponent(); break;
+        case CI::Transform:    newComp = std::make_unique<TransformComponent>(); break;
+        case CI::Light:        newComp = std::make_unique<LightComponent>(); break;
+        case CI::Renderer:     newComp = std::make_unique<RendererComponent>(); break;
+        case CI::Rigidbody:    newComp = std::make_unique<RigidbodyComponent>(); break;
+        case CI::CSharpScript: newComp = std::make_unique<CSharpScriptComponent>(); break;
         default: continue;
         }
         if (newComp)
@@ -268,7 +272,7 @@ void GameObject::Deserialize(std::istream& file)
             newComp->enabled = compEnabled;
             newComp->gameObject = this;
             newComp->Deserialize(file);
-            components.push_back(newComp);
+            components.push_back(std::move(newComp));
         }
     }
 
@@ -276,18 +280,18 @@ void GameObject::Deserialize(std::istream& file)
     // self-consistent regardless of what was stored on disk (older files may
     // carry a mask corrupted by the previous '+=' accumulation bug).
     compMask = 0;
-    for (Component* comp : components)
+    for (const auto& comp : components)
         compMask |= comp->index;
 
     uint32_t childCount = 0;
     file.read(reinterpret_cast<char*>(&childCount), sizeof(childCount));
-    std::cout << "[GameObject::Deserialize] Reading childCount: " << childCount << " for " << name << std::endl;
+    DITTO_LOG_INFO_STREAM("[GameObject::Deserialize] Reading childCount: " << childCount << " for " << name );
     for (uint32_t i = 0; i < childCount; i++)
     {
-        GameObject* child = new GameObject(false);
+        auto child = std::make_unique<GameObject>(false);
         child->Deserialize(file);
         child->parent = this;
-        children.push_back(child);
+        children.push_back(std::move(child));
     }
 }
 
@@ -353,7 +357,7 @@ void TransformComponent::UpdateTransform()
 void TransformComponent::MarkChildrenWorldDirty()
 {
     if (!gameObject) return;
-    for (GameObject* child : gameObject->children)
+    for (const auto& child : gameObject->children)
     {
         if (auto* childTransform = child->GetComponent<TransformComponent>())
         {
@@ -619,3 +623,4 @@ void RigidbodyComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&damp), sizeof(damp));
     file.read(reinterpret_cast<char*>(&angularDamp), sizeof(angularDamp));
 }
+

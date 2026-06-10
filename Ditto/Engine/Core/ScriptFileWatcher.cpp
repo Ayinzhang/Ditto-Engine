@@ -1,4 +1,5 @@
 #include "ScriptFileWatcher.h"
+#include "Logger.h"
 #include <iostream>
 
 ScriptFileWatcher& ScriptFileWatcher::GetInstance()
@@ -16,7 +17,7 @@ void ScriptFileWatcher::Initialize(const std::string& scriptsDirectory)
     m_scriptsDirectory = scriptsDirectory;
     m_initialized = true;
     
-    std::cout << "[ScriptFileWatcher] Initialized with directory: " << scriptsDirectory << std::endl;
+    DITTO_LOG_INFO_STREAM("[ScriptFileWatcher] Initialized with directory: " << scriptsDirectory );
 }
 
 void ScriptFileWatcher::Shutdown()
@@ -28,7 +29,7 @@ void ScriptFileWatcher::Shutdown()
     m_pendingChanges.clear();
     m_initialized = false;
     
-    std::cout << "[ScriptFileWatcher] Shutdown" << std::endl;
+    DITTO_LOG_INFO_STREAM("[ScriptFileWatcher] Shutdown" );
 }
 
 void ScriptFileWatcher::SetOnFileChanged(FileChangedCallback callback)
@@ -52,7 +53,7 @@ void ScriptFileWatcher::WatchScript(const std::string& scriptPath)
     m_watchedScripts.insert(scriptPath);
     m_lastWriteTime[scriptPath] = GetLastWriteTime(scriptPath);
     
-    std::cout << "[ScriptFileWatcher] Now watching: " << scriptPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[ScriptFileWatcher] Now watching: " << scriptPath );
 }
 
 void ScriptFileWatcher::UnwatchScript(const std::string& scriptPath)
@@ -62,7 +63,7 @@ void ScriptFileWatcher::UnwatchScript(const std::string& scriptPath)
     m_watchedScripts.erase(scriptPath);
     m_lastWriteTime.erase(scriptPath);
     
-    std::cout << "[ScriptFileWatcher] Stopped watching: " << scriptPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[ScriptFileWatcher] Stopped watching: " << scriptPath );
 }
 
 bool ScriptFileWatcher::HasFileChanged(const std::string& scriptPath)
@@ -89,7 +90,7 @@ void ScriptFileWatcher::ProcessFileChanges()
         
         if (currentTime > it->second)
         {
-            std::cout << "[ScriptFileWatcher] File changed: " << scriptPath << std::endl;
+            DITTO_LOG_INFO_STREAM("[ScriptFileWatcher] File changed: " << scriptPath );
             m_pendingChanges.push_back(scriptPath);
             it->second = currentTime;
         }
@@ -106,3 +107,4 @@ ScriptFileWatcher::~ScriptFileWatcher()
 {
     Shutdown();
 }
+

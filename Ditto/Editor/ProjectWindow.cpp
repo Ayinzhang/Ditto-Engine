@@ -150,7 +150,7 @@ void ProjectWindow::Draw()
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
-                                std::cout << "[ProjectWindow] Folder clicked: " << folderName << std::endl;
+                                DITTO_LOG_INFO_STREAM("[ProjectWindow] Folder clicked: " << folderName );
                                 m_currentFolder = fullPath;
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
@@ -192,7 +192,7 @@ void ProjectWindow::Draw()
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
-                                std::cout << "[ProjectWindow] Folder clicked: " << folderName << std::endl;
+                                DITTO_LOG_INFO_STREAM("[ProjectWindow] Folder clicked: " << folderName );
                                 m_currentFolder = fullPath;
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
@@ -229,7 +229,7 @@ void ProjectWindow::Draw()
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
-                                std::cout << "[ProjectWindow] Folder clicked: " << folderName << std::endl;
+                                DITTO_LOG_INFO_STREAM("[ProjectWindow] Folder clicked: " << folderName );
                                 m_currentFolder = fullPath;
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
@@ -437,7 +437,7 @@ void ProjectWindow::Draw()
                         std::string filePath = entry.path().string();
                         std::string ext = entry.path().extension().string();
                         
-                        std::cout << "[ProjectWindow] Double click on: " << filename << std::endl;
+                        DITTO_LOG_INFO_STREAM("[ProjectWindow] Double click on: " << filename );
                         
                         if (ext == ".bin")
                         {
@@ -481,7 +481,7 @@ void ProjectWindow::Draw()
                                     m_editor->selectedFile.Clear();
                             }
                             catch (const std::exception& e) {
-                                std::cerr << "Delete failed: " << e.what() << std::endl;
+                                DITTO_LOG_ERROR_STREAM("Delete failed: " << e.what() );
                             }
                         }
                         if (ImGui::MenuItem("Show in Explorer"))
@@ -547,7 +547,7 @@ void ProjectWindow::OnScriptDropped(const std::string& scriptPath)
 {
     // TODO: Attach script to currently selected GameObject
     // Need to coordinate with Inspector/Editor
-    std::cout << "[ProjectWindow] Script dropped: " << scriptPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[ProjectWindow] Script dropped: " << scriptPath );
     
     if (m_editor && m_editor->selectedObject)
     {
@@ -600,7 +600,7 @@ void ProjectWindow::CreateNewScript(const std::string& name)
         file << "    }\n";
         file << "}\n";
         file.close();
-        std::cout << "[ProjectWindow] Created script: " << filePath << std::endl;
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] Created script: " << filePath );
     }
 }
 
@@ -620,12 +620,12 @@ void ProjectWindow::CreateNewFolder(const std::string& name)
         if (!fs::exists(newFolderPath))
         {
             fs::create_directories(newFolderPath);
-            std::cout << "[ProjectWindow] Created folder: " << newFolderPath << std::endl;
+            DITTO_LOG_INFO_STREAM("[ProjectWindow] Created folder: " << newFolderPath );
         }
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[ProjectWindow] Failed to create folder: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to create folder: " << e.what() );
     }
 }
 
@@ -661,12 +661,12 @@ void ProjectWindow::CreateNewScene(const std::string& name)
             uint64_t fileSize = 0;
             file.write(reinterpret_cast<const char*>(&fileSize), sizeof(fileSize));
             file.close();
-            std::cout << "[ProjectWindow] Created scene: " << scenePath << std::endl;
+            DITTO_LOG_INFO_STREAM("[ProjectWindow] Created scene: " << scenePath );
         }
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[ProjectWindow] Failed to create scene: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to create scene: " << e.what() );
     }
 }
 
@@ -679,10 +679,10 @@ void ProjectWindow::RenameFile(const std::string& oldPath, const std::string& ne
         std::string newPath = parent + "/" + newName + ext;
         
         fs::rename(oldPath, newPath);
-        std::cout << "[ProjectWindow] Renamed: " << oldPath << " -> " << newPath << std::endl;
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] Renamed: " << oldPath << " -> " << newPath );
     }
     catch (const std::exception& e) {
-        std::cerr << "[ProjectWindow] Rename failed: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] Rename failed: " << e.what() );
     }
 }
 
@@ -914,12 +914,12 @@ void ProjectWindow::ToggleFolderExpanded(const std::string& path)
 
 void ProjectWindow::OpenCSharpFile(const std::string& filePath)
 {
-    std::cout << "[ProjectWindow] Opening C# file: " << filePath << std::endl;
+    DITTO_LOG_INFO_STREAM("[ProjectWindow] Opening C# file: " << filePath );
     
     Project* proj = ProjectManager::GetInstance().GetCurrentProject();
     if (!proj)
     {
-        std::cerr << "[ProjectWindow] No project loaded" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] No project loaded" );
         return;
     }
     
@@ -932,10 +932,10 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
     
     if (!fs::exists(solutionPath))
     {
-        std::cout << "[ProjectWindow] Creating Visual Studio solution: " << solutionPath << std::endl;
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] Creating Visual Studio solution: " << solutionPath );
         if (!CreateVisualStudioSolution(projectPath, solutionName))
         {
-            std::cerr << "[ProjectWindow] Failed to create solution" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to create solution" );
             return;
         }
     }
@@ -943,8 +943,8 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
     std::string absFilePath = std::filesystem::absolute(filePath).string();
     std::replace(absFilePath.begin(), absFilePath.end(), '/', '\\');
     
-    std::cout << "[ProjectWindow] Solution: " << solutionPath << std::endl;
-    std::cout << "[ProjectWindow] File: " << absFilePath << std::endl;
+    DITTO_LOG_INFO_STREAM("[ProjectWindow] Solution: " << solutionPath );
+    DITTO_LOG_INFO_STREAM("[ProjectWindow] File: " << absFilePath );
     
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     bool comInitialized = SUCCEEDED(hr);
@@ -1012,7 +1012,7 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
                                                                 pDte = pCandidate;
                                                                 pCandidate = nullptr;
                                                                 foundExisting = true;
-                                                                std::cout << "[ProjectWindow] Found existing VS instance with solution open" << std::endl;
+                                                                DITTO_LOG_INFO_STREAM("[ProjectWindow] Found existing VS instance with solution open" );
                                                             }
                                                         }
                                                         VariantClear(&varPath);
@@ -1075,11 +1075,11 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
                         
                         if (SUCCEEDED(openHR))
                         {
-                            std::cout << "[ProjectWindow] File opened in existing VS instance" << std::endl;
+                            DITTO_LOG_INFO_STREAM("[ProjectWindow] File opened in existing VS instance" );
                         }
                         else
                         {
-                            std::cerr << "[ProjectWindow] Failed to open file via DTE, hr=0x" << std::hex << openHR << std::dec << std::endl;
+                            DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to open file via DTE, hr=0x" << std::hex << openHR << std::dec );
                         }
                         
                         VariantClear(&varResult);
@@ -1127,14 +1127,14 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
         std::string vsPath = GetVisualStudioPath();
         if (vsPath.empty())
         {
-            std::cerr << "[ProjectWindow] Visual Studio not found" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[ProjectWindow] Visual Studio not found" );
             if (comInitialized) CoUninitialize();
             return;
         }
         
         std::string cmdLine = "\"" + vsPath + "\" \"" + solutionPath + "\"";
         
-        std::cout << "[ProjectWindow] Starting new VS instance: " << cmdLine << std::endl;
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] Starting new VS instance: " << cmdLine );
         
         STARTUPINFOA si = { sizeof(si) };
         PROCESS_INFORMATION pi = {};
@@ -1158,7 +1158,7 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
         if (!success)
         {
             DWORD error = GetLastError();
-            std::cerr << "[ProjectWindow] Failed to start Visual Studio, error code: " << error << std::endl;
+            DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to start Visual Studio, error code: " << error );
             if (comInitialized) CoUninitialize();
             return;
         }
@@ -1166,7 +1166,7 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
         
-        std::cout << "[ProjectWindow] VS started, waiting for DTE to be available..." << std::endl;
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] VS started, waiting for DTE to be available..." );
         
         IDispatch* pNewDte = nullptr;
         bool dteFound = false;
@@ -1298,11 +1298,11 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
                             
                             if (SUCCEEDED(openHR))
                             {
-                                std::cout << "[ProjectWindow] File opened in new VS instance" << std::endl;
+                                DITTO_LOG_INFO_STREAM("[ProjectWindow] File opened in new VS instance" );
                             }
                             else
                             {
-                                std::cerr << "[ProjectWindow] Failed to open file via DTE, hr=0x" << std::hex << openHR << std::dec << std::endl;
+                                DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to open file via DTE, hr=0x" << std::hex << openHR << std::dec );
                             }
                             
                             VariantClear(&varResult);
@@ -1318,7 +1318,7 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
         }
         else
         {
-            std::cerr << "[ProjectWindow] Could not find VS DTE after starting, file not opened automatically" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[ProjectWindow] Could not find VS DTE after starting, file not opened automatically" );
         }
     }
     
@@ -1344,7 +1344,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
             if (fs::exists(p))
             {
                 dittoEnginePath = fs::absolute(p).string();
-                std::cout << "[ProjectWindow] Found DittoEngine.dll at: " << dittoEnginePath << std::endl;
+                DITTO_LOG_INFO_STREAM("[ProjectWindow] Found DittoEngine.dll at: " << dittoEnginePath );
                 break;
             }
         }
@@ -1377,7 +1377,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     std::ofstream csprojFile(csprojPath);
     if (!csprojFile.is_open())
     {
-        std::cerr << "[ProjectWindow] Failed to create .csproj file" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to create .csproj file" );
         return false;
     }
     
@@ -1402,7 +1402,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
             csprojFile << "  <ItemGroup>\n";
             csprojFile << "    <ProjectReference Include=\"" << projRefPath << "\" />\n";
             csprojFile << "  </ItemGroup>\n";
-            std::cout << "[ProjectWindow] DittoEngine project reference: " << projRefPath << std::endl;
+            DITTO_LOG_INFO_STREAM("[ProjectWindow] DittoEngine project reference: " << projRefPath );
         }
         else
         {
@@ -1413,12 +1413,12 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
             csprojFile << "      <HintPath>" << hintPath << "</HintPath>\n";
             csprojFile << "    </Reference>\n";
             csprojFile << "  </ItemGroup>\n";
-            std::cout << "[ProjectWindow] DittoEngine.dll reference: " << hintPath << std::endl;
+            DITTO_LOG_INFO_STREAM("[ProjectWindow] DittoEngine.dll reference: " << hintPath );
         }
     }
     else
     {
-        std::cerr << "[ProjectWindow] Warning: DittoEngine.dll not found for project reference" << std::endl;
+        DITTO_LOG_WARN("[ProjectWindow] DittoEngine.dll not found for project reference");
     }
     
     csprojFile << "</Project>\n";
@@ -1429,7 +1429,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     std::ofstream slnFile(slnPath);
     if (!slnFile.is_open())
     {
-        std::cerr << "[ProjectWindow] Failed to create .sln file" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to create .sln file" );
         return false;
     }
     
@@ -1462,7 +1462,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     slnFile << "EndGlobal\n";
     slnFile.close();
     
-    std::cout << "[ProjectWindow] Created solution: " << slnPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[ProjectWindow] Created solution: " << slnPath );
     return true;
 }
 
@@ -1637,3 +1637,4 @@ std::string ProjectWindow::GetVisualStudioPath()
 
     return "";
 }
+

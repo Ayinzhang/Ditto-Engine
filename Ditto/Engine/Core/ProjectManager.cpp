@@ -1,4 +1,5 @@
 #include "ProjectManager.h"
+#include "Logger.h"
 #include <fstream>
 #include <iostream>
 
@@ -62,7 +63,7 @@ std::vector<Project> ProjectManager::GetAllProjects()
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error reading projects: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("Error reading projects: " << e.what() );
     }
     
     return projects;
@@ -76,7 +77,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     
     if (fs::exists(projectPath))
     {
-        std::cerr << "Project already exists: " << projectPath << std::endl;
+        DITTO_LOG_ERROR_STREAM("Project already exists: " << projectPath );
         return false;
     }
     
@@ -101,7 +102,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     std::ofstream file(projectFile);
     if (!file.is_open())
     {
-        std::cerr << "Failed to create project file: " << projectFile << std::endl;
+        DITTO_LOG_ERROR_STREAM("Failed to create project file: " << projectFile );
         return false;
     }
     
@@ -113,7 +114,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     file << "}\n";
     file.close();
     
-    std::cout << "Project created: " << projectPath << std::endl;
+    DITTO_LOG_INFO_STREAM("Project created: " << projectPath );
     return true;
 }
 
@@ -121,7 +122,7 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
 {
     if (!fs::exists(projectPath))
     {
-        std::cerr << "Project does not exist: " << projectPath << std::endl;
+        DITTO_LOG_ERROR_STREAM("Project does not exist: " << projectPath );
         return false;
     }
     
@@ -129,7 +130,7 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
     CloseProject();
     
     // Allocate new project
-    currentProject = new Project();
+    currentProject = std::make_unique<Project>();
     currentProject->path = projectPath;
     currentProject->name = fs::path(projectPath).filename().string();
     
@@ -153,17 +154,13 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
         }
     }
     
-    std::cout << "Project opened: " << currentProject->name << std::endl;
+    DITTO_LOG_INFO_STREAM("Project opened: " << currentProject->name );
     return true;
 }
 
 void ProjectManager::CloseProject()
 {
-    if (currentProject)
-    {
-        delete currentProject;
-        currentProject = nullptr;
-    }
+    currentProject.reset();
 }
 
 std::string ProjectManager::GetProjectAssetsPath() const
@@ -177,3 +174,4 @@ std::string ProjectManager::GetProjectScenesPath() const
     if (!currentProject) return "";
     return currentProject->path + "/Assets/Scenes";
 }
+

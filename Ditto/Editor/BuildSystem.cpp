@@ -1,4 +1,5 @@
 #include "BuildSystem.h"
+#include "../Engine/Core/Logger.h"
 #include "../Engine/Core/PathUtils.h"
 #include <iostream>
 #include <filesystem>
@@ -124,7 +125,7 @@ bool BuildSystem::Build(const BuildSettings& settings, BuildProgressCallback cal
 {
     auto report = [&](const std::string& stage, float progress)
     {
-        std::cout << "[Build] " << stage << " (" << (int)(progress * 100) << "%)" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] " << stage << " (" << (int)(progress * 100) << "%)");
         if (callback) callback(stage, progress);
     };
     
@@ -141,75 +142,74 @@ bool BuildSystem::Build(const BuildSettings& settings, BuildProgressCallback cal
     }
     
     std::string engineRoot = FindEngineRootDir();
-    std::cout << "[Build] Project path: " << projectPath << std::endl;
-    std::cout << "[Build] Engine root: " << engineRoot << std::endl;
-    std::cout << "[Build] Startup scene: " << settings.startupScene << std::endl;
-    std::cout << "[Build] Output path: " << settings.outputPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[Build] Project path: " << projectPath);
+    DITTO_LOG_INFO_STREAM("[Build] Engine root: " << engineRoot);
+    DITTO_LOG_INFO_STREAM("[Build] Startup scene: " << settings.startupScene);
+    DITTO_LOG_INFO_STREAM("[Build] Output path: " << settings.outputPath);
     
     report("Preparing output directory...", 0.05f);
     if (!PrepareOutputDirectory(settings.outputPath))
     {
-        std::cerr << "[Build] Failed to prepare output directory" << std::endl;
+        DITTO_LOG_ERROR("[Build] Failed to prepare output directory");
         return false;
     }
     
     report("Copying assets...", 0.1f);
     if (!CopyAssets(projectPath, settings.outputPath, callback))
     {
-        std::cerr << "[Build] Failed to copy assets" << std::endl;
+        DITTO_LOG_ERROR("[Build] Failed to copy assets");
         return false;
     }
     
     report("Copying scenes...", 0.3f);
     if (!CopyScenes(settings.scenes, projectPath, settings.outputPath))
     {
-        std::cerr << "[Build] Failed to copy scenes" << std::endl;
+        DITTO_LOG_ERROR("[Build] Failed to copy scenes");
         return false;
     }
     
     report("Copying shaders...", 0.4f);
     if (!CopyShaders(engineRoot, settings.outputPath))
     {
-        std::cerr << "[Build] Warning: Failed to copy shaders" << std::endl;
+        DITTO_LOG_WARN("[Build] Failed to copy shaders");
     }
 
     report("Copying engine models...", 0.42f);
     if (!CopyEngineModels(settings.outputPath))
     {
-        std::cerr << "[Build] Warning: engine models missing; built-in Cube/Sphere will not render" << std::endl;
+        DITTO_LOG_WARN("[Build] engine models missing; built-in Cube/Sphere will not render");
     }
     
     report("Compiling scripts...", 0.45f);
     if (!CompileScripts(projectPath, settings.outputPath, engineRoot))
     {
-        std::cerr << "[Build] Warning: Failed to compile scripts" << std::endl;
+        DITTO_LOG_WARN("[Build] Failed to compile scripts");
     }
     
     report("Generating game config...", 0.5f);
     if (!GenerateGameConfig(settings, settings.outputPath))
     {
-        std::cerr << "[Build] Failed to generate game config" << std::endl;
+        DITTO_LOG_ERROR("[Build] Failed to generate game config");
         return false;
     }
     
     report("Copying executable...", 0.6f);
     if (!CopyExecutable(settings.outputPath, settings.productName, settings.configuration, engineRoot))
     {
-        std::cerr << "[Build] Failed to copy executable" << std::endl;
+        DITTO_LOG_ERROR("[Build] Failed to copy executable");
         return false;
     }
     
     report("Copying shader cache...", 0.7f);
     if (!CopyShaderCache(settings.outputPath))
     {
-        std::cerr << "[Build] Warning: Shader cache not copied; the game will need "
-                     "the Vulkan SDK shader tools to compile shaders at runtime" << std::endl;
+        DITTO_LOG_WARN("[Build] Shader cache not copied; the game will need the Vulkan SDK shader tools to compile shaders at runtime");
     }
 
     report("Copying dependencies...", 0.8f);
     if (!CopyDependencies(settings.outputPath, engineRoot))
     {
-        std::cerr << "[Build] Warning: Some dependencies may be missing" << std::endl;
+        DITTO_LOG_WARN("[Build] Some dependencies may be missing");
     }
     
     report("Creating launcher...", 0.9f);
@@ -235,7 +235,7 @@ bool BuildSystem::PrepareOutputDirectory(const std::string& outputPath)
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error preparing output directory: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error preparing output directory: " << e.what() );
         return false;
     }
 }
@@ -252,7 +252,7 @@ bool BuildSystem::CopyAssets(const std::string& projectPath, const std::string& 
             // A project without an Assets directory cannot produce a runnable
             // game (no scenes) -- fail the build loudly instead of packaging
             // an empty shell.
-            std::cerr << "[Build] Assets directory not found: " << assetsSrc << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build] Assets directory not found: " << assetsSrc );
             return false;
         }
         
@@ -281,12 +281,12 @@ bool BuildSystem::CopyAssets(const std::string& projectPath, const std::string& 
             }
         }
         
-        std::cout << "[Build] Copied Assets to " << assetsDst << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Copied Assets to " << assetsDst );
         return true;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error copying assets: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error copying assets: " << e.what() );
         return false;
     }
 }
@@ -305,11 +305,11 @@ bool BuildSystem::CopyScenes(const std::vector<std::string>& scenes, const std::
                 std::string filename = fs::path(scenePath).filename().string();
                 std::string dstPath = scenesDst + "/" + filename;
                 fs::copy(scenePath, dstPath, fs::copy_options::overwrite_existing);
-                std::cout << "[Build] Copied scene: " << filename << std::endl;
+                DITTO_LOG_INFO_STREAM("[Build] Copied scene: " << filename );
             }
             else
             {
-                std::cerr << "[Build] Scene not found: " << scenePath << std::endl;
+                DITTO_LOG_ERROR_STREAM("[Build] Scene not found: " << scenePath );
             }
         }
         
@@ -317,7 +317,7 @@ bool BuildSystem::CopyScenes(const std::vector<std::string>& scenes, const std::
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error copying scenes: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error copying scenes: " << e.what() );
         return false;
     }
 }
@@ -347,7 +347,7 @@ bool BuildSystem::CopyShaders(const std::string& engineRoot, const std::string& 
         
         if (shaderSrc.empty())
         {
-            std::cerr << "[Build] Shaders not found" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build] Shaders not found" );
             return false;
         }
         
@@ -363,7 +363,7 @@ bool BuildSystem::CopyShaders(const std::string& engineRoot, const std::string& 
                 {
                     fs::copy(entry.path(), shaderDst + "/" + entry.path().filename().string(), 
                              fs::copy_options::overwrite_existing);
-                    std::cout << "[Build] Copied shader: " << entry.path().filename().string() << std::endl;
+                    DITTO_LOG_INFO_STREAM("[Build] Copied shader: " << entry.path().filename().string() );
                 }
             }
         }
@@ -372,7 +372,7 @@ bool BuildSystem::CopyShaders(const std::string& engineRoot, const std::string& 
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error copying shaders: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error copying shaders: " << e.what() );
         return false;
     }
 }
@@ -389,7 +389,7 @@ bool BuildSystem::CopyEngineModels(const std::string& outputPath)
         fs::path modelsSrc = cubeSrc.parent_path();
         if (!fs::exists(cubeSrc))
         {
-            std::cerr << "[Build] Engine models not found at " << modelsSrc.string() << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build] Engine models not found at " << modelsSrc.string() );
             return false;
         }
 
@@ -402,12 +402,12 @@ bool BuildSystem::CopyEngineModels(const std::string& outputPath)
             fs::copy(entry.path(), modelsDst / entry.path().filename(), fs::copy_options::overwrite_existing);
             ++copied;
         }
-        std::cout << "[Build] Copied " << copied << " engine models" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Copied " << copied << " engine models" );
         return copied > 0;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error copying engine models: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error copying engine models: " << e.what() );
         return false;
     }
 }
@@ -424,7 +424,7 @@ bool BuildSystem::CopyShaderCache(const std::string& outputPath)
         fs::path cacheSrc = PathUtils::GetExecutableDir() / "ShaderCache";
         if (!fs::exists(cacheSrc) || fs::is_empty(cacheSrc))
         {
-            std::cerr << "[Build] No shader cache at " << cacheSrc.string() << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build] No shader cache at " << cacheSrc.string() );
             return false;
         }
 
@@ -437,12 +437,12 @@ bool BuildSystem::CopyShaderCache(const std::string& outputPath)
             fs::copy(entry.path(), cacheDst / entry.path().filename(), fs::copy_options::overwrite_existing);
             ++copied;
         }
-        std::cout << "[Build] Copied " << copied << " shader cache entries" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Copied " << copied << " shader cache entries" );
         return copied > 0;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error copying shader cache: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error copying shader cache: " << e.what() );
         return false;
     }
 }
@@ -475,22 +475,22 @@ bool BuildSystem::CopyExecutable(const std::string& outputPath, const std::strin
             if (fs::exists(path))
             {
                 fs::copy(path, exeDst, fs::copy_options::overwrite_existing);
-                std::cout << "[Build] Copied executable from: " << fs::absolute(path).string() << std::endl;
+                DITTO_LOG_INFO_STREAM("[Build] Copied executable from: " << fs::absolute(path).string() );
                 return true;
             }
         }
         
-        std::cerr << "[Build] Could not find Ditto.exe in any known location" << std::endl;
-        std::cerr << "[Build] Searched:" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Could not find Ditto.exe in any known location" );
+        DITTO_LOG_ERROR_STREAM("[Build] Searched:" );
         for (const auto& path : possiblePaths)
         {
-            std::cerr << "[Build]   " << fs::absolute(path).string() << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build]   " << fs::absolute(path).string() );
         }
         return false;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error copying executable: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error copying executable: " << e.what() );
         return false;
     }
 }
@@ -513,7 +513,7 @@ bool BuildSystem::CopyDependencies(const std::string& outputPath, const std::str
             if (fs::exists(p + "/glfw3.dll"))
             {
                 fs::copy(p + "/glfw3.dll", outputPath + "/glfw3.dll", fs::copy_options::overwrite_existing);
-                std::cout << "[Build] Copied glfw3.dll" << std::endl;
+                DITTO_LOG_INFO_STREAM("[Build] Copied glfw3.dll" );
                 break;
             }
         }
@@ -533,13 +533,13 @@ bool BuildSystem::CopyDependencies(const std::string& outputPath, const std::str
             {
                 fs::copy(p + "/mono-2.0-sgen.dll", outputPath + "/mono-2.0-sgen.dll", 
                          fs::copy_options::overwrite_existing);
-                std::cout << "[Build] Copied mono-2.0-sgen.dll" << std::endl;
+                DITTO_LOG_INFO_STREAM("[Build] Copied mono-2.0-sgen.dll" );
                 
                 std::string monoDst = outputPath + "/Mono";
                 if (fs::exists(p) && !fs::exists(monoDst))
                 {
                     fs::copy(p, monoDst, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
-                    std::cout << "[Build] Copied Mono directory" << std::endl;
+                    DITTO_LOG_INFO_STREAM("[Build] Copied Mono directory" );
                 }
                 break;
             }
@@ -549,7 +549,7 @@ bool BuildSystem::CopyDependencies(const std::string& outputPath, const std::str
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error copying dependencies: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error copying dependencies: " << e.what() );
         return false;
     }
 }
@@ -561,7 +561,7 @@ bool BuildSystem::CompileScripts(const std::string& projectPath, const std::stri
         std::string scriptsDir = projectPath + "/Assets/Scripts";
         if (!fs::exists(scriptsDir))
         {
-            std::cout << "[Build] No Scripts directory found, skipping script compilation" << std::endl;
+            DITTO_LOG_INFO_STREAM("[Build] No Scripts directory found, skipping script compilation" );
             return true;
         }
 
@@ -576,7 +576,7 @@ bool BuildSystem::CompileScripts(const std::string& projectPath, const std::stri
 
         if (csFiles.empty())
         {
-            std::cout << "[Build] No C# scripts found, skipping compilation" << std::endl;
+            DITTO_LOG_INFO_STREAM("[Build] No C# scripts found, skipping compilation" );
             return true;
         }
 
@@ -601,7 +601,7 @@ bool BuildSystem::CompileScripts(const std::string& projectPath, const std::stri
 
         if (dittoEngineDll.empty())
         {
-            std::cerr << "[Build] DittoEngine.dll not found, cannot compile scripts" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build] DittoEngine.dll not found, cannot compile scripts" );
             return false;
         }
 
@@ -704,25 +704,25 @@ bool BuildSystem::CompileScripts(const std::string& projectPath, const std::stri
 
         std::string cmd = pathCmd + "csc /target:library /reference:\"" + dittoEngineDll + "\" /out:\"" + outputDll + "\"" + csFileList;
 
-        std::cout << "[Build] Compiling scripts: " << csFiles.size() << " files" << std::endl;
-        std::cout << "[Build] Output: " << outputDll << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Compiling scripts: " << csFiles.size() << " files" );
+        DITTO_LOG_INFO_STREAM("[Build] Output: " << outputDll );
 
         int result = system(cmd.c_str());
         if (result != 0)
         {
-            std::cerr << "[Build] Script compilation failed" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build] Script compilation failed" );
             return false;
         }
 
         fs::copy(dittoEngineDll, outputPath + "/DittoEngine.dll", fs::copy_options::overwrite_existing);
-        std::cout << "[Build] Copied DittoEngine.dll to output" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Copied DittoEngine.dll to output" );
 
-        std::cout << "[Build] Scripts compiled successfully" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Scripts compiled successfully" );
         return true;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error compiling scripts: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error compiling scripts: " << e.what() );
         return false;
     }
 }
@@ -736,7 +736,7 @@ bool BuildSystem::GenerateGameConfig(const BuildSettings& settings, const std::s
         
         if (!configFile.is_open())
         {
-            std::cerr << "[Build] Failed to create game.config" << std::endl;
+            DITTO_LOG_ERROR_STREAM("[Build] Failed to create game.config" );
             return false;
         }
         
@@ -763,12 +763,12 @@ bool BuildSystem::GenerateGameConfig(const BuildSettings& settings, const std::s
         configFile << "}\n";
         
         configFile.close();
-        std::cout << "[Build] Generated game.config with startupScene: " << startupSceneName << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Generated game.config with startupScene: " << startupSceneName );
         return true;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error generating game config: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error generating game config: " << e.what() );
         return false;
     }
 }
@@ -785,12 +785,13 @@ bool BuildSystem::CreateLauncher(const std::string& outputPath, const std::strin
         batFile << "pause\n";
         batFile.close();
         
-        std::cout << "[Build] Created launcher: " << batPath << std::endl;
+        DITTO_LOG_INFO_STREAM("[Build] Created launcher: " << batPath );
         return true;
     }
     catch (const std::exception& e)
     {
-        std::cerr << "[Build] Error creating launcher: " << e.what() << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Build] Error creating launcher: " << e.what() );
         return false;
     }
 }
+

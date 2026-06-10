@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <memory>
 #include "../3rdParty/GLM/glm.hpp"
 #include "../Engine/Graphics/RHI/IRenderer.h"
 // 前向声明
@@ -34,7 +35,9 @@ private:
     int m_previewHeight = 256;
     bool m_previewInitialized = false;
     bool m_modelInitialized = false;
-    Camera* m_previewCamera = nullptr;
+    // Owned preview camera (Camera is forward-declared; the destructor stays
+    // defined in InspectorWindow.cpp where the complete type is visible).
+    std::unique_ptr<Camera> m_previewCamera;
 
     struct PreviewModel {
         Ditto::MeshHandle mesh;

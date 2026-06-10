@@ -1043,7 +1043,7 @@ void CSharpScriptComponent::HotReloadScript()
 {
     if (scriptPath.empty()) return;
 
-    std::cerr << "[CSharpScript] HotReload: " << scriptPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[CSharpScript] HotReload: " << scriptPath);
 
     if (scriptInstance)
     {
@@ -1065,21 +1065,21 @@ void CSharpScriptComponent::HotReloadScript()
     std::string newDllPath = dllPath.string();
     if (!CSharpScriptSystem::CompileScript(scriptPath, newDllPath))
     {
-        std::cerr << "[CSharpScript] HotReload compile failed" << std::endl;
+        DITTO_LOG_ERROR("[CSharpScript] HotReload compile failed");
         return;
     }
 
-    std::cerr << "[CSharpScript] HotReload compiled to: " << newDllPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[CSharpScript] HotReload compiled to: " << newDllPath);
 
     if (CSharpScriptSystem::IsInitialized() && MonoRuntime::IsInitialized())
     {
         scriptInstance = MonoRuntime::LoadScript(newDllPath, scriptName);
         if (!scriptInstance)
         {
-            std::cerr << "[CSharpScript] HotReload LoadScript failed" << std::endl;
+            DITTO_LOG_ERROR("[CSharpScript] HotReload LoadScript failed");
             return;
         }
-        std::cerr << "[CSharpScript] HotReload loaded, calling SetNativeGameObject" << std::endl;
+        DITTO_LOG_INFO("[CSharpScript] HotReload loaded, calling SetNativeGameObject");
 
         if (gameObject)
         {
@@ -1280,13 +1280,13 @@ void* Internal_GameObject_GetTransform(void* gameObject)
 
     GameObject* go = static_cast<GameObject*>(gameObject);
 
-    for (Component* comp : go->components)
+    for (const auto& comp : go->components)
     {
         if (!comp) continue;
 
         if (comp->index == (1 << 0))
         {
-            return comp;
+            return comp.get();
         }
     }
 
@@ -1313,23 +1313,23 @@ void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName)
 
     if (typeStr == "Transform")
     {
-        for (Component* comp : go->components)
-            if (comp && comp->index == (1 << 0)) return comp;
+        for (const auto& comp : go->components)
+            if (comp && comp->index == (1 << 0)) return comp.get();
     }
     else if (typeStr == "Light")
     {
-        for (Component* comp : go->components)
-            if (comp && comp->index == (1 << 1)) return comp;
+        for (const auto& comp : go->components)
+            if (comp && comp->index == (1 << 1)) return comp.get();
     }
     else if (typeStr == "Renderer")
     {
-        for (Component* comp : go->components)
-            if (comp && comp->index == (1 << 2)) return comp;
+        for (const auto& comp : go->components)
+            if (comp && comp->index == (1 << 2)) return comp.get();
     }
     else if (typeStr == "Rigidbody")
     {
-        for (Component* comp : go->components)
-            if (comp && comp->index == (1 << 3)) return comp;
+        for (const auto& comp : go->components)
+            if (comp && comp->index == (1 << 3)) return comp.get();
     }
 
     return nullptr;
@@ -1510,3 +1510,4 @@ void Internal_Rigidbody_SetAngularVelocity(void* rigidbody, float x, float y, fl
 }
 
 }
+

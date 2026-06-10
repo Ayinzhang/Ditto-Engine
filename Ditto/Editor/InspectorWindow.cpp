@@ -3,6 +3,7 @@
 #endif
 
 #include "InspectorWindow.h"
+#include "../Engine/Core/Logger.h"
 #include "Editor.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
@@ -91,7 +92,7 @@ void InspectorWindow::Draw()
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CS_SCRIPT"))
         {
             const char* scriptPath = (const char*)payload->Data;
-            std::cout << "[Inspector] Received script: " << scriptPath << std::endl;
+            DITTO_LOG_INFO_STREAM("[Inspector] Received script: " << scriptPath );
             
             // Use m_currentObject instead of selectedObject to allow dragging to add scripts
             if (m_currentObject)
@@ -222,7 +223,7 @@ void InspectorWindow::Draw()
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CS_SCRIPT"))
             {
                 const char* scriptPath = (const char*)payload->Data;
-                std::cout << "[Inspector] Received script: " << scriptPath << std::endl;
+                DITTO_LOG_INFO_STREAM("[Inspector] Received script: " << scriptPath );
                 m_editor->OnScriptComponentDroppedToObject(m_currentObject, scriptPath);
             }
             ImGui::EndDragDropTarget();
@@ -306,7 +307,7 @@ void InspectorWindow::InitModelPreview()
     if (!r) return;
 
     m_previewRT = r->CreateRenderTarget(m_previewWidth, m_previewHeight);
-    m_previewCamera = new Camera(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    m_previewCamera = std::make_unique<Camera>(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
 
     // Solid-white wireframe preview shader (HLSL). The model transform is folded
     // into `view` on the CPU, so the shared FrameUniforms block drives it. The
@@ -338,14 +339,14 @@ void InspectorWindow::LoadPreviewModel(const std::string& modelPath)
 {
     if (modelPath.empty()) return;
 
-    std::cout << "[Preview] Loading: " << modelPath << std::endl;
-    std::cout << "[Preview] Current: " << m_currentPreviewPath << std::endl;
+    DITTO_LOG_INFO_STREAM("[Preview] Loading: " << modelPath );
+    DITTO_LOG_INFO_STREAM("[Preview] Current: " << m_currentPreviewPath );
 
     Ditto::IRenderer* r = PreviewRenderer(m_editor);
     if (!r) return;
 
     if (m_currentPreviewPath == modelPath && m_currentPreviewModel.mesh) {
-        std::cout << "[Preview] Same model, skipping" << std::endl;
+        DITTO_LOG_INFO_STREAM("[Preview] Same model, skipping" );
         return;
     }
 
@@ -358,7 +359,7 @@ void InspectorWindow::LoadPreviewModel(const std::string& modelPath)
 
     std::ifstream file(modelPath);
     if (!file.is_open()) {
-        std::cerr << "[Preview] Failed to open model: " << modelPath << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Preview] Failed to open model: " << modelPath );
         return;
     }
 
@@ -405,11 +406,11 @@ void InspectorWindow::LoadPreviewModel(const std::string& modelPath)
     }
 
     if (positions.empty()) {
-        std::cerr << "[Preview] No vertices found in model" << std::endl;
+        DITTO_LOG_ERROR_STREAM("[Preview] No vertices found in model" );
         return;
     }
 
-    std::cout << "[Preview] Loaded " << positions.size() << " vertices, " << indices.size() / 3 << " faces" << std::endl;
+    DITTO_LOG_INFO_STREAM("[Preview] Loaded " << positions.size() << " vertices, " << indices.size() / 3 << " faces" );
 
     glm::vec3 minPos(positions[0]), maxPos(positions[0]);
     for (const auto& pos : positions) {
@@ -494,11 +495,10 @@ void InspectorWindow::CleanupModelPreview()
         r->DestroyPipeline(m_previewPipeline);
         if (m_currentPreviewModel.mesh) r->DestroyMesh(m_currentPreviewModel.mesh);
     }
-    if (m_previewCamera) delete m_previewCamera;
-
     m_previewRT = {};
     m_previewPipeline = {};
     m_currentPreviewModel.mesh = {};
-    m_previewCamera = nullptr;
+    m_previewCamera.reset();
     m_previewInitialized = false;
 }
+

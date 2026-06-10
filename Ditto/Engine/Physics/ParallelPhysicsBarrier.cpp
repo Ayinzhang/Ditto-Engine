@@ -45,7 +45,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
 
                     // ---------- �׶�1: ������ ----------
                     for (size_t i = start; i < end; ++i) {
-                        Collider* collider = colliders[i];
+                        Collider* collider = colliders[i].get();
                         if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
                             auto* transform = collider->transform;
                             auto* rb = collider->rigidbody;
@@ -90,7 +90,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
 
                             auto& local = threadLocalPairs[tid];
                             for (size_t j = dynStart; j < dynEnd; ++j) {
-                                Collider* collider = colliders[dynamicIndices[j]];
+                                Collider* collider = colliders[dynamicIndices[j]].get();
                                 std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
                                 for (Collider* other : potential) {
                                     if (other == collider) continue;
