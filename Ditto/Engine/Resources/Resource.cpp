@@ -4,6 +4,8 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <unordered_map>
+#include <cstdint>
 #include "../Core/PathUtils.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
@@ -49,6 +51,29 @@ ModelData::ModelData(const std::string& path)
     std::vector<glm::vec3> positions, normals;
     //std::vector<glm::vec2> texCoords;
 
+    // Dedup map: (posIdx, normIdx) -> index into vertexData. Corners shared by
+    // multiple faces collapse to one vertex; `indices` carries the topology.
+    std::unordered_map<uint64_t, unsigned int> uniqueVerts;
+
+    auto emitCorner = [&](const FaceIndices& fi) -> unsigned int
+    {
+        const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(fi.posIdx)) << 32)
+                           | static_cast<uint32_t>(fi.normIdx);
+        auto it = uniqueVerts.find(key);
+        if (it != uniqueVerts.end()) return it->second;
+
+        glm::vec3 pos = glm::vec3(0.0f);
+        if (fi.posIdx >= 0 && fi.posIdx < positions.size()) pos = positions[fi.posIdx];
+        glm::vec3 norm = glm::vec3(0.0f, 1.0f, 0.0f);
+        if (fi.normIdx >= 0 && fi.normIdx < normals.size()) norm = normals[fi.normIdx];
+
+        const unsigned int index = static_cast<unsigned int>(vertexData.size() / 6);
+        vertexData.push_back(pos.x); vertexData.push_back(pos.y); vertexData.push_back(pos.z);
+        vertexData.push_back(norm.x); vertexData.push_back(norm.y); vertexData.push_back(norm.z);
+        uniqueVerts.emplace(key, index);
+        return index;
+    };
+
     std::string line;
     int lineNum = 0;
 
@@ -89,21 +114,16 @@ ModelData::ModelData(const std::string& path)
 
             while (lineStream >> token) faceTokens.push_back(token);
 
+            // Fan-triangulate (handles quads/ngons, not just pre-triangulated files).
+            std::vector<unsigned int> corner;
+            corner.reserve(faceTokens.size());
             for (const auto& faceToken : faceTokens)
+                corner.push_back(emitCorner(ParseFaceIndices(faceToken)));
+            for (size_t i = 2; i < corner.size(); ++i)
             {
-                FaceIndices indices = ParseFaceIndices(faceToken);
-
-                glm::vec3 pos = glm::vec3(0.0f);
-                if (indices.posIdx >= 0 && indices.posIdx < positions.size()) pos = positions[indices.posIdx];
-                vertexData.push_back(pos.x); vertexData.push_back(pos.y); vertexData.push_back(pos.z);
-
-                glm::vec3 norm = glm::vec3(0.0f, 1.0f, 0.0f);
-                if (indices.normIdx >= 0 && indices.normIdx < normals.size()) norm = normals[indices.normIdx];
-                vertexData.push_back(norm.x); vertexData.push_back(norm.y); vertexData.push_back(norm.z);
-
-                // glm::vec2 tex = glm::vec2(0.0f);
-                // if (indices.texIdx >= 0 && indices.texIdx < texCoords.size()) tex = texCoords[indices.texIdx];
-                // vertexData.push_back(tex.x); vertexData.push_back(tex.y);
+                indices.push_back(corner[0]);
+                indices.push_back(corner[i - 1]);
+                indices.push_back(corner[i]);
             }
         }
     }

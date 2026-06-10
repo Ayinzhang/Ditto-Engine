@@ -42,6 +42,10 @@ struct Engine
     // can replace it without touching engine/editor code.
     std::unique_ptr<Ditto::IRenderer> renderer;
     Ditto::PipelineHandle shaderPipeline;   // main scene pipeline (owned by renderer)
+    // Offscreen render targets for the editor's Scene/Game viewports (owned by
+    // the renderer; recreated on viewport resize by RenderSceneToTexture).
+    Ditto::RenderTargetHandle sceneViewRT, gameViewRT;
+    int sceneViewW = 0, sceneViewH = 0, gameViewW = 0, gameViewH = 0;
     std::string gameProjectPath;
     std::string startupSceneName;
     bool gameMode = false;
@@ -54,7 +58,11 @@ struct Engine
 
     void Run();
     void ProcessInput();
-    void RenderSceneToViewport(ImRect viewport, bool isGameView);
+    // Render the scene (scene or game camera) into an offscreen render target of
+    // the given size and return its ImGui texture id (nullptr on failure). The
+    // editor displays the result with flipped V (uv0=(0,1), uv1=(1,0)) -- both
+    // backends produce GL bottom-up memory order.
+    void* RenderSceneToTexture(int w, int h, bool isGameView);
     void SetEngineState(State state);
     void SetProjectPath(const std::string& path);
     void LoadGameScene();

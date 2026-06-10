@@ -231,16 +231,18 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
 
     if (renderer && resource->cubeModel && !resource->cubeModel->vertexData.empty())
     {
-        const auto& vd = resource->cubeModel->vertexData;
+        const auto& m = *resource->cubeModel;
         baseGeometries[RendererComponent::Cube] =
-            BaseGeometry{ renderer->CreateMesh(vd.data(), vd.size(), 6, attribs) };
+            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 6, attribs,
+                                               m.indices.data(), m.indices.size()) };
     }
 
     if (renderer && resource->sphereModel && !resource->sphereModel->vertexData.empty())
     {
-        const auto& vd = resource->sphereModel->vertexData;
+        const auto& m = *resource->sphereModel;
         baseGeometries[RendererComponent::Sphere] =
-            BaseGeometry{ renderer->CreateMesh(vd.data(), vd.size(), 6, attribs) };
+            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 6, attribs,
+                                               m.indices.data(), m.indices.size()) };
     }
 }
 
@@ -267,7 +269,8 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
     }
 
     const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3} };
-    BaseGeometry geo{ renderer->CreateMesh(model.vertexData.data(), model.vertexData.size(), 6, attribs) };
+    BaseGeometry geo{ renderer->CreateMesh(model.vertexData.data(), model.vertexData.size(), 6, attribs,
+                                           model.indices.data(), model.indices.size()) };
 
     customGeometries[meshPath] = geo;
     // `type` is unused for custom batches (geometry comes from customGeometries).

@@ -556,9 +556,12 @@ void SceneWindow::Draw()
     ImVec2 min = window->InnerRect.Min;
     ImVec2 max = window->InnerRect.Max;
 
-    ImGui::GetWindowDrawList()->PushClipRect(min, max, true);
-    m_editor->engine->RenderSceneToViewport(ImRect(min, max), false);
-    ImGui::GetWindowDrawList()->PopClipRect();
+    // Scene renders into an offscreen target, displayed as an ImGui image
+    // (flipped V: both backends produce GL bottom-up memory order).
+    void* sceneTex = m_editor->engine->RenderSceneToTexture(
+        (int)(max.x - min.x), (int)(max.y - min.y), false);
+    if (sceneTex)
+        ImGui::GetWindowDrawList()->AddImage((ImTextureID)sceneTex, min, max, ImVec2(0, 1), ImVec2(1, 0));
 
     DrawGizmos();
     HandleMouseInput();

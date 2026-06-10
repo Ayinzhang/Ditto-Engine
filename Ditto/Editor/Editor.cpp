@@ -949,11 +949,15 @@ void Editor::DrawGame()
         return;
     }
 
-    // Get window render area and call engine to render Game view (game running perspective)
+    // Render the Game view (game camera) into an offscreen target and display
+    // it as an ImGui image (flipped V: GL bottom-up memory order on both backends).
     ImRect gameViewportRect = GetCurrentViewportRect();
-    ImGui::GetWindowDrawList()->PushClipRect(gameViewportRect.Min, gameViewportRect.Max, true);
-    engine->RenderSceneToViewport(gameViewportRect, true);
-    ImGui::GetWindowDrawList()->PopClipRect();
+    void* gameTex = engine->RenderSceneToTexture(
+        (int)(gameViewportRect.Max.x - gameViewportRect.Min.x),
+        (int)(gameViewportRect.Max.y - gameViewportRect.Min.y), true);
+    if (gameTex)
+        ImGui::GetWindowDrawList()->AddImage((ImTextureID)gameTex,
+            gameViewportRect.Min, gameViewportRect.Max, ImVec2(0, 1), ImVec2(1, 0));
 
     // Save window state
     {
@@ -1111,7 +1115,11 @@ void Editor::DrawPopups()
 void Editor::DrawBuildSettingsWindow()
 {
     if (!showBuildSettingsWindow) return;
-    
+
+    // The global theme makes WindowBg fully transparent (viewport windows show
+    // the backbuffer through). A floating utility window must be opaque or the
+    // scene/viewport bleeds through it.
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.0f));
     ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Build Settings", &showBuildSettingsWindow))
     {
@@ -1120,6 +1128,7 @@ void Editor::DrawBuildSettingsWindow()
         {
             ImGui::TextDisabled("No project loaded");
             ImGui::End();
+            ImGui::PopStyleColor();
             return;
         }
         
@@ -1306,6 +1315,7 @@ void Editor::DrawBuildSettingsWindow()
         }
     }
     ImGui::End();
+    ImGui::PopStyleColor();
 }
 
 // ---- Undo / Redo ----------------------------------------------------------

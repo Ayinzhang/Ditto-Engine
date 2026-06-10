@@ -1,6 +1,7 @@
 #pragma once
 #include "../IRenderer.h"
 #include <vulkan/vulkan.h>
+#include "../../../../3rdParty/VMA/vk_mem_alloc.h"
 #include <vector>
 #include <cstdint>
 
@@ -91,6 +92,10 @@ namespace Ditto
         VkSurfaceKHR m_surface = VK_NULL_HANDLE;
         VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
+        // All buffer/image memory goes through VMA: one allocator sub-allocates
+        // big device memory blocks, instead of one vkAllocateMemory per resource
+        // (drivers cap total allocations at maxMemoryAllocationCount, often 4096).
+        VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkQueue m_graphicsQueue = VK_NULL_HANDLE;
         VkQueue m_presentQueue = VK_NULL_HANDLE;
         uint32_t m_graphicsQueueFamily = UINT32_MAX;
@@ -122,35 +127,37 @@ namespace Ditto
         struct VkTextureRes
         {
             VkImage image = VK_NULL_HANDLE;
-            VkDeviceMemory memory = VK_NULL_HANDLE;
+            VmaAllocation memory = VK_NULL_HANDLE;
             VkImageView view = VK_NULL_HANDLE;
             VkDescriptorSet descriptor = VK_NULL_HANDLE;   // ImGui texture id
         };
         std::vector<VkTextureRes> m_textures;
 
-        uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags props) const;
         VkCommandBuffer BeginSingleTime();
         void EndSingleTime(VkCommandBuffer cmd);
 
         // ---- Scene rendering (Vk4) ----
         // Depth buffer for the swapchain render pass (recreated with the swapchain).
         VkImage m_depthImage = VK_NULL_HANDLE;
-        VkDeviceMemory m_depthMem = VK_NULL_HANDLE;
+        VmaAllocation m_depthMem = VK_NULL_HANDLE;
         VkImageView m_depthView = VK_NULL_HANDLE;
         VkFormat m_depthFormat{};
 
         struct VkMeshRes
         {
             VkBuffer vbuf = VK_NULL_HANDLE;
-            VkDeviceMemory vmem = VK_NULL_HANDLE;
+            VmaAllocation vmem = VK_NULL_HANDLE;
+            VkBuffer ibuf = VK_NULL_HANDLE;          // optional uint32 index buffer
+            VmaAllocation imem = VK_NULL_HANDLE;
             uint32_t vertexCount = 0;
+            uint32_t indexCount = 0;                 // 0 => non-indexed draw
         };
         // Storage buffers are per-frame-in-flight (host-visible, persistently mapped)
         // so a frame's writes don't stomp a buffer the GPU is still reading.
         struct VkStorageRes
         {
             VkBuffer buf[kFramesInFlight] = {};
-            VkDeviceMemory mem[kFramesInFlight] = {};
+            VmaAllocation mem[kFramesInFlight] = {};
             void* mapped[kFramesInFlight] = {};
             size_t size = 0;
         };
@@ -170,7 +177,7 @@ namespace Ditto
         // set per frame (regular, not push -- a layout may have only ONE push set,
         // which we reserve for the storage buffers in set 1).
         VkBuffer m_uboBuf[kFramesInFlight] = {};
-        VkDeviceMemory m_uboMem[kFramesInFlight] = {};
+        VmaAllocation m_uboMem[kFramesInFlight] = {};
         void* m_uboMapped[kFramesInFlight] = {};
         VkDescriptorSetLayout m_uboSetLayout = VK_NULL_HANDLE;   // shared set-0 layout (dynamic UBO)
         VkDescriptorPool m_uboPool = VK_NULL_HANDLE;
@@ -183,6 +190,29 @@ namespace Ditto
         static constexpr uint32_t kUboSlots = 16;
         uint32_t m_uboSlot = 0;
 
+        // ---- Offscreen render targets (editor viewports / model previews) ----
+        // The color attachment lives in m_textures (so GetImGuiTextureID works and
+        // DestroyTexture owns image/view/descriptor); the RT owns depth + framebuffer.
+        struct VkRenderTargetRes
+        {
+            TextureHandle color;
+            VkImage depthImage = VK_NULL_HANDLE;
+            VmaAllocation depthMem = VK_NULL_HANDLE;
+            VkImageView depthView = VK_NULL_HANDLE;
+            VkFramebuffer framebuffer = VK_NULL_HANDLE;
+            int w = 0, h = 0;
+        };
+        std::vector<VkRenderTargetRes> m_renderTargets;
+        // Offscreen pass: color CLEAR -> SHADER_READ_ONLY (sampled by ImGui), depth CLEAR.
+        // Color format matches the swapchain so scene pipelines (created against
+        // m_renderPass) stay render-pass compatible.
+        VkRenderPass m_rtRenderPass = VK_NULL_HANDLE;
+        // Swapchain pass re-begun after an RT pass interrupts it (color LOAD).
+        VkRenderPass m_resumePass = VK_NULL_HANDLE;
+        bool m_rtActive = false;       // inside a Begin/EndRenderTarget pair
+        VkExtent2D m_rtExtent{};
+        bool EnsureRenderTargetPasses();
+
         // Push descriptors (avoids descriptor-pool/set management for scene draws).
         PFN_vkCmdPushDescriptorSetKHR m_pushDescriptor = nullptr;
         bool m_pushDescriptorOK = false;
@@ -191,8 +221,11 @@ namespace Ditto
         VkPipelineRes* m_boundPipeline = nullptr;
         StorageBufferHandle m_boundStorage[2];
 
-        bool CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
-                          VkBuffer& outBuf, VkDeviceMemory& outMem);
+        // Allocate a buffer through VMA. `hostVisible` buffers are HOST_COHERENT
+        // and persistently mapped (pointer returned via `outMapped`); device-local
+        // buffers pass hostVisible=false.
+        bool CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, bool hostVisible,
+                          VkBuffer& outBuf, VmaAllocation& outAlloc, void** outMapped = nullptr);
         bool CreateUboDescriptors();
         bool CreateDepthResources();
         void DestroyDepthResources();

@@ -1,9 +1,11 @@
 #include "ShaderCompiler.h"
 #include "../../Core/Logger.h"
+#include "../../Core/PathUtils.h"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <cstdint>
 
 namespace fs = std::filesystem;
 
@@ -42,6 +44,90 @@ namespace Ditto
         return data;
     }
 
+    // ------------------------------------------------------------------
+    // Disk cache. Keyed by an FNV-1a hash of the HLSL source + stage +
+    // entry point + compile flags, stored as <exe>/ShaderCache/<hash>.spv
+    // (+ .glsl when cross-compiled). A cache hit skips the dxc/spirv-cross
+    // subprocesses entirely, so a shipped build does not need the Vulkan
+    // SDK installed unless a shader actually changed.
+    // ------------------------------------------------------------------
+
+    // Bump when the dxc/spirv-cross flags below change, so stale artifacts
+    // compiled with old flags are not reused.
+    static constexpr uint32_t kCacheVersion = 1;
+
+    static uint64_t Fnv1a64(const void* data, size_t len, uint64_t h = 14695981039346656037ull)
+    {
+        const unsigned char* p = static_cast<const unsigned char*>(data);
+        for (size_t i = 0; i < len; ++i) { h ^= p[i]; h *= 1099511628211ull; }
+        return h;
+    }
+
+    static fs::path CacheDir()
+    {
+        return PathUtils::GetExecutableDir() / "ShaderCache";
+    }
+
+    static fs::path CachePath(uint64_t key, const char* ext)
+    {
+        char name[32];
+        snprintf(name, sizeof(name), "%016llx", (unsigned long long)key);
+        return CacheDir() / (std::string(name) + ext);
+    }
+
+    static uint64_t CacheKey(const std::string& hlslSource, ShaderStage stage, const std::string& entryPoint)
+    {
+        uint64_t h = Fnv1a64(&kCacheVersion, sizeof(kCacheVersion));
+        const int s = (stage == ShaderStage::Vertex) ? 0 : 1;
+        h = Fnv1a64(&s, sizeof(s), h);
+        h = Fnv1a64(entryPoint.data(), entryPoint.size(), h);
+        h = Fnv1a64(hlslSource.data(), hlslSource.size(), h);
+        return h;
+    }
+
+    // Try to satisfy the compile from cache. Returns true and fills `out`
+    // on a full hit (SPIR-V present, plus GLSL when requested).
+    static bool TryLoadCached(uint64_t key, bool needGLSL, CompiledShader& out)
+    {
+        std::error_code ec;
+        const fs::path spvP = CachePath(key, ".spv");
+        if (!fs::exists(spvP, ec)) return false;
+
+        std::vector<uint32_t> spirv = ReadU32(spvP);
+        if (spirv.empty()) return false;
+
+        std::string glsl;
+        if (needGLSL)
+        {
+            const fs::path glslP = CachePath(key, ".glsl");
+            if (!fs::exists(glslP, ec)) return false;
+            glsl = ReadText(glslP);
+            if (glsl.empty()) return false;
+        }
+
+        out.spirv = std::move(spirv);
+        out.glsl = std::move(glsl);
+        out.ok = true;
+        return true;
+    }
+
+    static void StoreCached(uint64_t key, const CompiledShader& sh)
+    {
+        std::error_code ec;
+        fs::create_directories(CacheDir(), ec);
+        if (ec) return;   // cache is best-effort; never fail the compile over it
+
+        {
+            std::ofstream f(CachePath(key, ".spv"), std::ios::binary | std::ios::trunc);
+            if (f) f.write(reinterpret_cast<const char*>(sh.spirv.data()), sh.spirv.size() * sizeof(uint32_t));
+        }
+        if (!sh.glsl.empty())
+        {
+            std::ofstream f(CachePath(key, ".glsl"), std::ios::binary | std::ios::trunc);
+            if (f) f << sh.glsl;
+        }
+    }
+
     bool ShaderCompiler::ToolsAvailable()
     {
         const std::string bin = SdkBinDir();
@@ -53,10 +139,16 @@ namespace Ditto
     {
         CompiledShader out;
 
+        // Cache first: a hit needs no SDK tools at all (shipped builds run
+        // entirely from the cache populated at development time).
+        const uint64_t key = CacheKey(hlslSource, stage, entryPoint);
+        if (TryLoadCached(key, generateGLSL, out))
+            return out;
+
         const std::string bin = SdkBinDir();
         if (!ToolsAvailable())
         {
-            out.error = "Vulkan SDK shader tools not found in " + bin;
+            out.error = "Shader not in cache and Vulkan SDK shader tools not found in " + bin;
             Logger::Get().Error("[ShaderCompiler] " + out.error);
             return out;
         }
@@ -134,6 +226,7 @@ namespace Ditto
         }
 
         out.ok = true;
+        StoreCached(key, out);
         cleanup();
         return out;
     }

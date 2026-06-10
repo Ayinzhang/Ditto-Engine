@@ -1,4 +1,5 @@
 #include "BuildSystem.h"
+#include "../Engine/Core/PathUtils.h"
 #include <iostream>
 #include <filesystem>
 #include <fstream>
@@ -171,6 +172,12 @@ bool BuildSystem::Build(const BuildSettings& settings, BuildProgressCallback cal
     {
         std::cerr << "[Build] Warning: Failed to copy shaders" << std::endl;
     }
+
+    report("Copying engine models...", 0.42f);
+    if (!CopyEngineModels(settings.outputPath))
+    {
+        std::cerr << "[Build] Warning: engine models missing; built-in Cube/Sphere will not render" << std::endl;
+    }
     
     report("Compiling scripts...", 0.45f);
     if (!CompileScripts(projectPath, settings.outputPath, engineRoot))
@@ -192,6 +199,13 @@ bool BuildSystem::Build(const BuildSettings& settings, BuildProgressCallback cal
         return false;
     }
     
+    report("Copying shader cache...", 0.7f);
+    if (!CopyShaderCache(settings.outputPath))
+    {
+        std::cerr << "[Build] Warning: Shader cache not copied; the game will need "
+                     "the Vulkan SDK shader tools to compile shaders at runtime" << std::endl;
+    }
+
     report("Copying dependencies...", 0.8f);
     if (!CopyDependencies(settings.outputPath, engineRoot))
     {
@@ -235,8 +249,11 @@ bool BuildSystem::CopyAssets(const std::string& projectPath, const std::string& 
         
         if (!fs::exists(assetsSrc))
         {
+            // A project without an Assets directory cannot produce a runnable
+            // game (no scenes) -- fail the build loudly instead of packaging
+            // an empty shell.
             std::cerr << "[Build] Assets directory not found: " << assetsSrc << std::endl;
-            return true;
+            return false;
         }
         
         for (const auto& entry : fs::recursive_directory_iterator(assetsSrc))
@@ -342,7 +359,7 @@ bool BuildSystem::CopyShaders(const std::string& engineRoot, const std::string& 
             if (entry.is_regular_file())
             {
                 std::string ext = entry.path().extension().string();
-                if (ext == ".glsl" || ext == ".vert" || ext == ".frag" || ext == ".shader")
+                if (ext == ".glsl" || ext == ".vert" || ext == ".frag" || ext == ".shader" || ext == ".hlsl")
                 {
                     fs::copy(entry.path(), shaderDst + "/" + entry.path().filename().string(), 
                              fs::copy_options::overwrite_existing);
@@ -360,7 +377,77 @@ bool BuildSystem::CopyShaders(const std::string& engineRoot, const std::string& 
     }
 }
 
-bool BuildSystem::CopyExecutable(const std::string& outputPath, const std::string& productName, 
+// Copy the engine's built-in models (Cube.obj/Sphere.obj) into the package.
+// Resource::Initialize resolves "Models/Cube.obj" anchored to the game
+// executable, so without this the shipped game has no base geometry and
+// renders nothing.
+bool BuildSystem::CopyEngineModels(const std::string& outputPath)
+{
+    try
+    {
+        fs::path cubeSrc = PathUtils::ResolveAsset("Models/Cube.obj");
+        fs::path modelsSrc = cubeSrc.parent_path();
+        if (!fs::exists(cubeSrc))
+        {
+            std::cerr << "[Build] Engine models not found at " << modelsSrc.string() << std::endl;
+            return false;
+        }
+
+        fs::path modelsDst = fs::path(outputPath) / "Assets" / "Models";
+        fs::create_directories(modelsDst);
+        int copied = 0;
+        for (const auto& entry : fs::directory_iterator(modelsSrc))
+        {
+            if (!entry.is_regular_file() || entry.path().extension() != ".obj") continue;
+            fs::copy(entry.path(), modelsDst / entry.path().filename(), fs::copy_options::overwrite_existing);
+            ++copied;
+        }
+        std::cout << "[Build] Copied " << copied << " engine models" << std::endl;
+        return copied > 0;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[Build] Error copying engine models: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// Copy the editor's compiled-shader cache next to the game executable so the
+// shipped game loads shaders from cache instead of needing dxc/spirv-cross
+// (i.e. a Vulkan SDK install) on the player's machine. The editor process IS
+// the engine executable, so its ShaderCache dir holds every built-in shader
+// compiled during this session.
+bool BuildSystem::CopyShaderCache(const std::string& outputPath)
+{
+    try
+    {
+        fs::path cacheSrc = PathUtils::GetExecutableDir() / "ShaderCache";
+        if (!fs::exists(cacheSrc) || fs::is_empty(cacheSrc))
+        {
+            std::cerr << "[Build] No shader cache at " << cacheSrc.string() << std::endl;
+            return false;
+        }
+
+        fs::path cacheDst = fs::path(outputPath) / "ShaderCache";
+        fs::create_directories(cacheDst);
+        int copied = 0;
+        for (const auto& entry : fs::directory_iterator(cacheSrc))
+        {
+            if (!entry.is_regular_file()) continue;
+            fs::copy(entry.path(), cacheDst / entry.path().filename(), fs::copy_options::overwrite_existing);
+            ++copied;
+        }
+        std::cout << "[Build] Copied " << copied << " shader cache entries" << std::endl;
+        return copied > 0;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "[Build] Error copying shader cache: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool BuildSystem::CopyExecutable(const std::string& outputPath, const std::string& productName,
                                   BuildConfiguration config, const std::string& engineRoot)
 {
     try

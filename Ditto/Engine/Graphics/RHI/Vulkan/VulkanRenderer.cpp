@@ -1,3 +1,10 @@
+// VMA implementation lives in this TU (the header is included via VulkanRenderer.h).
+#pragma warning(push)
+#pragma warning(disable: 4100 4189 4127 4324)   // VMA: unreferenced params/locals, const conditionals, padding
+#define VMA_IMPLEMENTATION
+#include "../../../../3rdParty/VMA/vk_mem_alloc.h"
+#pragma warning(pop)
+
 #include "VulkanRenderer.h"
 #include "../../../Core/Logger.h"
 #include "../../Shaders/ShaderCompiler.h"
@@ -62,12 +69,8 @@ namespace Ditto
         // can each write their own uniforms within a frame (see SetFrameUniforms).
         constexpr VkDeviceSize kUboBufSize = (VkDeviceSize)kUboSlots * kUboSlotSize;
         for (int i = 0; i < kFramesInFlight; ++i)
-        {
-            CreateBuffer(kUboBufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                m_uboBuf[i], m_uboMem[i]);
-            vkMapMemory(m_device, m_uboMem[i], 0, kUboBufSize, 0, &m_uboMapped[i]);
-        }
+            CreateBuffer(kUboBufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, /*hostVisible=*/true,
+                m_uboBuf[i], m_uboMem[i], &m_uboMapped[i]);
         if (!CreateUboDescriptors()) return;
 
         m_ready = true;
@@ -85,9 +88,8 @@ namespace Ditto
             // Defensive ImGui/texture teardown (normally done by ImGuiShutdown()).
             for (auto& t : m_textures)
             {
-                if (t.view)   vkDestroyImageView(m_device, t.view, nullptr);
-                if (t.image)  vkDestroyImage(m_device, t.image, nullptr);
-                if (t.memory) vkFreeMemory(m_device, t.memory, nullptr);
+                if (t.view)  vkDestroyImageView(m_device, t.view, nullptr);
+                if (t.image) vmaDestroyImage(m_allocator, t.image, t.memory);
             }
             if (m_sampler)   vkDestroySampler(m_device, m_sampler, nullptr);
             if (m_imguiPool) vkDestroyDescriptorPool(m_device, m_imguiPool, nullptr);
@@ -95,15 +97,12 @@ namespace Ditto
             // Scene resources.
             for (auto& m : m_meshes)
             {
-                if (m.vbuf) vkDestroyBuffer(m_device, m.vbuf, nullptr);
-                if (m.vmem) vkFreeMemory(m_device, m.vmem, nullptr);
+                if (m.vbuf) vmaDestroyBuffer(m_allocator, m.vbuf, m.vmem);
+                if (m.ibuf) vmaDestroyBuffer(m_allocator, m.ibuf, m.imem);
             }
             for (auto& s : m_storage)
                 for (int i = 0; i < kFramesInFlight; ++i)
-                {
-                    if (s.buf[i]) vkDestroyBuffer(m_device, s.buf[i], nullptr);
-                    if (s.mem[i]) vkFreeMemory(m_device, s.mem[i], nullptr);
-                }
+                    if (s.buf[i]) vmaDestroyBuffer(m_allocator, s.buf[i], s.mem[i]);
             for (auto& p : m_pipelines)
             {
                 if (p.pipeline) vkDestroyPipeline(m_device, p.pipeline, nullptr);
@@ -114,9 +113,19 @@ namespace Ditto
                 if (p.fs) vkDestroyShaderModule(m_device, p.fs, nullptr);
             }
             for (int i = 0; i < kFramesInFlight; ++i)
-                if (m_uboBuf[i]) { vkDestroyBuffer(m_device, m_uboBuf[i], nullptr); vkFreeMemory(m_device, m_uboMem[i], nullptr); }
+                if (m_uboBuf[i]) vmaDestroyBuffer(m_allocator, m_uboBuf[i], m_uboMem[i]);
             if (m_uboPool) vkDestroyDescriptorPool(m_device, m_uboPool, nullptr);
             if (m_uboSetLayout) vkDestroyDescriptorSetLayout(m_device, m_uboSetLayout, nullptr);
+
+            // Render targets (their color textures were freed by the texture loop).
+            for (auto& rt : m_renderTargets)
+            {
+                if (rt.framebuffer) vkDestroyFramebuffer(m_device, rt.framebuffer, nullptr);
+                if (rt.depthView)   vkDestroyImageView(m_device, rt.depthView, nullptr);
+                if (rt.depthImage)  vmaDestroyImage(m_allocator, rt.depthImage, rt.depthMem);
+            }
+            if (m_rtRenderPass) vkDestroyRenderPass(m_device, m_rtRenderPass, nullptr);
+            if (m_resumePass)   vkDestroyRenderPass(m_device, m_resumePass, nullptr);
 
             for (auto s : m_renderFinished) if (s) vkDestroySemaphore(m_device, s, nullptr);
             for (auto s : m_imageAvailable) if (s) vkDestroySemaphore(m_device, s, nullptr);
@@ -125,6 +134,7 @@ namespace Ditto
             if (m_commandPool) vkDestroyCommandPool(m_device, m_commandPool, nullptr);
         }
 
+        if (m_allocator) vmaDestroyAllocator(m_allocator);
         if (m_device) vkDestroyDevice(m_device, nullptr);
         if (m_surface) vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 
@@ -317,6 +327,18 @@ namespace Ditto
         if (m_pushDescriptorOK)
             m_pushDescriptor = (PFN_vkCmdPushDescriptorSetKHR)vkGetDeviceProcAddr(m_device, "vkCmdPushDescriptorSetKHR");
 
+        // VMA allocator: every buffer/image allocation below goes through it.
+        VmaAllocatorCreateInfo aci{};
+        aci.instance = m_instance;
+        aci.physicalDevice = m_physicalDevice;
+        aci.device = m_device;
+        aci.vulkanApiVersion = VK_API_VERSION_1_3;
+        if (vmaCreateAllocator(&aci, &m_allocator) != VK_SUCCESS)
+        {
+            Logger::Get().Error("[Vulkan] vmaCreateAllocator failed");
+            return false;
+        }
+
         m_depthFormat = VK_FORMAT_D32_SFLOAT;   // universally supported as a depth attachment
         return true;
     }
@@ -331,9 +353,15 @@ namespace Ditto
         vkGetPhysicalDeviceSurfaceFormatsKHR(m_physicalDevice, m_surface, &fmtCount, nullptr);
         std::vector<VkSurfaceFormatKHR> formats(fmtCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(m_physicalDevice, m_surface, &fmtCount, formats.data());
+        // Prefer a UNORM (non-sRGB) surface format: the engine and ImGui write raw
+        // color values with no gamma handling, exactly like the GL backend (no
+        // GL_FRAMEBUFFER_SRGB). An *_SRGB swapchain re-encodes those values on
+        // store, washing the whole editor out to grey. Same policy as ImGui's own
+        // Vulkan example.
         VkSurfaceFormatKHR chosen = formats.empty() ? VkSurfaceFormatKHR{ VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR } : formats[0];
         for (const auto& f : formats)
-            if (f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) { chosen = f; break; }
+            if ((f.format == VK_FORMAT_B8G8R8A8_UNORM || f.format == VK_FORMAT_R8G8B8A8_UNORM)
+                && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) { chosen = f; break; }
 
         uint32_t pmCount = 0;
         vkGetPhysicalDeviceSurfacePresentModesKHR(m_physicalDevice, m_surface, &pmCount, nullptr);
@@ -647,53 +675,92 @@ namespace Ditto
     void VulkanRenderer::SetViewport(int x, int y, int w, int h)
     {
         if (!m_frameActive) return;
-        // Incoming coords are GL bottom-left origin. Convert to Vulkan top-left and
-        // use a negative-height viewport to flip Y (matches the GL backend).
-        const float fbH = (float)m_swapchainExtent.height;
+        // Incoming coords are GL bottom-left origin; convert to Vulkan top-left.
+        // Swapchain target: negative-height viewport flips Y to match GL (the
+        // presented image must be top-up). Offscreen RT: positive height so the
+        // image keeps GL's bottom-up memory order (see BeginRenderTarget).
+        const float fbH = (float)(m_rtActive ? m_rtExtent.height : m_swapchainExtent.height);
         const float topY = fbH - (float)y - (float)h;
         VkViewport vp{};
         vp.x = (float)x;
-        vp.y = topY + (float)h;
+        vp.y = m_rtActive ? topY : topY + (float)h;
         vp.width = (float)w;
-        vp.height = -(float)h;
+        vp.height = m_rtActive ? (float)h : -(float)h;
         vp.minDepth = 0.0f; vp.maxDepth = 1.0f;
         vkCmdSetViewport(m_commandBuffers[m_currentFrame], 0, 1, &vp);
     }
     void VulkanRenderer::SetScissor(bool enabled, int x, int y, int w, int h)
     {
         if (!m_frameActive) return;
+        const VkExtent2D target = m_rtActive ? m_rtExtent : m_swapchainExtent;
         VkRect2D sc;
         if (enabled)
         {
-            int fbH = (int)m_swapchainExtent.height;
-            int topY = fbH - y - h; if (topY < 0) topY = 0;
+            int topY = (int)target.height - y - h; if (topY < 0) topY = 0;
             sc.offset = { x, topY };
             sc.extent = { (uint32_t)w, (uint32_t)h };
         }
-        else sc = VkRect2D{ {0, 0}, m_swapchainExtent };
+        else sc = VkRect2D{ {0, 0}, target };
         vkCmdSetScissor(m_commandBuffers[m_currentFrame], 0, 1, &sc);
     }
-    void VulkanRenderer::Clear(uint32_t, const glm::vec4& color) { m_clearColor = color; }
+    void VulkanRenderer::Clear(uint32_t flags, const glm::vec4& color)
+    {
+        if (flags & ClearColor) m_clearColor = color;   // also feeds the next pass's loadOp clear
+        if (!m_frameActive) return;
+
+        // Mid-pass clear of the current target (offscreen RT or swapchain), so
+        // GL-style "Clear() after BeginRenderTarget" works on Vulkan too.
+        VkClearAttachment atts[2]{};
+        uint32_t n = 0;
+        if (flags & ClearColor)
+        {
+            atts[n].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            atts[n].colorAttachment = 0;
+            atts[n].clearValue.color = { { color.r, color.g, color.b, color.a } };
+            ++n;
+        }
+        if (flags & ClearDepth)
+        {
+            atts[n].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            atts[n].clearValue.depthStencil = { 1.0f, 0 };
+            ++n;
+        }
+        if (n == 0) return;
+        VkClearRect rect{ { {0, 0}, m_rtActive ? m_rtExtent : m_swapchainExtent }, 0, 1 };
+        vkCmdClearAttachments(m_commandBuffers[m_currentFrame], n, atts, 1, &rect);
+    }
     void VulkanRenderer::SetDepthState(bool, DepthFunc) {}
     void VulkanRenderer::SetBlendState(bool) {}
     void VulkanRenderer::SetWireframe(bool) {}
     void VulkanRenderer::SetCullState(bool) {}
 
     // ----------------------------- Helpers --------------------------------
-    bool VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                                      VkMemoryPropertyFlags props, VkBuffer& outBuf, VkDeviceMemory& outMem)
+    bool VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, bool hostVisible,
+                                      VkBuffer& outBuf, VmaAllocation& outAlloc, void** outMapped)
     {
         VkBufferCreateInfo bci{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         bci.size = size ? size : 1;
         bci.usage = usage;
         bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(m_device, &bci, nullptr, &outBuf) != VK_SUCCESS) return false;
-        VkMemoryRequirements mr; vkGetBufferMemoryRequirements(m_device, outBuf, &mr);
-        VkMemoryAllocateInfo mai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        mai.allocationSize = mr.size;
-        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, props);
-        if (vkAllocateMemory(m_device, &mai, nullptr, &outMem) != VK_SUCCESS) return false;
-        vkBindBufferMemory(m_device, outBuf, outMem, 0);
+
+        VmaAllocationCreateInfo aci{};
+        aci.usage = VMA_MEMORY_USAGE_AUTO;
+        if (hostVisible)
+        {
+            aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                      | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+            // COHERENT required so persistently-mapped writes need no manual flush
+            // (matches the previous explicit HOST_VISIBLE|HOST_COHERENT behavior).
+            aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        }
+
+        VmaAllocationInfo info{};
+        if (vmaCreateBuffer(m_allocator, &bci, &aci, &outBuf, &outAlloc, &info) != VK_SUCCESS)
+        {
+            Logger::Get().Error("[Vulkan] vmaCreateBuffer failed");
+            return false;
+        }
+        if (outMapped) *outMapped = info.pMappedData;
         return true;
     }
 
@@ -746,14 +813,11 @@ namespace Ditto
         ici.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         ici.samples = VK_SAMPLE_COUNT_1_BIT;
         ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateImage(m_device, &ici, nullptr, &m_depthImage) != VK_SUCCESS) return false;
 
-        VkMemoryRequirements mr; vkGetImageMemoryRequirements(m_device, m_depthImage, &mr);
-        VkMemoryAllocateInfo mai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        mai.allocationSize = mr.size;
-        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        if (vkAllocateMemory(m_device, &mai, nullptr, &m_depthMem) != VK_SUCCESS) return false;
-        vkBindImageMemory(m_device, m_depthImage, m_depthMem, 0);
+        VmaAllocationCreateInfo aci{};
+        aci.usage = VMA_MEMORY_USAGE_AUTO;
+        aci.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;   // full-screen attachment: dedicated is optimal
+        if (vmaCreateImage(m_allocator, &ici, &aci, &m_depthImage, &m_depthMem, nullptr) != VK_SUCCESS) return false;
 
         VkImageViewCreateInfo vci{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
         vci.image = m_depthImage; vci.viewType = VK_IMAGE_VIEW_TYPE_2D; vci.format = m_depthFormat;
@@ -764,8 +828,7 @@ namespace Ditto
     void VulkanRenderer::DestroyDepthResources()
     {
         if (m_depthView)  { vkDestroyImageView(m_device, m_depthView, nullptr); m_depthView = VK_NULL_HANDLE; }
-        if (m_depthImage) { vkDestroyImage(m_device, m_depthImage, nullptr); m_depthImage = VK_NULL_HANDLE; }
-        if (m_depthMem)   { vkFreeMemory(m_device, m_depthMem, nullptr); m_depthMem = VK_NULL_HANDLE; }
+        if (m_depthImage) { vmaDestroyImage(m_allocator, m_depthImage, m_depthMem); m_depthImage = VK_NULL_HANDLE; m_depthMem = VK_NULL_HANDLE; }
     }
 
     VkShaderModule VulkanRenderer::CreateShaderModule(const std::vector<uint32_t>& spirv)
@@ -780,30 +843,41 @@ namespace Ditto
 
     // ----------------------------- Mesh -----------------------------------
     MeshHandle VulkanRenderer::CreateMesh(const float* vertexData, size_t floatCount, int strideFloats,
-                                          const std::vector<VertexAttrib>&, const uint32_t*, size_t)
+                                          const std::vector<VertexAttrib>&, const uint32_t* indices, size_t indexCount)
     {
         if (!vertexData || floatCount == 0 || strideFloats <= 0) return {};
-        const VkDeviceSize size = floatCount * sizeof(float);
 
-        VkBuffer staging; VkDeviceMemory stagingMem;
-        CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging, stagingMem);
-        void* p; vkMapMemory(m_device, stagingMem, 0, size, 0, &p);
-        memcpy(p, vertexData, (size_t)size);
-        vkUnmapMemory(m_device, stagingMem);
+        // Upload one block of data into a fresh device-local buffer via staging.
+        auto uploadDeviceLocal = [&](const void* data, VkDeviceSize size, VkBufferUsageFlags usage,
+                                     VkBuffer& outBuf, VmaAllocation& outAlloc)
+        {
+            VkBuffer staging; VmaAllocation stagingAlloc; void* p = nullptr;
+            CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, /*hostVisible=*/true,
+                staging, stagingAlloc, &p);
+            memcpy(p, data, (size_t)size);
+
+            CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, /*hostVisible=*/false,
+                outBuf, outAlloc);
+
+            VkCommandBuffer cmd = BeginSingleTime();
+            VkBufferCopy region{}; region.size = size;
+            vkCmdCopyBuffer(cmd, staging, outBuf, 1, &region);
+            EndSingleTime(cmd);
+
+            vmaDestroyBuffer(m_allocator, staging, stagingAlloc);
+        };
 
         VkMeshRes mesh;
         mesh.vertexCount = (uint32_t)(floatCount / strideFloats);
-        CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mesh.vbuf, mesh.vmem);
+        uploadDeviceLocal(vertexData, floatCount * sizeof(float),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, mesh.vbuf, mesh.vmem);
 
-        VkCommandBuffer cmd = BeginSingleTime();
-        VkBufferCopy region{}; region.size = size;
-        vkCmdCopyBuffer(cmd, staging, mesh.vbuf, 1, &region);
-        EndSingleTime(cmd);
-
-        vkDestroyBuffer(m_device, staging, nullptr);
-        vkFreeMemory(m_device, stagingMem, nullptr);
+        if (indices && indexCount > 0)
+        {
+            mesh.indexCount = (uint32_t)indexCount;
+            uploadDeviceLocal(indices, indexCount * sizeof(uint32_t),
+                VK_BUFFER_USAGE_INDEX_BUFFER_BIT, mesh.ibuf, mesh.imem);
+        }
 
         m_meshes.push_back(mesh);
         return MeshHandle{ (uint32_t)m_meshes.size() };
@@ -813,8 +887,8 @@ namespace Ditto
     {
         if (h.id == 0 || h.id > m_meshes.size()) return;
         VkMeshRes& m = m_meshes[h.id - 1];
-        if (m.vbuf) vkDestroyBuffer(m_device, m.vbuf, nullptr);
-        if (m.vmem) vkFreeMemory(m_device, m.vmem, nullptr);
+        if (m.vbuf) vmaDestroyBuffer(m_allocator, m.vbuf, m.vmem);
+        if (m.ibuf) vmaDestroyBuffer(m_allocator, m.ibuf, m.imem);
         m = VkMeshRes{};
     }
 
@@ -824,11 +898,8 @@ namespace Ditto
         VkStorageRes s;
         s.size = sizeBytes < 4096 ? 4096 : sizeBytes;   // start with headroom; grow on demand
         for (int i = 0; i < kFramesInFlight; ++i)
-        {
-            CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, s.buf[i], s.mem[i]);
-            vkMapMemory(m_device, s.mem[i], 0, s.size, 0, &s.mapped[i]);
-        }
+            CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, /*hostVisible=*/true,
+                s.buf[i], s.mem[i], &s.mapped[i]);
         m_storage.push_back(s);
         return StorageBufferHandle{ (uint32_t)m_storage.size() };
     }
@@ -842,17 +913,11 @@ namespace Ditto
         {
             vkDeviceWaitIdle(m_device);
             for (int i = 0; i < kFramesInFlight; ++i)
-            {
-                if (s.buf[i]) vkDestroyBuffer(m_device, s.buf[i], nullptr);
-                if (s.mem[i]) vkFreeMemory(m_device, s.mem[i], nullptr);
-            }
+                if (s.buf[i]) vmaDestroyBuffer(m_allocator, s.buf[i], s.mem[i]);
             s.size = sizeBytes;
             for (int i = 0; i < kFramesInFlight; ++i)
-            {
-                CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, s.buf[i], s.mem[i]);
-                vkMapMemory(m_device, s.mem[i], 0, s.size, 0, &s.mapped[i]);
-            }
+                CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, /*hostVisible=*/true,
+                    s.buf[i], s.mem[i], &s.mapped[i]);
         }
         memcpy(s.mapped[m_currentFrame], data, sizeBytes);
     }
@@ -862,10 +927,7 @@ namespace Ditto
         if (h.id == 0 || h.id > m_storage.size()) return;
         VkStorageRes& s = m_storage[h.id - 1];
         for (int i = 0; i < kFramesInFlight; ++i)
-        {
-            if (s.buf[i]) vkDestroyBuffer(m_device, s.buf[i], nullptr);
-            if (s.mem[i]) vkFreeMemory(m_device, s.mem[i], nullptr);
-        }
+            if (s.buf[i]) vmaDestroyBuffer(m_allocator, s.buf[i], s.mem[i]);
         s = VkStorageRes{};
     }
 
@@ -1018,9 +1080,8 @@ namespace Ditto
         for (auto& t : m_textures)
         {
             if (t.descriptor) ImGui_ImplVulkan_RemoveTexture(t.descriptor);
-            if (t.view)   vkDestroyImageView(m_device, t.view, nullptr);
-            if (t.image)  vkDestroyImage(m_device, t.image, nullptr);
-            if (t.memory) vkFreeMemory(m_device, t.memory, nullptr);
+            if (t.view)  vkDestroyImageView(m_device, t.view, nullptr);
+            if (t.image) vmaDestroyImage(m_allocator, t.image, t.memory);
         }
         m_textures.clear();
 
@@ -1047,16 +1108,6 @@ namespace Ditto
     }
 
     // ------------------------------ Textures ------------------------------
-    uint32_t VulkanRenderer::FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags props) const
-    {
-        VkPhysicalDeviceMemoryProperties mem;
-        vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &mem);
-        for (uint32_t i = 0; i < mem.memoryTypeCount; ++i)
-            if ((typeBits & (1u << i)) && (mem.memoryTypes[i].propertyFlags & props) == props)
-                return i;
-        return 0;
-    }
-
     VkCommandBuffer VulkanRenderer::BeginSingleTime()
     {
         VkCommandBufferAllocateInfo ai{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
@@ -1088,19 +1139,10 @@ namespace Ditto
         const VkDeviceSize size = (VkDeviceSize)w * h * 4;            // Engine uploads RGBA8
 
         // Staging buffer.
-        VkBuffer staging; VkDeviceMemory stagingMem;
-        VkBufferCreateInfo bci{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        bci.size = size; bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT; bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        vkCreateBuffer(m_device, &bci, nullptr, &staging);
-        VkMemoryRequirements mr; vkGetBufferMemoryRequirements(m_device, staging, &mr);
-        VkMemoryAllocateInfo mai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        mai.allocationSize = mr.size;
-        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        vkAllocateMemory(m_device, &mai, nullptr, &stagingMem);
-        vkBindBufferMemory(m_device, staging, stagingMem, 0);
-        void* mapped; vkMapMemory(m_device, stagingMem, 0, size, 0, &mapped);
+        VkBuffer staging; VmaAllocation stagingAlloc; void* mapped = nullptr;
+        CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, /*hostVisible=*/true,
+            staging, stagingAlloc, &mapped);
         memcpy(mapped, pixels, (size_t)size);
-        vkUnmapMemory(m_device, stagingMem);
 
         // Device-local image.
         VkTextureRes t;
@@ -1114,12 +1156,9 @@ namespace Ditto
         ici.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         ici.samples = VK_SAMPLE_COUNT_1_BIT;
         ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        vkCreateImage(m_device, &ici, nullptr, &t.image);
-        vkGetImageMemoryRequirements(m_device, t.image, &mr);
-        mai.allocationSize = mr.size;
-        mai.memoryTypeIndex = FindMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        vkAllocateMemory(m_device, &mai, nullptr, &t.memory);
-        vkBindImageMemory(m_device, t.image, t.memory, 0);
+        VmaAllocationCreateInfo aci{};
+        aci.usage = VMA_MEMORY_USAGE_AUTO;
+        vmaCreateImage(m_allocator, &ici, &aci, &t.image, &t.memory, nullptr);
 
         // Upload: UNDEFINED -> TRANSFER_DST -> copy -> SHADER_READ_ONLY.
         VkCommandBuffer cmd = BeginSingleTime();
@@ -1141,8 +1180,7 @@ namespace Ditto
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
         EndSingleTime(cmd);
 
-        vkDestroyBuffer(m_device, staging, nullptr);
-        vkFreeMemory(m_device, stagingMem, nullptr);
+        vmaDestroyBuffer(m_allocator, staging, stagingAlloc);
 
         VkImageViewCreateInfo vci{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
         vci.image = t.image; vci.viewType = VK_IMAGE_VIEW_TYPE_2D; vci.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -1160,9 +1198,8 @@ namespace Ditto
         if (h.id == 0 || h.id > m_textures.size()) return;
         VkTextureRes& t = m_textures[h.id - 1];
         if (t.descriptor) ImGui_ImplVulkan_RemoveTexture(t.descriptor);
-        if (t.view)   vkDestroyImageView(m_device, t.view, nullptr);
-        if (t.image)  vkDestroyImage(m_device, t.image, nullptr);
-        if (t.memory) vkFreeMemory(m_device, t.memory, nullptr);
+        if (t.view)  vkDestroyImageView(m_device, t.view, nullptr);
+        if (t.image) vmaDestroyImage(m_allocator, t.image, t.memory);
         t = VkTextureRes{};
     }
 
@@ -1171,11 +1208,293 @@ namespace Ditto
         if (h.id == 0 || h.id > m_textures.size()) return nullptr;
         return (void*)m_textures[h.id - 1].descriptor;   // VkDescriptorSet as ImTextureID
     }
-    RenderTargetHandle VulkanRenderer::CreateRenderTarget(int, int) { return {}; }
-    void VulkanRenderer::BeginRenderTarget(RenderTargetHandle) {}
-    void VulkanRenderer::EndRenderTarget() {}
-    TextureHandle VulkanRenderer::GetColorTexture(RenderTargetHandle) { return {}; }
-    void VulkanRenderer::DestroyRenderTarget(RenderTargetHandle) {}
+    // --------------------------- Render targets ---------------------------
+    bool VulkanRenderer::EnsureRenderTargetPasses()
+    {
+        if (m_rtRenderPass && m_resumePass) return true;
+
+        // Offscreen pass: clear color+depth, end with color ready for sampling.
+        // The EXTERNAL dependencies order this frame's RT write against the
+        // previous frame's ImGui sampling (WAR) and this frame's (RAW).
+        {
+            VkAttachmentDescription color{};
+            color.format = m_swapchainFormat;
+            color.samples = VK_SAMPLE_COUNT_1_BIT;
+            color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            color.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            color.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            VkAttachmentDescription depth{};
+            depth.format = m_depthFormat;
+            depth.samples = VK_SAMPLE_COUNT_1_BIT;
+            depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            depth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            depth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+            VkAttachmentReference colorRef{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+            VkAttachmentReference depthRef{ 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorRef;
+            subpass.pDepthStencilAttachment = &depthRef;
+
+            VkSubpassDependency deps[2]{};
+            deps[0].srcSubpass = VK_SUBPASS_EXTERNAL; deps[0].dstSubpass = 0;
+            deps[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            deps[1].srcSubpass = 0; deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+            deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            VkAttachmentDescription atts[] = { color, depth };
+            VkRenderPassCreateInfo ci{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+            ci.attachmentCount = 2; ci.pAttachments = atts;
+            ci.subpassCount = 1; ci.pSubpasses = &subpass;
+            ci.dependencyCount = 2; ci.pDependencies = deps;
+            if (vkCreateRenderPass(m_device, &ci, nullptr, &m_rtRenderPass) != VK_SUCCESS)
+            {
+                Logger::Get().Error("[Vulkan] RT render pass creation failed");
+                return false;
+            }
+        }
+
+        // Resume pass: identical attachments to the swapchain pass but LOADing the
+        // already-rendered color, so an interrupted frame keeps its contents.
+        // (Compatible with m_renderPass framebuffers: same formats/samples.)
+        {
+            VkAttachmentDescription color{};
+            color.format = m_swapchainFormat;
+            color.samples = VK_SAMPLE_COUNT_1_BIT;
+            color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            color.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;   // layout left by the ended pass
+            color.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+            VkAttachmentDescription depth{};
+            depth.format = m_depthFormat;
+            depth.samples = VK_SAMPLE_COUNT_1_BIT;
+            depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;   // prior pass didn't store depth
+            depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            depth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            depth.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+            VkAttachmentReference colorRef{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+            VkAttachmentReference depthRef{ 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorRef;
+            subpass.pDepthStencilAttachment = &depthRef;
+
+            VkSubpassDependency dep{};
+            dep.srcSubpass = VK_SUBPASS_EXTERNAL; dep.dstSubpass = 0;
+            dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+            VkAttachmentDescription atts[] = { color, depth };
+            VkRenderPassCreateInfo ci{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+            ci.attachmentCount = 2; ci.pAttachments = atts;
+            ci.subpassCount = 1; ci.pSubpasses = &subpass;
+            ci.dependencyCount = 1; ci.pDependencies = &dep;
+            if (vkCreateRenderPass(m_device, &ci, nullptr, &m_resumePass) != VK_SUCCESS)
+            {
+                Logger::Get().Error("[Vulkan] resume render pass creation failed");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    RenderTargetHandle VulkanRenderer::CreateRenderTarget(int w, int h)
+    {
+        // Needs the ImGui pool/sampler so the color texture is ImGui-displayable.
+        if (!m_ready || !m_imguiInit || w <= 0 || h <= 0) return {};
+        if (!EnsureRenderTargetPasses()) return {};
+
+        VkRenderTargetRes rt;
+        rt.w = w; rt.h = h;
+
+        // Color attachment (also sampled by ImGui). Registered as a texture so
+        // GetImGuiTextureID / DestroyTexture handle it like any other texture.
+        VkTextureRes color;
+        {
+            VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+            ici.imageType = VK_IMAGE_TYPE_2D;
+            ici.extent = { (uint32_t)w, (uint32_t)h, 1 };
+            ici.mipLevels = 1; ici.arrayLayers = 1;
+            ici.format = m_swapchainFormat;
+            ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+            ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            ici.samples = VK_SAMPLE_COUNT_1_BIT;
+            ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            VmaAllocationCreateInfo aci{};
+            aci.usage = VMA_MEMORY_USAGE_AUTO;
+            aci.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+            if (vmaCreateImage(m_allocator, &ici, &aci, &color.image, &color.memory, nullptr) != VK_SUCCESS)
+            {
+                Logger::Get().Error("[Vulkan] RT color image creation failed");
+                return {};
+            }
+
+            VkImageViewCreateInfo vci{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+            vci.image = color.image; vci.viewType = VK_IMAGE_VIEW_TYPE_2D; vci.format = m_swapchainFormat;
+            vci.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+            vkCreateImageView(m_device, &vci, nullptr, &color.view);
+
+            color.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, color.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+        m_textures.push_back(color);
+        rt.color = TextureHandle{ (uint32_t)m_textures.size() };
+
+        // Depth attachment.
+        {
+            VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+            ici.imageType = VK_IMAGE_TYPE_2D;
+            ici.extent = { (uint32_t)w, (uint32_t)h, 1 };
+            ici.mipLevels = 1; ici.arrayLayers = 1;
+            ici.format = m_depthFormat;
+            ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+            ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            ici.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            ici.samples = VK_SAMPLE_COUNT_1_BIT;
+            ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            VmaAllocationCreateInfo aci{};
+            aci.usage = VMA_MEMORY_USAGE_AUTO;
+            aci.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+            if (vmaCreateImage(m_allocator, &ici, &aci, &rt.depthImage, &rt.depthMem, nullptr) != VK_SUCCESS)
+            {
+                Logger::Get().Error("[Vulkan] RT depth image creation failed");
+                DestroyTexture(rt.color);
+                return {};
+            }
+
+            VkImageViewCreateInfo vci{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+            vci.image = rt.depthImage; vci.viewType = VK_IMAGE_VIEW_TYPE_2D; vci.format = m_depthFormat;
+            vci.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+            vkCreateImageView(m_device, &vci, nullptr, &rt.depthView);
+        }
+
+        VkImageView attachments[] = { m_textures[rt.color.id - 1].view, rt.depthView };
+        VkFramebufferCreateInfo fci{ VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
+        fci.renderPass = m_rtRenderPass;
+        fci.attachmentCount = 2;
+        fci.pAttachments = attachments;
+        fci.width = (uint32_t)w; fci.height = (uint32_t)h; fci.layers = 1;
+        if (vkCreateFramebuffer(m_device, &fci, nullptr, &rt.framebuffer) != VK_SUCCESS)
+        {
+            Logger::Get().Error("[Vulkan] RT framebuffer creation failed");
+            vkDestroyImageView(m_device, rt.depthView, nullptr);
+            vmaDestroyImage(m_allocator, rt.depthImage, rt.depthMem);
+            DestroyTexture(rt.color);
+            return {};
+        }
+
+        m_renderTargets.push_back(rt);
+        return RenderTargetHandle{ (uint32_t)m_renderTargets.size() };
+    }
+
+    void VulkanRenderer::BeginRenderTarget(RenderTargetHandle h)
+    {
+        if (!m_frameActive || m_rtActive) return;
+        if (h.id == 0 || h.id > m_renderTargets.size()) return;
+        VkRenderTargetRes& rt = m_renderTargets[h.id - 1];
+        if (!rt.framebuffer) return;
+
+        VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
+
+        // Suspend the swapchain pass; EndRenderTarget resumes it with m_resumePass.
+        vkCmdEndRenderPass(cmd);
+
+        VkClearValue clears[2]{};
+        clears[0].color = { { m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a } };
+        clears[1].depthStencil = { 1.0f, 0 };
+        VkRenderPassBeginInfo rp{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+        rp.renderPass = m_rtRenderPass;
+        rp.framebuffer = rt.framebuffer;
+        rp.renderArea.extent = { (uint32_t)rt.w, (uint32_t)rt.h };
+        rp.clearValueCount = 2;
+        rp.pClearValues = clears;
+        vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+
+        m_rtActive = true;
+        m_rtExtent = { (uint32_t)rt.w, (uint32_t)rt.h };
+
+        // POSITIVE-height viewport (no Y flip): leaves the image in GL's
+        // bottom-up memory order, so editor code can use the same flipped UVs
+        // (0,1)-(1,0) it already uses for GL render targets.
+        VkViewport vp{ 0.0f, 0.0f, (float)rt.w, (float)rt.h, 0.0f, 1.0f };
+        VkRect2D sc{ {0, 0}, m_rtExtent };
+        vkCmdSetViewport(cmd, 0, 1, &vp);
+        vkCmdSetScissor(cmd, 0, 1, &sc);
+    }
+
+    void VulkanRenderer::EndRenderTarget()
+    {
+        if (!m_frameActive || !m_rtActive) return;
+        VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
+
+        vkCmdEndRenderPass(cmd);   // color transitions to SHADER_READ_ONLY
+        m_rtActive = false;
+
+        // Resume the swapchain pass, keeping its existing color contents.
+        VkClearValue clears[2]{};
+        clears[1].depthStencil = { 1.0f, 0 };
+        VkRenderPassBeginInfo rp{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+        rp.renderPass = m_resumePass;
+        rp.framebuffer = m_framebuffers[m_imageIndex];
+        rp.renderArea.extent = m_swapchainExtent;
+        rp.clearValueCount = 2;
+        rp.pClearValues = clears;
+        vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+
+        // Restore the full-swapchain flipped viewport/scissor (as in BeginFrame).
+        VkViewport vp{ 0.0f, (float)m_swapchainExtent.height,
+                       (float)m_swapchainExtent.width, -(float)m_swapchainExtent.height, 0.0f, 1.0f };
+        VkRect2D sc{ {0, 0}, m_swapchainExtent };
+        vkCmdSetViewport(cmd, 0, 1, &vp);
+        vkCmdSetScissor(cmd, 0, 1, &sc);
+    }
+
+    TextureHandle VulkanRenderer::GetColorTexture(RenderTargetHandle h)
+    {
+        if (h.id == 0 || h.id > m_renderTargets.size()) return {};
+        return m_renderTargets[h.id - 1].color;
+    }
+
+    void VulkanRenderer::DestroyRenderTarget(RenderTargetHandle h)
+    {
+        if (h.id == 0 || h.id > m_renderTargets.size()) return;
+        VkRenderTargetRes& rt = m_renderTargets[h.id - 1];
+        if (!rt.framebuffer && !rt.depthImage && !rt.color) return;
+
+        // Editor-only path (viewport resize): wait out any frame still sampling
+        // this target before tearing it down.
+        vkDeviceWaitIdle(m_device);
+
+        if (rt.framebuffer) vkDestroyFramebuffer(m_device, rt.framebuffer, nullptr);
+        if (rt.depthView)   vkDestroyImageView(m_device, rt.depthView, nullptr);
+        if (rt.depthImage)  vmaDestroyImage(m_allocator, rt.depthImage, rt.depthMem);
+        DestroyTexture(rt.color);   // frees color image/view + ImGui descriptor + slot
+        rt = VkRenderTargetRes{};
+    }
 
     void VulkanRenderer::BindPipeline(PipelineHandle h)
     {
@@ -1256,6 +1575,12 @@ namespace Ditto
 
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmd, 0, 1, &mesh->vbuf, &offset);
-        vkCmdDraw(cmd, mesh->vertexCount, (uint32_t)instanceCount, 0, 0);
+        if (mesh->indexCount > 0)
+        {
+            vkCmdBindIndexBuffer(cmd, mesh->ibuf, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(cmd, mesh->indexCount, (uint32_t)instanceCount, 0, 0, 0);
+        }
+        else
+            vkCmdDraw(cmd, mesh->vertexCount, (uint32_t)instanceCount, 0, 0);
     }
 }

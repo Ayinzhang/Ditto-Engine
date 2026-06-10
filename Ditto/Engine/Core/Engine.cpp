@@ -319,16 +319,30 @@ void Engine::Run()
     }
 }
 
-void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
+void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
 {
-    int x = (int)viewport.Min.x;
-    int y = (int)(ImGui::GetIO().DisplaySize.y - viewport.Max.y);
-    int w = (int)(viewport.Max.x - viewport.Min.x);
-    int h = (int)(viewport.Max.y - viewport.Min.y);
-    
-    renderer->SetViewport(x, y, w, h);
-    renderer->SetScissor(true, x, y, w, h);
-    renderer->Clear(Ditto::ClearDepth, glm::vec4(0.0f));
+    if (!renderer || w <= 0 || h <= 0) return nullptr;
+
+    Ditto::RenderTargetHandle& rt = isGameView ? gameViewRT : sceneViewRT;
+    int& rtW = isGameView ? gameViewW : sceneViewW;
+    int& rtH = isGameView ? gameViewH : sceneViewH;
+
+    // (Re)create the render target when the viewport size changes.
+    if (rt && (rtW != w || rtH != h))
+    {
+        renderer->DestroyRenderTarget(rt);
+        rt = {};
+    }
+    if (!rt)
+    {
+        rt = renderer->CreateRenderTarget(w, h);
+        rtW = w; rtH = h;
+    }
+    if (!rt) return nullptr;
+
+    renderer->BeginRenderTarget(rt);
+    renderer->SetScissor(false);
+    renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
     renderer->SetBlendState(false);
     renderer->SetDepthState(true);
 
@@ -338,7 +352,9 @@ void Engine::RenderSceneToViewport(ImRect viewport, bool isGameView)
 
     scene->Render(shaderPipeline, view, projection, cam->position, w, h);
 
-    renderer->SetScissor(false);
+    renderer->EndRenderTarget();
+
+    return renderer->GetImGuiTextureID(renderer->GetColorTexture(rt));
 }
 
 void Engine::ProcessInput()
@@ -388,9 +404,11 @@ void Engine::ProcessInput()
 
     // Ctrl+Z Undo / Ctrl+Y Redo (editor, edit-mode only). Skip while typing in a
     // text field so the shortcuts don't fight ImGui's own text editing.
+    // Game mode has NO ImGui context (only the editor calls CreateContext), so
+    // guard the GetIO() call -- it asserts/crashes on a null context otherwise.
     bool ctrlDown = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
                     glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-    bool textInputActive = ImGui::GetIO().WantTextInput;
+    bool textInputActive = ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput;
 
     static bool ctrlZLastFrame = false;
     bool ctrlZNow = ctrlDown && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS;

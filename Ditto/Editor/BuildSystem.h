@@ -48,6 +48,8 @@ private:
     static bool CopyAssets(const std::string& projectPath, const std::string& outputPath, BuildProgressCallback callback);
     static bool CopyScenes(const std::vector<std::string>& scenes, const std::string& projectPath, const std::string& outputPath);
     static bool CopyShaders(const std::string& engineRoot, const std::string& outputPath);
+    static bool CopyShaderCache(const std::string& outputPath);
+    static bool CopyEngineModels(const std::string& outputPath);
     static bool CopyExecutable(const std::string& outputPath, const std::string& productName, BuildConfiguration config, const std::string& engineRoot);
     static bool CopyDependencies(const std::string& outputPath, const std::string& engineRoot);
     static bool CompileScripts(const std::string& projectPath, const std::string& outputPath, const std::string& engineRoot);
