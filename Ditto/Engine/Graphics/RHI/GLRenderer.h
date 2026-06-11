@@ -51,6 +51,7 @@ namespace Ditto
         TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) override;
         void DestroyTexture(TextureHandle) override;
         void* GetImGuiTextureID(TextureHandle) override;
+        void BindTexture(int binding, TextureHandle) override;
 
         RenderTargetHandle CreateRenderTarget(int w, int h) override;
         void BeginRenderTarget(RenderTargetHandle) override;

@@ -1,6 +1,7 @@
 #include "ParallelPhysics.h"
 #include <algorithm>
 #include <vector>
+#include <unordered_set>
 
 ThreadPool ParallelPhysics::threadPool;
 
@@ -30,7 +31,9 @@ void ParallelPhysics::UpdatePhysics(float dt) {
     size_t n = colliders.size();
     if (n > 0) {
         threadPool.ParallelFor(0, n, [this](size_t i) {
-            colliders[i]->transform->UpdateTransform(); });
+            colliders[i]->bodyTransform->UpdateTransform();
+            colliders[i]->objectTransform->UpdateTransform();
+            colliders[i]->UpdateBiasWorldModel(); });
     }
 }
 
@@ -38,10 +41,15 @@ void ParallelPhysics::IntegrateForce(float dt) {
     size_t n = colliders.size();
     if (n == 0) return;
 
-    threadPool.ParallelFor(0, n, [this, dt](size_t i) {
+    std::unordered_set<RigidbodyComponent*> integratedBodies;
+    for (size_t i = 0; i < n; ++i) {
         Collider* collider = colliders[i].get();
+        collider->isDirty = true;
+        if (!integratedBodies.insert(collider->rigidbody).second)
+            continue;
+
         if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
-            auto* transform = collider->transform;
+            auto* transform = collider->bodyTransform;
             auto* rb = collider->rigidbody;
 
             if (rb->useGravity)
@@ -73,7 +81,7 @@ void ParallelPhysics::IntegrateForce(float dt) {
             // following child is broad-phased at its current world pose.
             collider->isDirty = true;
         }
-        });
+    }
 }
 
 void ParallelPhysics::HandleBroadCollisions() {
@@ -103,6 +111,7 @@ void ParallelPhysics::HandleBroadCollisions() {
             std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
             for (Collider* other : potential) {
                 if (other == collider) continue;
+                if (other->rigidbody == collider->rigidbody) continue;
                 // All body types are valid partners for a Dynamic body: Static
                 // and Kinematic both act as infinite-mass obstacles (Kinematic
                 // additionally moves and pushes this Dynamic body).
@@ -159,44 +168,27 @@ void ParallelPhysics::BuildCollisionGroups() {
             return a.info.depth > b.info.depth;
         });
 
-    static std::vector<int> bodyMask;
-    static std::vector<int> bodyEpoch;
-    static int globalEpoch = 0;
-
-    size_t maxId = 0;
-    for (auto& data : collisionData) {
-        maxId = std::max(maxId, (size_t)data.colliderA->id);
-        maxId = std::max(maxId, (size_t)data.colliderB->id);
-    }
-    if (bodyMask.size() <= maxId) {
-        bodyMask.resize(maxId + 1, 0);
-        bodyEpoch.resize(maxId + 1, 0);
-    }
-
-    ++globalEpoch;
+    std::vector<std::unordered_set<RigidbodyComponent*>> groupBodies;
 
     for (auto& data : collisionData) {
-        int aId = data.colliderA->id;
-        int bId = data.colliderB->id;
+        RigidbodyComponent* bodyA = data.colliderA->rigidbody;
+        RigidbodyComponent* bodyB = data.colliderB->rigidbody;
         int groupIdx = 0;
         while (true) {
             if (groupIdx >= (int)collisionGroups.size()) {
                 collisionGroups.emplace_back();
+                groupBodies.emplace_back();
                 collisionGroups.back().push_back(&data);
-                bodyMask[aId] = groupIdx + 1;
-                bodyEpoch[aId] = globalEpoch;
-                bodyMask[bId] = groupIdx + 1;
-                bodyEpoch[bId] = globalEpoch;
+                groupBodies.back().insert(bodyA);
+                groupBodies.back().insert(bodyB);
                 break;
             }
-            bool aOccupied = (bodyEpoch[aId] == globalEpoch && bodyMask[aId] == groupIdx + 1);
-            bool bOccupied = (bodyEpoch[bId] == globalEpoch && bodyMask[bId] == groupIdx + 1);
+            bool aOccupied = groupBodies[groupIdx].count(bodyA) > 0;
+            bool bOccupied = groupBodies[groupIdx].count(bodyB) > 0;
             if (!aOccupied && !bOccupied) {
                 collisionGroups[groupIdx].push_back(&data);
-                bodyMask[aId] = groupIdx + 1;
-                bodyEpoch[aId] = globalEpoch;
-                bodyMask[bId] = groupIdx + 1;
-                bodyEpoch[bId] = globalEpoch;
+                groupBodies[groupIdx].insert(bodyA);
+                groupBodies[groupIdx].insert(bodyB);
                 break;
             }
             ++groupIdx;
@@ -210,6 +202,7 @@ void ParallelPhysics::SolveCollisions(int iter) {
         if (groupSize == 0) continue;
         if (groupSize < MIN_PARALLEL_GROUP_SIZE) {
             for (CollisionData* data : group) {
+                if (data->colliderA->isTrigger || data->colliderB->isTrigger) continue;
                 ApplyImpulse(data->colliderA, data->colliderB,
                     data->info.normal,
                     data->info.contactPointA,
@@ -220,6 +213,7 @@ void ParallelPhysics::SolveCollisions(int iter) {
         else {
             threadPool.ParallelFor(0, groupSize, [this, iter, &group](size_t idx) {
                 CollisionData* data = group[idx];
+                if (data->colliderA->isTrigger || data->colliderB->isTrigger) return;
                 ApplyImpulse(data->colliderA, data->colliderB,
                     data->info.normal,
                     data->info.contactPointA,
@@ -239,6 +233,7 @@ void ParallelPhysics::ApplyPositionCorrections() {
                 if (data->info.depth > 1e-3f) {
                     Collider* a = data->colliderA;
                     Collider* b = data->colliderB;
+                    if (a->isTrigger || b->isTrigger) continue;
                     const CollisionInfo& info = data->info;
 
                     float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
@@ -247,8 +242,10 @@ void ParallelPhysics::ApplyPositionCorrections() {
 
                     glm::vec3 correction = info.depth / totalInvMass * info.normal * positionCorrectionFactor;
 
-                    a->transform->position -= correction * invMassA;
-                    b->transform->position += correction * invMassB;
+                    a->bodyTransform->position -= correction * invMassA;
+                    b->bodyTransform->position += correction * invMassB;
+                    a->bodyTransform->localDirty = true;
+                    b->bodyTransform->localDirty = true;
 
                     a->isDirty = true;
                     b->isDirty = true;
@@ -261,6 +258,7 @@ void ParallelPhysics::ApplyPositionCorrections() {
                 if (data->info.depth > 1e-3f) {
                     Collider* a = data->colliderA;
                     Collider* b = data->colliderB;
+                    if (a->isTrigger || b->isTrigger) return;
                     const CollisionInfo& info = data->info;
 
                     float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
@@ -269,8 +267,10 @@ void ParallelPhysics::ApplyPositionCorrections() {
 
                     glm::vec3 correction = info.depth / totalInvMass * info.normal * positionCorrectionFactor;
 
-                    a->transform->position -= correction * invMassA;
-                    b->transform->position += correction * invMassB;
+                    a->bodyTransform->position -= correction * invMassA;
+                    b->bodyTransform->position += correction * invMassB;
+                    a->bodyTransform->localDirty = true;
+                    b->bodyTransform->localDirty = true;
 
                     a->isDirty = true;
                     b->isDirty = true;

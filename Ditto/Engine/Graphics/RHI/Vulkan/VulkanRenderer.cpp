@@ -304,7 +304,10 @@ namespace Ditto
                 }
         }
         if (!m_pushDescriptorOK)
-            Logger::Get().Warning("[Vulkan] VK_KHR_push_descriptor not supported; scene rendering disabled.");
+        {
+            Logger::Get().Warning("[Vulkan] VK_KHR_push_descriptor not supported; falling back to OpenGL.");
+            return false;
+        }
 
         VkPhysicalDeviceFeatures features{};
         features.fillModeNonSolid = VK_TRUE;   // wireframe (model preview parity)
@@ -597,6 +600,7 @@ namespace Ditto
         if (!m_ready) return;
 
         vkWaitForFences(m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX);
+        ProcessDeferredDestroys();
 
         VkResult acq = vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX,
             m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &m_imageIndex);
@@ -950,12 +954,14 @@ namespace Ditto
         // set 0 = shared UBO layout (regular, bound). set 1 = 2 storage buffers (push,
         // the single allowed push-descriptor set). p.setLayouts[0] stays null (shared,
         // not owned by the pipeline); only set 1 is created/destroyed per pipeline.
-        VkDescriptorSetLayoutBinding sb[2]{};
+        VkDescriptorSetLayoutBinding sb[4]{};
         sb[0].binding = 0; sb[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[0].descriptorCount = 1; sb[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         sb[1].binding = 1; sb[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[1].descriptorCount = 1; sb[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        sb[2].binding = 2; sb[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; sb[2].descriptorCount = 1; sb[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        sb[3].binding = 3; sb[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; sb[3].descriptorCount = 1; sb[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         VkDescriptorSetLayoutCreateInfo l1{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
         l1.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-        l1.bindingCount = 2; l1.pBindings = sb;
+        l1.bindingCount = 4; l1.pBindings = sb;
         vkCreateDescriptorSetLayout(m_device, &l1, nullptr, &p.setLayouts[1]);
 
         VkDescriptorSetLayout layouts[2] = { m_uboSetLayout, p.setLayouts[1] };
@@ -969,15 +975,16 @@ namespace Ditto
         stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = p.fs; stages[1].pName = "main";
 
-        // Vertex input: interleaved pos(vec3)+normal(vec3), stride 24 (matches the
+        // Vertex input: interleaved pos(vec3)+normal(vec3)+uv(vec2), stride 32 (matches the
         // engine's base/custom meshes).
-        VkVertexInputBindingDescription bind{}; bind.binding = 0; bind.stride = 6 * sizeof(float); bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        VkVertexInputAttributeDescription attrs[2]{};
+        VkVertexInputBindingDescription bind{}; bind.binding = 0; bind.stride = 8 * sizeof(float); bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        VkVertexInputAttributeDescription attrs[3]{};
         attrs[0].location = 0; attrs[0].binding = 0; attrs[0].format = VK_FORMAT_R32G32B32_SFLOAT; attrs[0].offset = 0;
         attrs[1].location = 1; attrs[1].binding = 0; attrs[1].format = VK_FORMAT_R32G32B32_SFLOAT; attrs[1].offset = 3 * sizeof(float);
+        attrs[2].location = 2; attrs[2].binding = 0; attrs[2].format = VK_FORMAT_R32G32_SFLOAT; attrs[2].offset = 6 * sizeof(float);
         VkPipelineVertexInputStateCreateInfo vi{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
         vi.vertexBindingDescriptionCount = 1; vi.pVertexBindingDescriptions = &bind;
-        vi.vertexAttributeDescriptionCount = 2; vi.pVertexAttributeDescriptions = attrs;
+        vi.vertexAttributeDescriptionCount = 3; vi.pVertexAttributeDescriptions = attrs;
 
         VkPipelineInputAssemblyStateCreateInfo ia{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
         ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -1197,10 +1204,33 @@ namespace Ditto
     {
         if (h.id == 0 || h.id > m_textures.size()) return;
         VkTextureRes& t = m_textures[h.id - 1];
+        if (m_frameActive)
+        {
+            if (!t.pendingDestroy)
+            {
+                t.pendingDestroy = true;
+                m_pendingTextureDestroys.push_back(h);
+            }
+            return;
+        }
         if (t.descriptor) ImGui_ImplVulkan_RemoveTexture(t.descriptor);
         if (t.view)  vkDestroyImageView(m_device, t.view, nullptr);
         if (t.image) vmaDestroyImage(m_allocator, t.image, t.memory);
         t = VkTextureRes{};
+    }
+
+    void VulkanRenderer::ProcessDeferredDestroys()
+    {
+        if (m_pendingTextureDestroys.empty()) return;
+        std::vector<TextureHandle> pending;
+        pending.swap(m_pendingTextureDestroys);
+        for (TextureHandle h : pending)
+        {
+            if (h.id == 0 || h.id > m_textures.size()) continue;
+            VkTextureRes& t = m_textures[h.id - 1];
+            t.pendingDestroy = false;
+            DestroyTexture(h);
+        }
     }
 
     void* VulkanRenderer::GetImGuiTextureID(TextureHandle h)
@@ -1208,6 +1238,13 @@ namespace Ditto
         if (h.id == 0 || h.id > m_textures.size()) return nullptr;
         return (void*)m_textures[h.id - 1].descriptor;   // VkDescriptorSet as ImTextureID
     }
+
+    void VulkanRenderer::BindTexture(int binding, TextureHandle h)
+    {
+        if (binding >= 0 && binding < 4)
+            m_boundTextures[binding] = h;
+    }
+
     // --------------------------- Render targets ---------------------------
     bool VulkanRenderer::EnsureRenderTargetPasses()
     {
@@ -1245,23 +1282,18 @@ namespace Ditto
             subpass.pColorAttachments = &colorRef;
             subpass.pDepthStencilAttachment = &depthRef;
 
-            VkSubpassDependency deps[2]{};
-            deps[0].srcSubpass = VK_SUBPASS_EXTERNAL; deps[0].dstSubpass = 0;
-            deps[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-            deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            deps[1].srcSubpass = 0; deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-            deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            VkSubpassDependency dep{};
+            dep.srcSubpass = VK_SUBPASS_EXTERNAL; dep.dstSubpass = 0;
+            dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dep.srcAccessMask = 0;
+            dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
             VkAttachmentDescription atts[] = { color, depth };
             VkRenderPassCreateInfo ci{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
             ci.attachmentCount = 2; ci.pAttachments = atts;
             ci.subpassCount = 1; ci.pSubpasses = &subpass;
-            ci.dependencyCount = 2; ci.pDependencies = deps;
+            ci.dependencyCount = 1; ci.pDependencies = &dep;
             if (vkCreateRenderPass(m_device, &ci, nullptr, &m_rtRenderPass) != VK_SUCCESS)
             {
                 Logger::Get().Error("[Vulkan] RT render pass creation failed");
@@ -1304,7 +1336,7 @@ namespace Ditto
             VkSubpassDependency dep{};
             dep.srcSubpass = VK_SUBPASS_EXTERNAL; dep.dstSubpass = 0;
             dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-            dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dep.srcAccessMask = 0;
             dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
             dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
@@ -1523,11 +1555,21 @@ namespace Ditto
             glm::vec3 viewPos;     float _p0;
             glm::vec3 lightColor;  float _p1;
             glm::vec3 lightDir;    float lightIntensity;
+            glm::vec4 time;
+            glm::vec4 sinTime;
+            glm::vec4 cosTime;
+            glm::vec4 deltaTime;
+            glm::vec4 screenParams;
         } d;
         d.view = u.view; d.projection = u.projection;
         d.viewPos = u.viewPos;        d._p0 = 0.0f;
         d.lightColor = u.lightColor;  d._p1 = 0.0f;
         d.lightDir = u.lightDir;      d.lightIntensity = u.lightIntensity;
+        d.time = u.time;
+        d.sinTime = u.sinTime;
+        d.cosTime = u.cosTime;
+        d.deltaTime = u.deltaTime;
+        d.screenParams = u.screenParams;
 
         static_assert(sizeof(Std140) <= kUboSlotSize, "FrameUniforms exceeds UBO slot size");
 
@@ -1560,18 +1602,26 @@ namespace Ditto
         VkStorageRes* model = (m_boundStorage[0].id && m_boundStorage[0].id <= m_storage.size()) ? &m_storage[m_boundStorage[0].id - 1] : nullptr;
         VkStorageRes* color = (m_boundStorage[1].id && m_boundStorage[1].id <= m_storage.size()) ? &m_storage[m_boundStorage[1].id - 1] : nullptr;
         if (!model || !color) return;
+        VkTextureRes* tex = (m_boundTextures[2].id && m_boundTextures[2].id <= m_textures.size()) ? &m_textures[m_boundTextures[2].id - 1] : nullptr;
+        if (!tex || !tex->view || !m_sampler) return;
 
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
 
-        // Push set 1 (this frame's storage buffers: model matrices + colors).
+        // Push set 1 (this frame's storage buffers + material texture).
         VkDescriptorBufferInfo bi[2] = {
             { model->buf[m_currentFrame], 0, VK_WHOLE_SIZE },
             { color->buf[m_currentFrame], 0, VK_WHOLE_SIZE },
         };
-        VkWriteDescriptorSet w[2]{};
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = tex->view;
+        imageInfo.sampler = m_sampler;
+        VkWriteDescriptorSet w[4]{};
         w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w[0].pBufferInfo = &bi[0];
         w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1].dstBinding = 1; w[1].descriptorCount = 1; w[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w[1].pBufferInfo = &bi[1];
-        m_pushDescriptor(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout, 1, 2, w);
+        w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[2].dstBinding = 2; w[2].descriptorCount = 1; w[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; w[2].pImageInfo = &imageInfo;
+        w[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[3].dstBinding = 3; w[3].descriptorCount = 1; w[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; w[3].pImageInfo = &imageInfo;
+        m_pushDescriptor(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout, 1, 4, w);
 
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmd, 0, 1, &mesh->vbuf, &offset);

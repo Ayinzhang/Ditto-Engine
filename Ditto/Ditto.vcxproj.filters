@@ -1008,6 +1008,9 @@
     <ClInclude Include="Engine\Graphics\Shaders\CompiledShader.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Graphics\Shaders\ShaderAsset.h">
+      <Filter>头文件\Engine\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Graphics\Shaders\ShaderCompiler.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
@@ -1516,6 +1519,12 @@
     <None Include="Assets\Shaders\Fragment.glsl">
       <Filter>资源文件</Filter>
     </None>
+    <None Include="Assets\Shaders\Lit_Toon.shader">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="Assets\Shaders\Lit_Toon.hlsl">
+      <Filter>资源文件</Filter>
+    </None>
     <None Include="Assets\Shaders\Vertex.glsl">
       <Filter>资源文件</Filter>
     </None>
@@ -1579,6 +1588,9 @@
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.cpp">
+      <Filter>源文件\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\Shaders\ShaderAsset.cpp">
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\Shaders\ShaderCompiler.cpp">

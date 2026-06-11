@@ -286,6 +286,12 @@ namespace Ditto
         return t ? (void*)(intptr_t)t->tex : nullptr;
     }
 
+    void GLRenderer::BindTexture(int binding, TextureHandle h)
+    {
+        GLTexture* t = GetSlot(m_textures, h.id);
+        glBindTextureUnit(static_cast<GLuint>(binding), t ? t->tex : 0);
+    }
+
     RenderTargetHandle GLRenderer::CreateRenderTarget(int w, int h)
     {
         GLRenderTargetRes rt;
@@ -373,12 +379,22 @@ namespace Ditto
             glm::vec3 viewPos;     float _p0;
             glm::vec3 lightColor;  float _p1;
             glm::vec3 lightDir;    float lightIntensity;
+            glm::vec4 time;
+            glm::vec4 sinTime;
+            glm::vec4 cosTime;
+            glm::vec4 deltaTime;
+            glm::vec4 screenParams;
         } data;
         data.view = u.view;
         data.projection = u.projection;
         data.viewPos = u.viewPos;          data._p0 = 0.0f;
         data.lightColor = u.lightColor;    data._p1 = 0.0f;
         data.lightDir = u.lightDir;        data.lightIntensity = u.lightIntensity;
+        data.time = u.time;
+        data.sinTime = u.sinTime;
+        data.cosTime = u.cosTime;
+        data.deltaTime = u.deltaTime;
+        data.screenParams = u.screenParams;
 
         if (!m_frameUBO)
         {

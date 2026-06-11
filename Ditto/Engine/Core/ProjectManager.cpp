@@ -1,5 +1,6 @@
 #include "ProjectManager.h"
 #include "Logger.h"
+#include "PathUtils.h"
 #include <fstream>
 #include <iostream>
 
@@ -16,6 +17,28 @@ void ProjectManager::EnsureDirectoryExists(const std::string& path)
     if (!fs::exists(path))
     {
         fs::create_directories(path);
+    }
+}
+
+static void CopyDefaultAsset(const std::string& assetRelativePath, const fs::path& projectAssetsPath)
+{
+    try
+    {
+        fs::path src = PathUtils::ResolveAsset(assetRelativePath);
+        if (!fs::exists(src))
+        {
+            DITTO_LOG_WARN_STREAM("[Project] Default asset not found: " << src.string());
+            return;
+        }
+
+        fs::path dst = projectAssetsPath / fs::path(assetRelativePath);
+        fs::create_directories(dst.parent_path());
+        fs::copy_file(src, dst, fs::copy_options::overwrite_existing);
+        DITTO_LOG_INFO_STREAM("[Project] Copied default asset: " << dst.string());
+    }
+    catch (const std::exception& e)
+    {
+        DITTO_LOG_WARN_STREAM("[Project] Failed to copy default asset " << assetRelativePath << ": " << e.what());
     }
 }
 
@@ -86,8 +109,15 @@ bool ProjectManager::CreateProject(const std::string& name)
     EnsureDirectoryExists(projectPath + "/Assets/Scenes");
     EnsureDirectoryExists(projectPath + "/Assets/Models");
     EnsureDirectoryExists(projectPath + "/Assets/Materials");
+    EnsureDirectoryExists(projectPath + "/Assets/Textures");
     EnsureDirectoryExists(projectPath + "/Assets/Prefabs");
     EnsureDirectoryExists(projectPath + "/Assets/Scripts");
+    EnsureDirectoryExists(projectPath + "/Assets/Shaders");
+
+    fs::path projectAssetsPath = fs::path(projectPath) / "Assets";
+    CopyDefaultAsset("Models/Cube.obj", projectAssetsPath);
+    CopyDefaultAsset("Models/Sphere.obj", projectAssetsPath);
+    CopyDefaultAsset("Shaders/Lit_Toon.shader", projectAssetsPath);
     
     // Create default scene file
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";

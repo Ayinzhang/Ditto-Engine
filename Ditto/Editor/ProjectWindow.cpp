@@ -496,11 +496,15 @@ void ProjectWindow::Draw()
                         ImGui::EndPopup();
                     }
 
-                    // Set drag source (.cs files can be dragged to Inspector)
-                    if (ext == ".cs" && ImGui::BeginDragDropSource())
+                    // Generic project file drag payload for object fields, plus
+                    // the legacy script-specific payload used by Inspector.
+                    if (ImGui::BeginDragDropSource())
                     {
-                        ImGui::SetDragDropPayload("CS_SCRIPT", entry.path().string().c_str(), 
-                            entry.path().string().length() + 1);
+                        std::string fullPath = entry.path().string();
+                        ImGui::SetDragDropPayload("PROJECT_FILE", fullPath.c_str(), fullPath.length() + 1);
+                        if (ext == ".cs")
+                            ImGui::SetDragDropPayload("CS_SCRIPT", fullPath.c_str(), fullPath.length() + 1);
+                        ImGui::TextUnformatted(entry.path().filename().string().c_str());
                         ImGui::EndDragDropSource();
                     }
 

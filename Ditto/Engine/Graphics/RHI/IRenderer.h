@@ -44,6 +44,11 @@ namespace Ditto
         glm::vec3 lightColor{ 1.0f };
         glm::vec3 lightDir{ 0.0f, -1.0f, 0.0f };
         float lightIntensity = 1.0f;
+        glm::vec4 time{ 0.0f };        // t/20, t, 2t, 3t
+        glm::vec4 sinTime{ 0.0f };
+        glm::vec4 cosTime{ 1.0f };
+        glm::vec4 deltaTime{ 0.0f };   // dt, 1/dt, smoothDt, 1/smoothDt
+        glm::vec4 screenParams{ 0.0f }; // width, height, 1+1/w, 1+1/h
     };
 
     enum ClearFlags : uint32_t { ClearColor = 1u << 0, ClearDepth = 1u << 1 };
@@ -99,6 +104,7 @@ namespace Ditto
         virtual TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) = 0;
         virtual void DestroyTexture(TextureHandle) = 0;
         virtual void* GetImGuiTextureID(TextureHandle) = 0;   // ImTextureID (void*); backend-specific
+        virtual void BindTexture(int binding, TextureHandle) {}
 
         virtual RenderTargetHandle CreateRenderTarget(int w, int h) = 0;
         virtual void BeginRenderTarget(RenderTargetHandle) = 0;

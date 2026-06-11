@@ -342,6 +342,7 @@
     <ClInclude Include="Engine\Core\ScriptFileWatcher.h" />
     <ClInclude Include="Engine\Graphics\Camera.h" />
     <ClInclude Include="Engine\Graphics\Shaders\CompiledShader.h" />
+    <ClInclude Include="Engine\Graphics\Shaders\ShaderAsset.h" />
     <ClInclude Include="Engine\Graphics\Shaders\ShaderCompiler.h" />
     <ClInclude Include="Engine\Graphics\RHI\IRenderer.h" />
     <ClInclude Include="Engine\Graphics\RHI\GLRenderer.h" />
@@ -505,6 +506,8 @@
     <None Include="3rdParty\GLM\gtx\wrap.inl" />
     <None Include="3rdParty\Mono\DittoEngine.cs" />
     <None Include="Assets\Shaders\Fragment.glsl" />
+    <None Include="Assets\Shaders\Lit_Toon.shader" />
+    <None Include="Assets\Shaders\Lit_Toon.hlsl" />
     <None Include="Assets\Shaders\Vertex.glsl" />
   </ItemGroup>
   <ItemGroup>
@@ -516,7 +519,7 @@
     <ClCompile Include="3rdParty\ImGui\imgui_draw.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_impl_glfw.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_impl_opengl3.cpp" />
-    <ClCompile Include="3rdParty\ImGui\imgui_impl_vulkan.cpp" />
+    <ClCompile Include="3rdParty\ImGui\imgui_impl_vulkan.cpp" Condition="'$(EnableVulkan)'=='true'" />
     <ClCompile Include="3rdParty\ImGui\imgui_impl_win32.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp" />
@@ -537,7 +540,8 @@
     <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp" />
     <ClCompile Include="Engine\Graphics\Camera.cpp" />
     <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp" />
-    <ClCompile Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.cpp" />
+    <ClCompile Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.cpp" Condition="'$(EnableVulkan)'=='true'" />
+    <ClCompile Include="Engine\Graphics\Shaders\ShaderAsset.cpp" />
     <ClCompile Include="Engine\Graphics\Shaders\ShaderCompiler.cpp" />
     <ClCompile Include="Engine\Main.cpp" />
     <ClCompile Include="Engine\Physics\CollisionShape.cpp" />
@@ -612,6 +616,11 @@
          new processes (a reboot / VS restart picks it up). -->
     <VulkanSDK Condition="'$(VULKAN_SDK)' != ''">$(VULKAN_SDK)</VulkanSDK>
     <VulkanSDK Condition="'$(VulkanSDK)' == ''">C:\VulkanSDK\1.4.350.0</VulkanSDK>
+    <EnableVulkan Condition="'$(EnableVulkan)'=='' and Exists('$(VulkanSDK)\Include\vulkan\vulkan.h') and Exists('$(VulkanSDK)\Lib\vulkan-1.lib')">true</EnableVulkan>
+    <EnableVulkan Condition="'$(EnableVulkan)'==''">false</EnableVulkan>
+    <AssimpRoot>$(ProjectDir)3rdParty\Assimp</AssimpRoot>
+    <EnableAssimp Condition="'$(EnableAssimp)'=='' and Exists('$(AssimpRoot)\include\assimp\Importer.hpp') and Exists('$(AssimpRoot)\lib\assimp-vc143-mt.lib')">true</EnableAssimp>
+    <EnableAssimp Condition="'$(EnableAssimp)'==''">false</EnableAssimp>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -659,7 +668,10 @@
       </AdditionalOptions>
       <DisableLanguageExtensions>false</DisableLanguageExtensions>
       <OpenMPSupport>false</OpenMPSupport>
-      <AdditionalIncludeDirectories>$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -667,8 +679,10 @@
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
       <AdditionalOptions>/NODEFAULTLIB:libc.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:libcd.lib /NODEFAULTLIB:libcmtd.lib /NODEFAULTLIB:msvcrt.lib
  %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(EnableVulkan)'=='true'">vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>setlocal
@@ -676,7 +690,8 @@ rem Locate dotnet without relying on the IDE process PATH (which may predate a
 rem .NET SDK install). Prefer the standard install location, then PATH.
 set "DOTNET=dotnet"
 if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
-cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
+cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release
+if "$(EnableAssimp)"=="true" copy /Y "$(AssimpRoot)\bin\assimp-vc143-mt.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -691,14 +706,19 @@ cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.cspro
       <AdditionalOptions>/FS
       </AdditionalOptions>
       <OpenMPSupport>false</OpenMPSupport>
-      <AdditionalIncludeDirectories>$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
-      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(EnableVulkan)'=='true'">vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>setlocal
@@ -706,7 +726,8 @@ rem Locate dotnet without relying on the IDE process PATH (which may predate a
 rem .NET SDK install). Prefer the standard install location, then PATH.
 set "DOTNET=dotnet"
 if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
-cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
+cd /d "$(ProjectDir)3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release
+if "$(EnableAssimp)"=="true" copy /Y "$(AssimpRoot)\bin\assimp-vc143-mt.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

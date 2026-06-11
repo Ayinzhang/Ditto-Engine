@@ -54,6 +54,7 @@ namespace Ditto
         TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) override;
         void DestroyTexture(TextureHandle) override;
         void* GetImGuiTextureID(TextureHandle) override;
+        void BindTexture(int binding, TextureHandle) override;
         RenderTargetHandle CreateRenderTarget(int w, int h) override;
         void BeginRenderTarget(RenderTargetHandle) override;
         void EndRenderTarget() override;
@@ -130,8 +131,10 @@ namespace Ditto
             VmaAllocation memory = VK_NULL_HANDLE;
             VkImageView view = VK_NULL_HANDLE;
             VkDescriptorSet descriptor = VK_NULL_HANDLE;   // ImGui texture id
+            bool pendingDestroy = false;
         };
         std::vector<VkTextureRes> m_textures;
+        std::vector<TextureHandle> m_pendingTextureDestroys;
 
         VkCommandBuffer BeginSingleTime();
         void EndSingleTime(VkCommandBuffer cmd);
@@ -220,6 +223,7 @@ namespace Ditto
         // Current-draw state recorded between BindPipeline/BindStorageBuffer/DrawInstanced.
         VkPipelineRes* m_boundPipeline = nullptr;
         StorageBufferHandle m_boundStorage[2];
+        TextureHandle m_boundTextures[4];
 
         // Allocate a buffer through VMA. `hostVisible` buffers are HOST_COHERENT
         // and persistently mapped (pointer returned via `outMapped`); device-local
@@ -228,6 +232,7 @@ namespace Ditto
                           VkBuffer& outBuf, VmaAllocation& outAlloc, void** outMapped = nullptr);
         bool CreateUboDescriptors();
         bool CreateDepthResources();
+        void ProcessDeferredDestroys();
         void DestroyDepthResources();
         VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 

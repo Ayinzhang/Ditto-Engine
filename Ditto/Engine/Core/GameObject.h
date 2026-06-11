@@ -27,6 +27,7 @@ namespace ComponentIndex
     constexpr int Light        = 1 << 1;
     constexpr int Renderer     = 1 << 2;
     constexpr int Rigidbody    = 1 << 3;
+    constexpr int Collider     = 1 << 4;
     constexpr int CSharpScript = 1 << 10;
 }
 
@@ -104,6 +105,19 @@ struct GameObject
         return nullptr;
     }
 
+    template<DerivedFromComponent T>
+    std::vector<T*> GetComponents() const
+    {
+        std::vector<T*> results;
+        if constexpr (requires { T::TypeBit; })
+            if ((compMask & T::TypeBit) == 0) return results;
+
+        for (const auto& comp : components)
+            if (T* result = dynamic_cast<T*>(comp.get()))
+                results.push_back(result);
+        return results;
+    }
+
     void RemoveComponent(Component* component);
     void ProcessRemovals();
     void OnInspectorGUI();
@@ -177,8 +191,13 @@ struct RendererComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::Renderer;
     enum Type { Cube, Sphere };
+    enum MeshSource { BuiltIn, File };
+    static constexpr const char* DefaultShaderName = "Lit_Toon";
     Type type;
+    MeshSource meshSource;
     glm::vec4 color;
+    std::string shaderName;
+    std::string mainTexturePath;
 
     // Optional custom mesh override (project-relative .obj path). Empty => use
     // the built-in `type` geometry. This is a RENDER-only override; physics and
@@ -188,6 +207,7 @@ struct RendererComponent : Component
 
     RendererComponent(Type _type = Cube);
     RendererComponent(RendererComponent* other);
+    bool UsesFileMesh() const;
     void OnInspectorGUI() override;
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;
@@ -219,6 +239,25 @@ struct RigidbodyComponent : Component
     RigidbodyComponent(RigidbodyComponent* other);
     void OnInspectorGUI() override;
     void CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale);
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
+struct ColliderComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::Collider;
+    enum Type { Box, Sphere, MeshConvex };
+    Type type;
+    bool isTrigger;
+    glm::vec3 biasPosition;
+    glm::vec3 biasRotation;
+    glm::vec3 biasScale;
+    std::string meshPath;
+
+    ColliderComponent(Type _type = Box);
+    ColliderComponent(ColliderComponent* other);
+    glm::mat4 GetBiasMatrix() const;
+    void OnInspectorGUI() override;
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;
 };

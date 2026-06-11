@@ -35,10 +35,16 @@ bool AABB::Contains(AABB other)
 	return (other.min.x >= min.x && other.max.x <= max.x) && (other.min.y >= min.y && other.max.y <= max.y) && (other.min.z >= min.z && other.max.z <= max.z);
 }
 
+void Collider::UpdateBiasWorldModel()
+{
+    biasWorldModel = objectTransform ? objectTransform->GetWorldModel() * biasLocalModel : biasLocalModel;
+}
+
 void Collider::UpdateWorldAABB()
 {
     // ��ȡ��������Զ��������ǣ��ݹ鸸���任��
-    glm::mat4 worldMat = transform->GetWorldModel();
+    UpdateBiasWorldModel();
+    glm::mat4 worldMat = biasWorldModel;
 
     glm::vec3 corners[8] = {
         glm::vec3(localAABB.min.x, localAABB.min.y, localAABB.min.z),

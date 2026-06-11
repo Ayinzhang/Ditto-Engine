@@ -2,12 +2,16 @@
 #include "../../Engine/Resources/Resource.h"
 #include "PathUtils.h"
 #include "Logger.h"
+#include "../Graphics/Shaders/ShaderAsset.h"
+#include "../../3rdParty/stb_image.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <functional>
 #include <algorithm>
 #include <filesystem>
+#include <chrono>
+#include <cmath>
 
 Scene* g_currentScene = nullptr;
 std::uint32_t g_sceneLoadingVersion = 0;
@@ -52,8 +56,18 @@ Scene::~Scene()
         if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
                         renderer->DestroyStorageBuffer(pair.second->colorSBO); }
     }
+    for (auto& pair : renderBatches)
+    {
+        if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
+                        renderer->DestroyStorageBuffer(pair.second->colorSBO); }
+    }
     for (auto& pair : customGeometries)
         if (renderer) renderer->DestroyMesh(pair.second.mesh);
+    for (auto& pair : shaderPipelines)
+        if (renderer) renderer->DestroyPipeline(pair.second);
+    for (auto& pair : materialTextures)
+        if (renderer) renderer->DestroyTexture(pair.second);
+    if (renderer) renderer->DestroyTexture(whiteTexture);
 }
 
 // Single source of truth for tearing down the object graph.
@@ -95,13 +109,7 @@ void Scene::UnregisterSubtree(GameObject* obj)
 
 void Scene::CollectRenderData()
 {
-    for (auto& pair : geometryBatches)
-    {
-        pair.second->modelMatrices.clear();
-        pair.second->instanceColors.clear();
-        pair.second->instanceCount = 0;
-    }
-    for (auto& pair : customBatches)
+    for (auto& pair : renderBatches)
     {
         pair.second->modelMatrices.clear();
         pair.second->instanceColors.clear();
@@ -127,20 +135,38 @@ void Scene::CollectRenderData()
 
             if (renderer && renderer->enabled && transform && transform->enabled)
             {
-                GeometryInstances* batch = nullptr;
-                if (!renderer->meshPath.empty())
+                std::string meshKey;
+                if (renderer->UsesFileMesh())
                 {
                     // Custom mesh: lazily build its geometry/batch, then route to it.
                     EnsureCustomGeometry(renderer->meshPath);
-                    auto it = customBatches.find(renderer->meshPath);
-                    if (it != customBatches.end()) batch = it->second.get();
+                    meshKey = "file:" + renderer->meshPath;
                 }
                 else
                 {
-                    auto it = geometryBatches.find(renderer->type);
-                    if (it != geometryBatches.end()) batch = it->second.get();
+                    meshKey = std::string("builtin:") + (renderer->type == RendererComponent::Sphere ? "sphere" : "cube");
                 }
 
+                std::string shaderName = renderer->shaderName.empty() ? RendererComponent::DefaultShaderName : renderer->shaderName;
+                std::string texturePath = renderer->mainTexturePath;
+                std::string colorKey = std::to_string(renderer->color.r) + "," + std::to_string(renderer->color.g) + "," +
+                    std::to_string(renderer->color.b) + "," + std::to_string(renderer->color.a);
+                std::string batchKey = shaderName + "|" + meshKey + "|" + texturePath + "|" + colorKey;
+                GeometryInstances* batch = nullptr;
+                auto batchIt = renderBatches.find(batchKey);
+                if (batchIt == renderBatches.end())
+                {
+                    auto newBatch = std::make_unique<GeometryInstances>(renderer->type);
+                    newBatch->meshPath = renderer->UsesFileMesh() ? renderer->meshPath : "";
+                    newBatch->shaderName = shaderName;
+                    newBatch->texturePath = texturePath;
+                    batch = newBatch.get();
+                    renderBatches[batchKey] = std::move(newBatch);
+                }
+                else
+                {
+                    batch = batchIt->second.get();
+                }
                 if (batch)
                 {
                     batch->modelMatrices.push_back(transform->GetWorldModel());
@@ -155,7 +181,6 @@ void Scene::CollectRenderData()
     collect(rootGameObject.get());
 }
 
-// Upload one batch's per-instance model/color arrays into its storage buffers.
 static void UploadBatch(Ditto::IRenderer* r, GeometryInstances* batch)
 {
     if (!r || batch->instanceCount == 0) return;
@@ -169,7 +194,9 @@ static void UploadBatch(Ditto::IRenderer* r, GeometryInstances* batch)
         batch->instanceCount * sizeof(glm::vec4));
 }
 
-// Issue one instanced draw call for a batch against its geometry.
+// User shaders never see instance IDs. The generated VSMain wrapper captures
+// SV_InstanceID internally, so helpers like ObjectToWorld() can still index the
+// instancing buffers while the user's vert(appdata) signature stays clean.
 static void DrawBatch(Ditto::IRenderer* r, const BaseGeometry& geometry, GeometryInstances* batch)
 {
     if (!r || batch->instanceCount == 0 || !geometry.mesh) return;
@@ -180,8 +207,7 @@ static void DrawBatch(Ditto::IRenderer* r, const BaseGeometry& geometry, Geometr
 
 void Scene::UpdateSSBOs()
 {
-    for (auto& pair : geometryBatches) UploadBatch(renderer, pair.second.get());
-    for (auto& pair : customBatches)   UploadBatch(renderer, pair.second.get());
+    for (auto& pair : renderBatches) UploadBatch(renderer, pair.second.get());
 }
 
 void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
@@ -192,8 +218,6 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     CollectRenderData();
     UpdateSSBOs();
 
-    renderer->BindPipeline(pipeline);
-
     Ditto::FrameUniforms fu;
     fu.view = view;
     fu.projection = projection;
@@ -201,23 +225,110 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     fu.lightColor = GetLightColor();
     fu.lightDir = GetLightDirection();
     fu.lightIntensity = GetLightIntensity();
-    renderer->SetFrameUniforms(fu);
 
-    // Built-in Cube/Sphere batches.
-    for (auto& pair : geometryBatches)
+    using Clock = std::chrono::steady_clock;
+    static const auto startTime = Clock::now();
+    static auto lastTime = startTime;
+    const auto now = Clock::now();
+    const float t = std::chrono::duration<float>(now - startTime).count();
+    const float dt = std::max(0.000001f, std::chrono::duration<float>(now - lastTime).count());
+    lastTime = now;
+    fu.time = glm::vec4(t / 20.0f, t, t * 2.0f, t * 3.0f);
+    fu.sinTime = glm::vec4(std::sin(t / 8.0f), std::sin(t / 4.0f), std::sin(t / 2.0f), std::sin(t));
+    fu.cosTime = glm::vec4(std::cos(t / 8.0f), std::cos(t / 4.0f), std::cos(t / 2.0f), std::cos(t));
+    fu.deltaTime = glm::vec4(dt, 1.0f / dt, dt, 1.0f / dt);
+    const float w = static_cast<float>(std::max(1, viewportWidth));
+    const float h = static_cast<float>(std::max(1, viewportHeight));
+    fu.screenParams = glm::vec4(w, h, 1.0f + 1.0f / w, 1.0f + 1.0f / h);
+    for (auto& pair : renderBatches)
     {
-        auto geoIt = baseGeometries.find(pair.second->type);
-        if (geoIt == baseGeometries.end()) continue;
-        DrawBatch(renderer, geoIt->second, pair.second.get());
+        GeometryInstances* batch = pair.second.get();
+        if (!batch || batch->instanceCount == 0) continue;
+
+        Ditto::PipelineHandle shaderPipeline = GetOrCreateShaderPipeline(batch->shaderName, pipeline);
+        renderer->BindPipeline(shaderPipeline ? shaderPipeline : pipeline);
+        renderer->SetFrameUniforms(fu);
+        renderer->BindTexture(2, GetOrCreateMaterialTexture(batch->texturePath));
+
+        if (!batch->meshPath.empty())
+        {
+            auto geoIt = customGeometries.find(batch->meshPath);
+            if (geoIt == customGeometries.end()) continue;
+            DrawBatch(renderer, geoIt->second, batch);
+        }
+        else
+        {
+            auto geoIt = baseGeometries.find(batch->type);
+            if (geoIt == baseGeometries.end()) continue;
+            DrawBatch(renderer, geoIt->second, batch);
+        }
+    }
+}
+
+Ditto::PipelineHandle Scene::GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback)
+{
+    std::string key = shaderName.empty() ? RendererComponent::DefaultShaderName : shaderName;
+    if (key == RendererComponent::DefaultShaderName && fallback)
+        return fallback;
+
+    auto it = shaderPipelines.find(key);
+    if (it != shaderPipelines.end())
+        return it->second;
+
+    Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(key);
+    if (!shader.ok)
+    {
+        DITTO_LOG_ERROR_STREAM("[Scene] Failed to load shader: " << key << " - " << shader.error);
+        return fallback;
     }
 
-    // Custom-mesh batches (keyed by meshPath).
-    for (auto& pair : customBatches)
+    Ditto::PipelineHandle created = renderer ? renderer->CreatePipeline(shader.engineHLSL) : Ditto::PipelineHandle{};
+    if (!created)
     {
-        auto geoIt = customGeometries.find(pair.first);
-        if (geoIt == customGeometries.end()) continue;
-        DrawBatch(renderer, geoIt->second, pair.second.get());
+        DITTO_LOG_ERROR_STREAM("[Scene] Failed to create shader pipeline: " << key);
+        return fallback;
     }
+    shaderPipelines[key] = created;
+    return created;
+}
+
+Ditto::TextureHandle Scene::GetOrCreateMaterialTexture(const std::string& texturePath)
+{
+    if (!renderer) return {};
+    if (texturePath.empty())
+    {
+        if (!whiteTexture)
+        {
+            const unsigned char white[4] = { 255, 255, 255, 255 };
+            whiteTexture = renderer->CreateTexture(white, 1, 1, 4);
+        }
+        return whiteTexture;
+    }
+
+    auto it = materialTextures.find(texturePath);
+    if (it != materialTextures.end())
+        return it->second ? it->second : GetOrCreateMaterialTexture("");
+
+    std::filesystem::path resolved = texturePath;
+    if (!std::filesystem::exists(resolved))
+        resolved = PathUtils::ResolveAsset(texturePath);
+
+    int width = 0, height = 0, channels = 0;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* pixels = stbi_load(resolved.string().c_str(), &width, &height, &channels, 4);
+    if (!pixels || width <= 0 || height <= 0)
+    {
+        DITTO_LOG_ERROR_STREAM("[Scene] Failed to load texture: " << resolved.string());
+        if (pixels) stbi_image_free(pixels);
+        materialTextures[texturePath] = {};
+        return GetOrCreateMaterialTexture("");
+    }
+
+    Ditto::TextureHandle texture = renderer->CreateTexture(pixels, width, height, 4);
+    stbi_image_free(pixels);
+    materialTextures[texturePath] = texture;
+    DITTO_LOG_INFO_STREAM("[Scene] Loaded texture: " << resolved.string() << " (" << width << "x" << height << ")");
+    return texture ? texture : GetOrCreateMaterialTexture("");
 }
 
 void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
@@ -225,14 +336,14 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
     this->resource = _resource;
     this->renderer = rhi;
 
-    // Interleaved layout shared by all base/custom models: pos(vec3)+normal(vec3).
-    const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3} };
+    // Interleaved layout shared by all base/custom models: pos(vec3)+normal(vec3)+uv(vec2).
+    const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3}, {2, 2, 6} };
 
     if (renderer && resource->cubeModel && !resource->cubeModel->vertexData.empty())
     {
         const auto& m = *resource->cubeModel;
         baseGeometries[RendererComponent::Cube] =
-            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 6, attribs,
+            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 8, attribs,
                                                m.indices.data(), m.indices.size()) };
     }
 
@@ -240,7 +351,7 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
     {
         const auto& m = *resource->sphereModel;
         baseGeometries[RendererComponent::Sphere] =
-            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 6, attribs,
+            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 8, attribs,
                                                m.indices.data(), m.indices.size()) };
     }
 }
@@ -267,15 +378,15 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
         return;
     }
 
-    const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3} };
-    BaseGeometry geo{ renderer->CreateMesh(model.vertexData.data(), model.vertexData.size(), 6, attribs,
+    const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3}, {2, 2, 6} };
+    BaseGeometry geo{ renderer->CreateMesh(model.vertexData.data(), model.vertexData.size(), 8, attribs,
                                            model.indices.data(), model.indices.size()) };
 
     customGeometries[meshPath] = geo;
     // `type` is unused for custom batches (geometry comes from customGeometries).
     customBatches[meshPath] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
     DITTO_LOG_INFO_STREAM("[Scene] Loaded custom mesh: " << resolved
-        << " (" << model.vertexData.size() / 6 << " verts)");
+        << " (" << model.vertexData.size() / 8 << " verts)");
 }
 
 glm::vec3 Scene::GetLightColor() const
@@ -442,8 +553,8 @@ struct SceneHeader
     uint32_t gameObjectCount;
     uint64_t fileSize;
 };
-// v1: original format. v2: RendererComponent::meshPath (custom mesh override).
-const uint32_t SCENE_VERSION = 2;
+// v1: original format. v2: RendererComponent::meshPath. v3: ColliderComponent. v4: ColliderComponent::isTrigger. v5: ColliderComponent bias TRS. v6: Renderer mesh source + shader name. v7: Renderer main texture path.
+const uint32_t SCENE_VERSION = 7;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
 void Scene::WriteToStream(std::ostream& file)

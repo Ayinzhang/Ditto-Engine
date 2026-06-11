@@ -47,7 +47,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                     for (size_t i = start; i < end; ++i) {
                         Collider* collider = colliders[i].get();
                         if (collider->rigidbody->type == RigidbodyComponent::Dynamic) {
-                            auto* transform = collider->transform;
+                            auto* transform = collider->bodyTransform;
                             auto* rb = collider->rigidbody;
 
                             if (rb->useGravity)
@@ -94,6 +94,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                                 std::vector<Collider*> potential = bvhTree->Query(collider->aabb);
                                 for (Collider* other : potential) {
                                     if (other == collider) continue;
+                                    if (other->rigidbody == collider->rigidbody) continue;
                                     // Static/Dynamic/Kinematic are all valid
                                     // partners for a Dynamic body.
                                     // Normalize order so duplicates dedupe.
@@ -158,8 +159,9 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                             size_t groupEnd = (tid + 1) * numGroups / numThreads;
                             for (size_t g = groupStart; g < groupEnd; ++g) {
                                 auto& group = collisionGroups[g];
-                                for (CollisionData* data : group) {
-                                    ApplyImpulse(data->colliderA, data->colliderB,
+                            for (CollisionData* data : group) {
+                                if (data->colliderA->isTrigger || data->colliderB->isTrigger) continue;
+                                ApplyImpulse(data->colliderA, data->colliderB,
                                         data->info.normal,
                                         data->info.contactPointA,
                                         data->info.contactPointB,
@@ -181,6 +183,7 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
                                 if (data->info.depth > 1e-3f) {
                                     Collider* a = data->colliderA;
                                     Collider* b = data->colliderB;
+                                    if (a->isTrigger || b->isTrigger) continue;
                                     const CollisionInfo& info = data->info;
 
                                     float invMassA = (a->rigidbody->type == RigidbodyComponent::Dynamic) ? 1.0f / a->rigidbody->mass : 0.0f;
@@ -189,8 +192,10 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
 
                                     glm::vec3 correction = info.depth / totalInvMass * info.normal * positionCorrectionFactor;
 
-                                    a->transform->position -= correction * invMassA;
-                                    b->transform->position += correction * invMassB;
+                                    a->bodyTransform->position -= correction * invMassA;
+                                    b->bodyTransform->position += correction * invMassB;
+                                    a->bodyTransform->localDirty = true;
+                                    b->bodyTransform->localDirty = true;
 
                                     a->isDirty = true;
                                     b->isDirty = true;
@@ -202,7 +207,9 @@ void ParallelPhysicsBarrier::UpdatePhysics(float dt) {
 
                     // ---------- ���������� Transform ----------
                     for (size_t i = start; i < end; ++i) {
-                        colliders[i]->transform->UpdateTransform();
+                        colliders[i]->bodyTransform->UpdateTransform();
+                        colliders[i]->objectTransform->UpdateTransform();
+                        colliders[i]->UpdateBiasWorldModel();
                     }
 
                     // ֪ͨ���̱߳��������

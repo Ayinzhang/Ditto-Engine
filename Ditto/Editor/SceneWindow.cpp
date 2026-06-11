@@ -6,6 +6,7 @@
 #include "../Engine/Core/Logger.h"
 #include "Editor.h"
 #include "../Engine/Core/Engine.h"
+#include "../Engine/Core/PathUtils.h"
 #include "../Engine/Graphics/Camera.h"
 
 #include "../3rdParty/GLM/glm.hpp"
@@ -14,6 +15,8 @@
 #include "../3rdParty/ImGui/imgui.h"
 #include <iostream>
 #include <cmath>
+#include <filesystem>
+#include <cfloat>
 
 SceneWindow::SceneWindow(Editor* editor) : m_editor(editor)
 {
@@ -35,22 +38,29 @@ ImRect2D SceneWindow::GetCurrentViewportRect()
 
 ImVec2D SceneWindow::WorldToScreen(const glm::vec3& worldPos)
 {
-    ImVec2 windowPos = ImGui::GetWindowPos();
-    ImVec2 windowSize = ImGui::GetWindowSize();
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (!window)
+        return ImVec2D(0, 0);
+    ImVec2 viewportMin = window->InnerRect.Min;
+    ImVec2 viewportSize(
+        window->InnerRect.Max.x - window->InnerRect.Min.x,
+        window->InnerRect.Max.y - window->InnerRect.Min.y);
+    if (viewportSize.x <= 0.0f || viewportSize.y <= 0.0f)
+        return ImVec2D(0, 0);
 
     Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera) return ImVec2D(0, 0);
 
     glm::mat4 view = camera->GetViewMatrix();
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), windowSize.x / windowSize.y, 0.1f, 100.0f);
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f), viewportSize.x / viewportSize.y, 0.1f, 100.0f);
 
     glm::vec4 clipPos = proj * view * glm::vec4(worldPos, 1.0f);
     if (clipPos.w <= 0) return ImVec2D(-1000, -1000);
 
     glm::vec3 ndcPos(clipPos.x / clipPos.w, clipPos.y / clipPos.w, clipPos.z / clipPos.w);
 
-    float screenX = (ndcPos.x + 1.0f) * 0.5f * windowSize.x + windowPos.x;
-    float screenY = (1.0f - ndcPos.y) * 0.5f * windowSize.y + windowPos.y;
+    float screenX = (ndcPos.x + 1.0f) * 0.5f * viewportSize.x + viewportMin.x;
+    float screenY = (1.0f - ndcPos.y) * 0.5f * viewportSize.y + viewportMin.y;
 
     return ImVec2D(screenX, screenY);
 }
@@ -143,7 +153,8 @@ HandleAxis SceneWindow::RaycastGizmos(const ImVec2D& mousePos)
     if (!transform)
         return HandleAxis::None;
 
-    ImVec2D screenCenter = WorldToScreen(transform->position);
+    glm::vec3 gizmoWorldPos = GetGizmoWorldPosition();
+    ImVec2D screenCenter = WorldToScreen(gizmoWorldPos);
     if (screenCenter.x < -500) return HandleAxis::None;
 
     const float threshold = 8.0f;
@@ -152,9 +163,9 @@ HandleAxis SceneWindow::RaycastGizmos(const ImVec2D& mousePos)
     {
         float ringRadius = 1.0f;
         
-        float distX = DistToRotateRing(mousePos, transform->position, 0, ringRadius);
-        float distY = DistToRotateRing(mousePos, transform->position, 1, ringRadius);
-        float distZ = DistToRotateRing(mousePos, transform->position, 2, ringRadius);
+        float distX = DistToRotateRing(mousePos, gizmoWorldPos, 0, ringRadius);
+        float distY = DistToRotateRing(mousePos, gizmoWorldPos, 1, ringRadius);
+        float distZ = DistToRotateRing(mousePos, gizmoWorldPos, 2, ringRadius);
         
         if (distX < threshold && distX <= distY && distX <= distZ) return HandleAxis::X;
         if (distY < threshold && distY <= distX && distY <= distZ) return HandleAxis::Y;
@@ -163,9 +174,9 @@ HandleAxis SceneWindow::RaycastGizmos(const ImVec2D& mousePos)
     else
     {
         float axisLength = 1.5f;
-        ImVec2D xEnd = WorldToScreen(transform->position + glm::vec3(axisLength, 0, 0));
-        ImVec2D yEnd = WorldToScreen(transform->position + glm::vec3(0, axisLength, 0));
-        ImVec2D zEnd = WorldToScreen(transform->position + glm::vec3(0, 0, axisLength));
+        ImVec2D xEnd = WorldToScreen(gizmoWorldPos + glm::vec3(axisLength, 0, 0));
+        ImVec2D yEnd = WorldToScreen(gizmoWorldPos + glm::vec3(0, axisLength, 0));
+        ImVec2D zEnd = WorldToScreen(gizmoWorldPos + glm::vec3(0, 0, axisLength));
 
         auto distToLine = [](ImVec2D p, ImVec2D a, ImVec2D b) -> float {
             float dx = b.x - a.x;
@@ -413,17 +424,219 @@ void SceneWindow::DrawGizmos()
 
     float gizmoScale = 2.0f;
 
+    glm::vec3 gizmoWorldPos = GetGizmoWorldPosition();
     switch (m_toolMode)
     {
     case ToolMode::Translate:
-        DrawTranslateGizmo(transform->position, gizmoScale);
+        DrawTranslateGizmo(gizmoWorldPos, gizmoScale);
         break;
     case ToolMode::Rotate:
-        DrawRotateGizmo(transform->position, gizmoScale);
+        DrawRotateGizmo(gizmoWorldPos, gizmoScale);
         break;
     case ToolMode::Scale:
-        DrawScaleGizmo(transform->position, gizmoScale);
+        DrawScaleGizmo(gizmoWorldPos, gizmoScale);
         break;
+    }
+}
+
+ColliderComponent* SceneWindow::GetSelectedCollider() const
+{
+    auto* collider = dynamic_cast<ColliderComponent*>(m_editor ? m_editor->selectedComponent : nullptr);
+    if (!collider || collider->gameObject != m_selectedObject || !collider->enabled)
+        return nullptr;
+    return collider;
+}
+
+glm::vec3 SceneWindow::GetGizmoWorldPosition() const
+{
+    if (!m_selectedObject) return glm::vec3(0.0f);
+    TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
+    if (!transform) return glm::vec3(0.0f);
+    if (ColliderComponent* collider = GetSelectedCollider())
+        return glm::vec3(transform->GetWorldModel() * glm::vec4(collider->biasPosition, 1.0f));
+    return transform->position;
+}
+
+void SceneWindow::DrawWorldLine(const glm::vec3& a, const glm::vec3& b, ImU32 color, float thickness)
+{
+    ImVec2D pa = WorldToScreen(a);
+    ImVec2D pb = WorldToScreen(b);
+    if (pa.x < -500 || pb.x < -500) return;
+    ImGui::GetWindowDrawList()->AddLine(ImVec2(pa.x, pa.y), ImVec2(pb.x, pb.y), color, thickness);
+}
+
+MeshData* SceneWindow::GetColliderMesh(ColliderComponent* collider)
+{
+    if (!collider || !m_editor || !m_editor->engine || !m_editor->engine->resource) return nullptr;
+
+    Resource* resource = m_editor->engine->resource.get();
+    switch (collider->type)
+    {
+    case ColliderComponent::Box:
+        return resource->cubeMesh.get();
+    case ColliderComponent::Sphere:
+        return resource->sphereMesh.get();
+    case ColliderComponent::MeshConvex:
+    {
+        std::string meshPath;
+        if (RendererComponent* renderer = collider->gameObject ? collider->gameObject->GetComponent<RendererComponent>() : nullptr)
+            meshPath = renderer->meshPath;
+        if (meshPath.empty())
+            meshPath = collider->meshPath;
+        if (meshPath.empty()) return resource->cubeMesh.get();
+
+        std::filesystem::path resolved = meshPath;
+        if (!std::filesystem::exists(resolved))
+            resolved = PathUtils::ResolveAsset(meshPath);
+        if (resolved.extension() != ".obj") return resource->cubeMesh.get();
+
+        std::string key = resolved.string();
+        auto it = m_physicsMeshCache.find(key);
+        if (it == m_physicsMeshCache.end())
+            it = m_physicsMeshCache.emplace(key, std::make_unique<MeshData>(key, false)).first;
+        return it->second.get();
+    }
+    }
+    return nullptr;
+}
+
+void SceneWindow::DrawColliderMeshGizmo(ColliderComponent* collider, const glm::mat4& worldMat)
+{
+    MeshData* mesh = GetColliderMesh(collider);
+    if (!mesh || mesh->vertices.empty()) return;
+
+    glm::mat4 colliderWorld = worldMat * collider->GetBiasMatrix();
+
+    switch (collider->type)
+    {
+    case ColliderComponent::Box:
+        DrawBoxColliderGizmo(colliderWorld, mesh);
+        break;
+    case ColliderComponent::Sphere:
+        DrawSphereColliderGizmo(colliderWorld, mesh);
+        break;
+    case ColliderComponent::MeshConvex:
+        DrawConvexMeshColliderGizmo(colliderWorld, mesh);
+        break;
+    }
+}
+
+void SceneWindow::DrawBoxColliderGizmo(const glm::mat4& worldMat, MeshData* mesh)
+{
+    const ImU32 green = IM_COL32(80, 255, 120, 220);
+    const float thickness = 1.0f;
+    glm::vec3 mn = mesh ? mesh->aabbMin : glm::vec3(-0.5f);
+    glm::vec3 mx = mesh ? mesh->aabbMax : glm::vec3(0.5f);
+
+    glm::vec3 p[8] = {
+        {mn.x, mn.y, mn.z}, {mx.x, mn.y, mn.z}, {mx.x, mx.y, mn.z}, {mn.x, mx.y, mn.z},
+        {mn.x, mn.y, mx.z}, {mx.x, mn.y, mx.z}, {mx.x, mx.y, mx.z}, {mn.x, mx.y, mx.z}
+    };
+    for (glm::vec3& v : p) v = glm::vec3(worldMat * glm::vec4(v, 1.0f));
+
+    const int edges[12][2] = {
+        {0,1},{1,2},{2,3},{3,0}, {4,5},{5,6},{6,7},{7,4}, {0,4},{1,5},{2,6},{3,7}
+    };
+    for (const auto& edge : edges)
+        DrawWorldLine(p[edge[0]], p[edge[1]], green, thickness);
+}
+
+void SceneWindow::DrawSphereColliderGizmo(const glm::mat4& worldMat, MeshData* mesh)
+{
+    const ImU32 green = IM_COL32(80, 255, 120, 220);
+    const float thickness = 1.0f;
+    glm::vec3 mn = mesh ? mesh->aabbMin : glm::vec3(-0.5f);
+    glm::vec3 mx = mesh ? mesh->aabbMax : glm::vec3(0.5f);
+    glm::vec3 diameter = mx - mn;
+    float radius = std::max(diameter.x, std::max(diameter.y, diameter.z)) * 0.5f;
+    glm::vec3 center = (mn + mx) * 0.5f;
+
+    auto drawCircle = [&](int plane)
+    {
+        const int segments = 64;
+        glm::vec3 prev;
+        for (int i = 0; i <= segments; ++i)
+        {
+            float a = (float)i / (float)segments * 6.2831853f;
+            glm::vec3 p = center;
+            if (plane == 0) p += glm::vec3(0.0f, cosf(a) * radius, sinf(a) * radius);
+            if (plane == 1) p += glm::vec3(cosf(a) * radius, 0.0f, sinf(a) * radius);
+            if (plane == 2) p += glm::vec3(cosf(a) * radius, sinf(a) * radius, 0.0f);
+            p = glm::vec3(worldMat * glm::vec4(p, 1.0f));
+            if (i > 0) DrawWorldLine(prev, p, green, thickness);
+            prev = p;
+        }
+    };
+    drawCircle(0);
+    drawCircle(1);
+    drawCircle(2);
+}
+
+void SceneWindow::DrawConvexMeshColliderGizmo(const glm::mat4& worldMat, MeshData* mesh)
+{
+    const ImU32 green = IM_COL32(80, 255, 120, 220);
+    const float thickness = 1.0f;
+    if (!mesh || mesh->vertices.empty()) return;
+
+    auto support = [&](const glm::vec3& dir) {
+        float bestDot = -FLT_MAX;
+        glm::vec3 best(0.0f);
+        for (const glm::vec3& v : mesh->vertices)
+        {
+            float d = glm::dot(v, dir);
+            if (d > bestDot) { bestDot = d; best = v; }
+        }
+        return glm::vec3(worldMat * glm::vec4(best, 1.0f));
+    };
+
+    auto drawSupportLoop = [&](const glm::vec3& u, const glm::vec3& v)
+    {
+        const int segments = 48;
+        glm::vec3 prev;
+        for (int i = 0; i <= segments; ++i)
+        {
+            float a = (float)i / (float)segments * 6.2831853f;
+            glm::vec3 p = support(glm::normalize(cosf(a) * u + sinf(a) * v));
+            if (i > 0) DrawWorldLine(prev, p, green, thickness);
+            prev = p;
+        }
+    };
+    drawSupportLoop(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0));
+    drawSupportLoop(glm::vec3(1, 0, 0), glm::vec3(0, 0, 1));
+    drawSupportLoop(glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+}
+
+void SceneWindow::DrawPhysicsMeshGizmos()
+{
+    if (!m_editor || !m_editor->activeSelection) return;
+
+    GameObject* selectedObject = m_editor->activeSelection;
+    TransformComponent* transform = selectedObject->GetComponent<TransformComponent>();
+    if (!transform) return;
+
+    glm::mat4 worldMat = transform->GetWorldModel();
+    if (auto* selectedCollider = dynamic_cast<ColliderComponent*>(m_editor->selectedComponent))
+    {
+        if (selectedCollider->gameObject == selectedObject && selectedCollider->enabled)
+            DrawColliderMeshGizmo(selectedCollider, worldMat);
+        return;
+    }
+
+    for (ColliderComponent* collider : selectedObject->GetComponents<ColliderComponent>())
+        if (collider && collider->enabled)
+            DrawColliderMeshGizmo(collider, worldMat);
+
+    if ((selectedObject->compMask & ComponentIndex::Collider) == 0)
+    {
+        RendererComponent* renderer = selectedObject->GetComponent<RendererComponent>();
+        RigidbodyComponent* rigidbody = selectedObject->GetComponent<RigidbodyComponent>();
+        if (renderer && renderer->enabled && rigidbody && m_editor->engine->resource)
+        {
+            ColliderComponent implicitCollider(
+                renderer->type == RendererComponent::Sphere ? ColliderComponent::Sphere : ColliderComponent::Box);
+            implicitCollider.gameObject = selectedObject;
+            DrawColliderMeshGizmo(&implicitCollider, worldMat);
+        }
     }
 }
 
@@ -435,6 +648,7 @@ void SceneWindow::HandleMouseInput()
     TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
     if (!transform)
         return;
+    ColliderComponent* selectedCollider = GetSelectedCollider();
 
     if (ImGui::IsMouseClicked(0) && m_highlightedAxis != HandleAxis::None)
     {
@@ -442,9 +656,9 @@ void SceneWindow::HandleMouseInput()
         m_draggingAxis = m_highlightedAxis;
         if (m_editor) m_editor->BeginInspectorEdit();   // capture pre-drag state (one undo step)
         m_dragStartMousePos = ImVec2D(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-        m_originalPosition = transform->position;
-        m_originalRotation = transform->rotation;
-        m_originalScale = transform->scale;
+        m_originalPosition = selectedCollider ? selectedCollider->biasPosition : transform->position;
+        m_originalRotation = selectedCollider ? selectedCollider->biasRotation : transform->rotation;
+        m_originalScale = selectedCollider ? selectedCollider->biasScale : transform->scale;
 
         if (m_toolMode == ToolMode::Rotate)
         {
@@ -456,7 +670,7 @@ void SceneWindow::HandleMouseInput()
             else if (m_draggingAxis == HandleAxis::Z) axisDir = glm::vec3(0, 0, 1);
 
             const float ringRadius = 1.0f;  // matches DrawRotateGizmo
-            m_rotateRingAngle = ClosestRingAngle(m_dragStartMousePos, transform->position,
+            m_rotateRingAngle = ClosestRingAngle(m_dragStartMousePos, GetGizmoWorldPosition(),
                                                  axisDir, ringRadius);
             m_rotateTotalAngle = 0.0f;
             m_rotateLastMouse = m_dragStartMousePos;
@@ -469,7 +683,7 @@ void SceneWindow::HandleMouseInput()
         
         // Calculate screen-space axis direction for more accurate dragging
         Camera* camera = m_editor->engine->sceneCamera.get();
-        glm::vec3 worldPos = transform->position;
+        glm::vec3 worldPos = GetGizmoWorldPosition();
         ImVec2D screenPos = WorldToScreen(worldPos);
         
         // Get screen-space axis directions
@@ -507,11 +721,19 @@ void SceneWindow::HandleMouseInput()
         case ToolMode::Translate:
         {
             float sensitivity = 0.02f;
-            glm::vec3 newPos = m_originalPosition;
-            if (m_draggingAxis == HandleAxis::X) newPos.x += projectedDelta * sensitivity;
-            if (m_draggingAxis == HandleAxis::Y) newPos.y += projectedDelta * sensitivity;
-            if (m_draggingAxis == HandleAxis::Z) newPos.z += projectedDelta * sensitivity;
-            transform->position = newPos;
+            glm::vec3 worldDelta(0.0f);
+            if (m_draggingAxis == HandleAxis::X) worldDelta.x += projectedDelta * sensitivity;
+            if (m_draggingAxis == HandleAxis::Y) worldDelta.y += projectedDelta * sensitivity;
+            if (m_draggingAxis == HandleAxis::Z) worldDelta.z += projectedDelta * sensitivity;
+            if (selectedCollider)
+            {
+                glm::vec3 localDelta = glm::mat3(glm::inverse(transform->GetWorldModel())) * worldDelta;
+                selectedCollider->biasPosition = m_originalPosition + localDelta;
+            }
+            else
+            {
+                transform->position = m_originalPosition + worldDelta;
+            }
             break;
         }
         case ToolMode::Rotate:
@@ -563,7 +785,8 @@ void SceneWindow::HandleMouseInput()
             if (m_draggingAxis == HandleAxis::X) newRot.x += degrees;
             if (m_draggingAxis == HandleAxis::Y) newRot.y += degrees;
             if (m_draggingAxis == HandleAxis::Z) newRot.z += degrees;
-            transform->rotation = newRot;
+            if (selectedCollider) selectedCollider->biasRotation = newRot;
+            else transform->rotation = newRot;
             break;
         }
         case ToolMode::Scale:
@@ -573,14 +796,22 @@ void SceneWindow::HandleMouseInput()
             if (m_draggingAxis == HandleAxis::X) newScale.x = std::max(0.1f, m_originalScale.x + projectedDelta * sensitivity);
             if (m_draggingAxis == HandleAxis::Y) newScale.y = std::max(0.1f, m_originalScale.y + projectedDelta * sensitivity);
             if (m_draggingAxis == HandleAxis::Z) newScale.z = std::max(0.1f, m_originalScale.z + projectedDelta * sensitivity);
-            transform->scale = newScale;
+            if (selectedCollider) selectedCollider->biasScale = newScale;
+            else transform->scale = newScale;
             break;
         }
         }
         
         // Mark transform as modified to ensure Inspector updates
-        transform->localDirty = true;
-        transform->UpdateTransform();
+        if (selectedCollider)
+        {
+            if (m_editor) m_editor->MarkSceneDirty();
+        }
+        else
+        {
+            transform->localDirty = true;
+            transform->UpdateTransform();
+        }
     }
 
     if (ImGui::IsMouseReleased(0))
@@ -670,6 +901,7 @@ void SceneWindow::Draw()
     if (sceneTex)
         ImGui::GetWindowDrawList()->AddImage((ImTextureID)sceneTex, min, max, ImVec2(0, 1), ImVec2(1, 0));
 
+    DrawPhysicsMeshGizmos();
     DrawGizmos();
     HandleMouseInput();
     HandleCameraRotation();
@@ -874,6 +1106,7 @@ void SceneWindow::HandleObjectSelection()
         // Select the object
         m_editor->activeSelection = hitObject;
         m_editor->selectedObject = hitObject;
+        m_editor->selectedComponent = nullptr;
         m_editor->selectedFile.Clear();
         DITTO_LOG_INFO_STREAM("[SceneWindow] Selected object: " << hitObject->name );
     }
@@ -882,6 +1115,7 @@ void SceneWindow::HandleObjectSelection()
         // Deselect if clicked on empty space
         m_editor->activeSelection = nullptr;
         m_editor->selectedObject = nullptr;
+        m_editor->selectedComponent = nullptr;
         DITTO_LOG_INFO_STREAM("[SceneWindow] Deselected object" );
     }
 }

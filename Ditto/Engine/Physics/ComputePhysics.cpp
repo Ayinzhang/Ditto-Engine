@@ -409,7 +409,7 @@ void ComputePhysics::UploadColliderData() {
     for (int i = 0; i < numColliders; ++i) {
         Collider* c = colliders[i].get();
         RigidbodyComponent* rb = c->rigidbody;
-        TransformComponent* tr = c->transform;
+        TransformComponent* tr = c->bodyTransform;
 
         rbGPU[i].velocity = glm::vec4(rb->velocity, 0);
         rbGPU[i].angularVelocity = glm::vec4(rb->angularVelocity, 0);
@@ -600,11 +600,11 @@ void ComputePhysics::ReadbackTransforms() {
     if (transforms) {
         for (int i = 0; i < numColliders; ++i) {
             Collider* c = colliders[i].get();
-            c->transform->position = glm::vec3(transforms[i].position);
+            c->bodyTransform->position = glm::vec3(transforms[i].position);
             // 锟斤拷锟斤拷元锟斤拷转锟斤拷欧锟斤拷锟斤拷
             glm::quat q(transforms[i].rotation); // 直锟斤拷使锟斤拷 vec4 锟斤拷锟届，顺锟斤拷为 (x,y,z,w)
-            c->transform->rotation = glm::eulerAngles(q); // 锟斤拷锟斤拷 vec3 欧锟斤拷锟角ｏ拷锟斤拷锟饺ｏ拷
-            c->transform->localDirty = true;
+            c->bodyTransform->rotation = glm::eulerAngles(q); // 锟斤拷锟斤拷 vec3 欧锟斤拷锟角ｏ拷锟斤拷锟饺ｏ拷
+            c->bodyTransform->localDirty = true;
         }
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
     }

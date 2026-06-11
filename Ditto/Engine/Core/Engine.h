@@ -20,7 +20,11 @@ struct Engine
     // that fails to initialize falls back to OpenGL. GL and Vulkan cannot share
     // a window, so this also drives window creation.
     enum class Backend { OpenGL, Vulkan, DirectX };
+#ifdef DITTO_ENABLE_VULKAN
     Backend backend = Backend::Vulkan;
+#else
+    Backend backend = Backend::OpenGL;
+#endif
 
     GLFWwindow* window;   // owned by GLFW (glfwDestroyWindow in ~Engine)
     int window_width, window_height;

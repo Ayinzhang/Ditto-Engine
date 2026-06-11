@@ -23,8 +23,18 @@ struct SelectedFile
 
 struct Editor
 {
+    struct EditorSnapshot
+    {
+        std::string sceneData;
+        bool hasSelectedObject = false;
+        std::vector<int> selectedObjectPath;
+        int selectedComponentOrdinal = -1;
+        std::vector<std::vector<int>> expandedObjectPaths;
+    };
+
     Engine* engine = nullptr;
     GameObject* selectedObject = nullptr, *activeSelection = nullptr;
+    Component* selectedComponent = nullptr;
     std::set<GameObject*> m_expandedGameObjects;
     SelectedFile selectedFile;
     char sceneNameBuffer[16] = "Default";
@@ -49,9 +59,9 @@ struct Editor
     bool lockingSelection = false;
 
     // ---- Undo / Redo (memento: full-scene snapshots) ----
-    std::vector<std::string> m_undoStack;   // snapshots of pre-change scene states
-    std::vector<std::string> m_redoStack;
-    std::string m_pendingPreEdit;           // pre-edit snapshot captured at drag start
+    std::vector<EditorSnapshot> m_undoStack;   // snapshots of pre-change scene + selection states
+    std::vector<EditorSnapshot> m_redoStack;
+    EditorSnapshot m_pendingPreEdit;           // pre-edit snapshot captured at drag start
     bool m_hasPendingEdit = false;
     static constexpr size_t kUndoDepth = 64;
     bool dockingInitialized = false;
@@ -104,6 +114,8 @@ struct Editor
     void EndInspectorEdit();
     void Undo();
     void Redo();
+    EditorSnapshot CaptureEditorSnapshot() const;
+    void RestoreEditorSelection(const EditorSnapshot& snapshot);
     
     // Build and package for release
     void BuildProject();

@@ -706,6 +706,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         
         if (ImGui::Selectable(displayName.c_str(), activeSelection == obj)) {
             activeSelection = obj;
+            selectedComponent = nullptr;
             if (!lockingSelection) {
                 selectedObject = obj;
                 selectedFile.Clear();
@@ -768,6 +769,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         
         if (ImGui::Selectable(displayName.c_str(), activeSelection == obj)) {
             activeSelection = obj;
+            selectedComponent = nullptr;
             if (!lockingSelection) {
                 selectedObject = obj;
                 selectedFile.Clear();
@@ -1326,13 +1328,104 @@ void Editor::DrawBuildSettingsWindow()
 
 // ---- Undo / Redo ----------------------------------------------------------
 
+Editor::EditorSnapshot Editor::CaptureEditorSnapshot() const
+{
+    EditorSnapshot snapshot;
+    if (!engine || !engine->scene) return snapshot;
+
+    snapshot.sceneData = engine->scene->CaptureSnapshot();
+
+    GameObject* root = engine->scene->rootGameObject.get();
+    GameObject* current = selectedObject ? selectedObject : activeSelection;
+    auto buildPath = [root](GameObject* object) {
+        std::vector<int> path;
+        if (!root || !object) return path;
+        std::vector<int> reversedPath;
+        for (GameObject* node = object; node && node != root; node = node->parent)
+        {
+            if (!node->parent) break;
+            auto& siblings = node->parent->children;
+            auto it = std::find_if(siblings.begin(), siblings.end(),
+                [node](const std::unique_ptr<GameObject>& child) { return child.get() == node; });
+            if (it == siblings.end()) break;
+            reversedPath.push_back(static_cast<int>(std::distance(siblings.begin(), it)));
+        }
+        path.assign(reversedPath.rbegin(), reversedPath.rend());
+        return path;
+    };
+
+    if (root && current)
+    {
+        snapshot.hasSelectedObject = true;
+        snapshot.selectedObjectPath = buildPath(current);
+    }
+
+    for (GameObject* expanded : m_expandedGameObjects)
+        if (expanded)
+            snapshot.expandedObjectPaths.push_back(buildPath(expanded));
+
+    if (selectedComponent && selectedComponent->gameObject == current)
+    {
+        const auto& components = current->components;
+        for (size_t i = 0; i < components.size(); ++i)
+        {
+            if (components[i].get() == selectedComponent)
+            {
+                snapshot.selectedComponentOrdinal = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+
+    return snapshot;
+}
+
+void Editor::RestoreEditorSelection(const EditorSnapshot& snapshot)
+{
+    selectedObject = nullptr;
+    activeSelection = nullptr;
+    selectedComponent = nullptr;
+    selectedFile.Clear();
+    m_expandedGameObjects.clear();
+
+    if (!engine || !engine->scene || !engine->scene->rootGameObject) return;
+
+    auto resolvePath = [this](const std::vector<int>& path) -> GameObject* {
+        GameObject* node = engine->scene->rootGameObject.get();
+        for (int childIndex : path)
+        {
+            if (childIndex < 0 || childIndex >= static_cast<int>(node->children.size()))
+                return nullptr;
+            node = node->children[childIndex].get();
+        }
+        return node;
+    };
+
+    for (const std::vector<int>& path : snapshot.expandedObjectPaths)
+        if (GameObject* expanded = resolvePath(path))
+            m_expandedGameObjects.insert(expanded);
+
+    if (!snapshot.hasSelectedObject) return;
+
+    GameObject* node = resolvePath(snapshot.selectedObjectPath);
+    if (!node) return;
+
+    selectedObject = node;
+    activeSelection = node;
+    if (snapshot.selectedComponentOrdinal >= 0 &&
+        snapshot.selectedComponentOrdinal < static_cast<int>(node->components.size()))
+    {
+        selectedComponent = node->components[snapshot.selectedComponentOrdinal].get();
+    }
+}
+
 void Editor::PushUndoSnapshot()
 {
     if (!engine || !engine->scene) return;
     if (engine->state == Engine::State::Play) return;   // edit-mode only
-    std::string snap = engine->scene->CaptureSnapshot();
-    if (snap.empty()) return;
-    if (!m_undoStack.empty() && m_undoStack.back() == snap) return;  // dedup
+    EditorSnapshot snap = CaptureEditorSnapshot();
+    if (snap.sceneData.empty()) return;
+    if (!m_undoStack.empty() && m_undoStack.back().sceneData == snap.sceneData) return;  // dedup
     m_undoStack.push_back(std::move(snap));
     if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
     m_redoStack.clear();
@@ -1343,7 +1436,7 @@ void Editor::BeginInspectorEdit()
     if (!engine || !engine->scene) return;
     if (engine->state == Engine::State::Play) return;
     if (m_hasPendingEdit) return;                       // one capture per interaction
-    m_pendingPreEdit = engine->scene->CaptureSnapshot();
+    m_pendingPreEdit = CaptureEditorSnapshot();
     m_hasPendingEdit = true;
 }
 
@@ -1354,7 +1447,7 @@ void Editor::EndInspectorEdit()
     if (!engine || !engine->scene) return;
     // Commit the pre-edit snapshot only if the scene actually changed -> no
     // spurious undo steps from clicking a control without moving it.
-    if (engine->scene->CaptureSnapshot() == m_pendingPreEdit) return;
+    if (engine->scene->CaptureSnapshot() == m_pendingPreEdit.sceneData) return;
     m_undoStack.push_back(std::move(m_pendingPreEdit));
     if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
     m_redoStack.clear();
@@ -1366,18 +1459,15 @@ void Editor::Undo()
     if (engine->state == Engine::State::Play) return;
     if (m_undoStack.empty()) return;
 
-    std::string current = engine->scene->CaptureSnapshot();
-    std::string prev = std::move(m_undoStack.back());
+    EditorSnapshot current = CaptureEditorSnapshot();
+    EditorSnapshot prev = std::move(m_undoStack.back());
     m_undoStack.pop_back();
 
-    if (engine->scene->RestoreSnapshot(prev))
+    if (engine->scene->RestoreSnapshot(prev.sceneData))
     {
         m_redoStack.push_back(std::move(current));
         if (m_redoStack.size() > kUndoDepth) m_redoStack.erase(m_redoStack.begin());
-        // All GameObject pointers were rebuilt -> drop stale references.
-        selectedObject = nullptr; activeSelection = nullptr;
-        selectedFile.Clear();
-        m_expandedGameObjects.clear();
+        RestoreEditorSelection(prev);
         m_hasPendingEdit = false;
         sceneDirty = true;
     }
@@ -1393,17 +1483,15 @@ void Editor::Redo()
     if (engine->state == Engine::State::Play) return;
     if (m_redoStack.empty()) return;
 
-    std::string current = engine->scene->CaptureSnapshot();
-    std::string next = std::move(m_redoStack.back());
+    EditorSnapshot current = CaptureEditorSnapshot();
+    EditorSnapshot next = std::move(m_redoStack.back());
     m_redoStack.pop_back();
 
-    if (engine->scene->RestoreSnapshot(next))
+    if (engine->scene->RestoreSnapshot(next.sceneData))
     {
         m_undoStack.push_back(std::move(current));
         if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
-        selectedObject = nullptr; activeSelection = nullptr;
-        selectedFile.Clear();
-        m_expandedGameObjects.clear();
+        RestoreEditorSelection(next);
         m_hasPendingEdit = false;
         sceneDirty = true;
     }
@@ -2146,9 +2234,9 @@ void* Editor::IconTexID(Ditto::TextureHandle h)
 int Editor::GetIconIndex(const std::string& ext)
 {
     if (ext == ".cs") return 1;  // Cs.png
-    if (ext == ".obj") return 2;  // Prefab.png (model)
+    if (ext == ".obj" || ext == ".fbx" || ext == ".mesh") return 2;  // Model.png
     if (ext == ".prefab") return 3;  // Text.png (material)
-    if (ext == ".shader") return 4;  // Shader.png
+    if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag") return 4;  // Shader.png
     if (ext == ".bin") return 5;  // Scene.png
     if (ext == ".tga") return 6;  // Folder.png (texture)
     return 0;  // Default Default.png

@@ -544,6 +544,26 @@ bool BuildSystem::CopyDependencies(const std::string& outputPath, const std::str
                 break;
             }
         }
+
+        std::vector<std::string> assimpSearchPaths = {
+            engineRoot + "/Ditto/3rdParty/Assimp/bin",
+            engineRoot + "/ditto/3rdParty/Assimp/bin",
+            "3rdParty/Assimp/bin",
+            "Ditto/3rdParty/Assimp/bin",
+            "../../Ditto/Ditto/3rdParty/Assimp/bin",
+            "../Ditto/3rdParty/Assimp/bin",
+        };
+
+        for (const auto& p : assimpSearchPaths)
+        {
+            if (fs::exists(p + "/assimp-vc143-mt.dll"))
+            {
+                fs::copy(p + "/assimp-vc143-mt.dll", outputPath + "/assimp-vc143-mt.dll",
+                         fs::copy_options::overwrite_existing);
+                DITTO_LOG_INFO_STREAM("[Build] Copied assimp-vc143-mt.dll" );
+                break;
+            }
+        }
         
         return true;
     }

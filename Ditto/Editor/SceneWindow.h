@@ -1,7 +1,12 @@
 #pragma once
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/gtc/matrix_transform.hpp"
+#include "../3rdParty/ImGui/imgui.h"
 #include "../Engine/Core/GameObject.h"
+#include "../Engine/Resources/Resource.h"
+#include <memory>
+#include <string>
+#include <unordered_map>
 
 struct Editor;
 
@@ -45,6 +50,12 @@ private:
 
     ImRect2D GetCurrentViewportRect();
     void DrawGizmos();
+    void DrawPhysicsMeshGizmos();
+    void DrawColliderMeshGizmo(ColliderComponent* collider, const glm::mat4& worldMat);
+    void DrawBoxColliderGizmo(const glm::mat4& worldMat, MeshData* mesh);
+    void DrawSphereColliderGizmo(const glm::mat4& worldMat, MeshData* mesh);
+    void DrawConvexMeshColliderGizmo(const glm::mat4& worldMat, MeshData* mesh);
+    MeshData* GetColliderMesh(ColliderComponent* collider);
     void DrawTranslateGizmo(const glm::vec3& worldPos, float scale);
     void DrawRotateGizmo(const glm::vec3& worldPos, float scale);
     void DrawScaleGizmo(const glm::vec3& worldPos, float scale);
@@ -54,8 +65,13 @@ private:
     void HandleCameraRotation();
     void HandleObjectSelection();
     HandleAxis RaycastGizmos(const ImVec2D& mousePos);
+    ColliderComponent* GetSelectedCollider() const;
+    glm::vec3 GetGizmoWorldPosition() const;
     float DistToRotateRing(const ImVec2D& mousePos, const glm::vec3& worldPos, int axis, float ringRadius);
     ImVec2D WorldToScreen(const glm::vec3& worldPos);
+    void DrawWorldLine(const glm::vec3& a, const glm::vec3& b, ImU32 color, float thickness);
+
+    std::unordered_map<std::string, std::unique_ptr<MeshData>> m_physicsMeshCache;
 
     // Right-handed in-plane basis (u, v) for a rotation axis, so (u, v, axis)
     // is right-handed and +parametric-angle is a CCW turn about +axis.

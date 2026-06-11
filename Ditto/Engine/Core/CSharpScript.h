@@ -97,6 +97,8 @@ struct CSharpScriptSystem
     static bool HotReloadScript(CSharpScriptComponent* component);
 
     static bool IsInitialized() { return s_initialized; }
+    static void SetDeltaTime(float dt) { s_deltaTime = dt; }
+    static float GetDeltaTime() { return s_deltaTime; }
 
     static void SetLogCallback(LogCallback callback) { s_logCallback = callback; }
     static void Log(const std::string& message) { 
@@ -115,6 +117,7 @@ struct CSharpScriptSystem
     
 private:
     static bool s_initialized;
+    static float s_deltaTime;
     static LogCallback s_logCallback;
     static void* s_editor;
 };
@@ -123,6 +126,10 @@ private:
 extern "C" {
     void Internal_Transform_GetPosition(void* transform, float* outPos);
     void Internal_Transform_SetPosition(void* transform, float x, float y, float z);
+    void Internal_Transform_GetRotation(void* transform, float* outRot);
+    void Internal_Transform_SetRotation(void* transform, float x, float y, float z);
+    void Internal_Transform_GetScale(void* transform, float* outScale);
+    void Internal_Transform_SetScale(void* transform, float x, float y, float z);
     void* Internal_GameObject_GetTransform(void* gameObject);
     void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName);
     void Internal_Renderer_GetColor(void* renderer, float* outColor);

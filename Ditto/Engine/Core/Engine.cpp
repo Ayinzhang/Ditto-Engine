@@ -14,7 +14,10 @@
 #include "PathUtils.h"
 #include "Logger.h"
 #include "../Graphics/RHI/GLRenderer.h"
+#include "../Graphics/Shaders/ShaderAsset.h"
+#ifdef DITTO_ENABLE_VULKAN
 #include "../Graphics/RHI/Vulkan/VulkanRenderer.h"
+#endif
 #include <cstdlib>
 
 using namespace std;
@@ -40,6 +43,23 @@ static std::string FindShaderPathInDir(const std::string& baseDir, const std::st
         DITTO_LOG_WARN_STREAM("[Engine] Shader not found: " << shaderName
             << " (looked at " << resolved.string() << ")");
     return resolved.string();
+}
+
+static std::string FindDefaultSceneShaderPath(const std::string& shaderBaseDir)
+{
+    const std::string primary = "Lit_Toon.shader";
+    const std::string fallback = "Lit_Toon.hlsl";
+
+    std::string primaryPath = shaderBaseDir.empty()
+        ? FindShaderPath(primary) : FindShaderPathInDir(shaderBaseDir, primary);
+    if (fs::exists(primaryPath)) return primaryPath;
+
+    std::string fallbackPath = shaderBaseDir.empty()
+        ? FindShaderPath(fallback) : FindShaderPathInDir(shaderBaseDir, fallback);
+    if (fs::exists(fallbackPath)) return fallbackPath;
+
+    return shaderBaseDir.empty()
+        ? FindShaderPath("Scene.hlsl") : FindShaderPathInDir(shaderBaseDir, "Scene.hlsl");
 }
 
 // Read a text file (shader source) into a string.
@@ -81,8 +101,12 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     if (!glfwInit()) throw runtime_error("GLFW init failed");
 
-    // ---- Backend selection: Vulkan first; OpenGL only as runtime fallback ----
+    // ---- Backend selection: Vulkan first when built; OpenGL otherwise ----
+#ifdef DITTO_ENABLE_VULKAN
     backend = Backend::Vulkan;
+#else
+    backend = Backend::OpenGL;
+#endif
     {
         char* rhi = nullptr; size_t rhiLen = 0;
         if (_dupenv_s(&rhi, &rhiLen, "DITTO_RHI") == 0 && rhi)
@@ -90,19 +114,27 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
             std::string v = rhi;
             free(rhi);
             if (v == "gl" || v == "opengl" || v == "OpenGL")
-                Ditto::Logger::Get().Warning("[Engine] DITTO_RHI=gl ignored; Vulkan is the primary backend and OpenGL is only used if Vulkan init fails.");
+                backend = Backend::OpenGL;
             else if (v == "dx" || v == "dx12" || v == "directx")
                 backend = Backend::DirectX;
             else if (v == "vk" || v == "vulkan" || v == "Vulkan")
+#ifdef DITTO_ENABLE_VULKAN
                 backend = Backend::Vulkan;
+#else
+                Ditto::Logger::Get().Warning("[Engine] DITTO_RHI=vk ignored; this build was compiled without Vulkan SDK support.");
+#endif
         }
     }
 
-    // DirectX backend not implemented yet -> stay on the Vulkan-first path.
+    // DirectX backend not implemented yet -> fall back to the best available backend.
     if (backend == Backend::DirectX)
     {
-        Ditto::Logger::Get().Warning("[Engine] DirectX backend not implemented yet; using Vulkan.");
+        Ditto::Logger::Get().Warning("[Engine] DirectX backend not implemented yet; using available backend.");
+#ifdef DITTO_ENABLE_VULKAN
         backend = Backend::Vulkan;
+#else
+        backend = Backend::OpenGL;
+#endif
     }
 
     // Create the window + renderer for `backend`; returns false on failure so the
@@ -126,9 +158,13 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
         if (b == Backend::Vulkan)
         {
+#ifdef DITTO_ENABLE_VULKAN
             auto vk = std::make_unique<Ditto::VulkanRenderer>(window);
             if (!vk->IsValid()) return false;   // device/swapchain init failed
             renderer = std::move(vk);
+#else
+            return false;
+#endif
         }
         else
         {
@@ -159,9 +195,10 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
     // Shaders: editor mode resolves from the executable location; game mode
     // resolves relative to the loaded project directory.
-    std::string scenePath = shaderBaseDir.empty()
-        ? FindShaderPath("Scene.hlsl") : FindShaderPathInDir(shaderBaseDir, "Scene.hlsl");
-    shaderPipeline = renderer->CreatePipeline(ReadTextFile(scenePath));
+    std::string scenePath = FindDefaultSceneShaderPath(shaderBaseDir);
+    Ditto::ShaderAsset defaultShader = Ditto::LoadShaderAsset(scenePath, shaderBaseDir);
+    std::string pipelineSource = defaultShader.ok ? defaultShader.engineHLSL : ReadTextFile(scenePath);
+    shaderPipeline = renderer->CreatePipeline(pipelineSource);
 
     if (createEditor)
     {
@@ -228,6 +265,8 @@ void Engine::Run()
 
         if (state == Play)
         {
+            CSharpScriptSystem::SetDeltaTime(deltaTime);
+
             if (enteredPlay)
             {
                 ForEachGameObject(scene.get(), [](GameObject* obj)

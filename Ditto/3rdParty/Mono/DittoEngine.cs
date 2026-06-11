@@ -115,8 +115,37 @@ namespace DittoEngine
             }
         }
         
-        public Vector3 rotation { get; set; }
-        public Vector3 scale { get; set; } = Vector3.one;
+        public Vector3 rotation
+        {
+            get
+            {
+                if (_nativeTransform == IntPtr.Zero) return Vector3.zero;
+                float[] r = new float[3];
+                GetRotation(_nativeTransform, r);
+                return new Vector3(r[0], r[1], r[2]);
+            }
+            set
+            {
+                if (_nativeTransform == IntPtr.Zero) return;
+                SetRotation(_nativeTransform, value.x, value.y, value.z);
+            }
+        }
+
+        public Vector3 scale
+        {
+            get
+            {
+                if (_nativeTransform == IntPtr.Zero) return Vector3.one;
+                float[] s = new float[3];
+                GetScale(_nativeTransform, s);
+                return new Vector3(s[0], s[1], s[2]);
+            }
+            set
+            {
+                if (_nativeTransform == IntPtr.Zero) return;
+                SetScale(_nativeTransform, value.x, value.y, value.z);
+            }
+        }
         public Vector3 forward => new Vector3(0, 0, 1);
         public Vector3 up => new Vector3(0, 1, 0);
         public Vector3 right => new Vector3(1, 0, 0);
@@ -131,6 +160,18 @@ namespace DittoEngine
         
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void SetPosition(IntPtr transform, float x, float y, float z);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void GetRotation(IntPtr transform, float[] outRot);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetRotation(IntPtr transform, float x, float y, float z);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void GetScale(IntPtr transform, float[] outScale);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetScale(IntPtr transform, float x, float y, float z);
         
         public void Translate(Vector3 translation) => position += translation;
         public void Translate(float x, float y, float z) => position += new Vector3(x, y, z);

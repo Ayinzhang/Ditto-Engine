@@ -5,11 +5,16 @@
 #include "Scene.h"
 #include "GameObject.h"
 #include "Logger.h"
+#include "ProjectManager.h"
+#include "PathUtils.h"
+#include "../Graphics/Shaders/ShaderAsset.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include <fstream>
 #include <algorithm>
+#include <filesystem>
+#include <cctype>
 
 // Component index definitions live in GameObject.h (namespace ComponentIndex)
 // so engine-side code can share them. Local aliases keep the switch below terse.
@@ -39,6 +44,108 @@ static void TrackUndoableEdit()
     if (!g_editor) return;
     if (ImGui::IsItemActivated())            g_editor->BeginInspectorEdit();
     if (ImGui::IsItemDeactivatedAfterEdit()) g_editor->EndInspectorEdit();
+}
+
+static void DrawComponentSelectionBackground(Component* component)
+{
+    if (!g_editor || g_editor->selectedComponent != component) return;
+    ImVec2 min = ImGui::GetCursorScreenPos();
+    ImVec2 max(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 8.0f, min.y + ImGui::GetFrameHeight());
+    ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(45, 105, 175, 95), 3.0f);
+}
+
+static void SelectComponentOnLastItem(Component* component)
+{
+    if (g_editor && ImGui::IsItemClicked())
+        g_editor->selectedComponent = component;
+}
+
+static void SelectComponentArea(Component* component, const ImVec2& start)
+{
+    if (!g_editor) return;
+
+    ImVec2 end(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 8.0f, ImGui::GetCursorScreenPos().y);
+    if (end.y < start.y + ImGui::GetFrameHeight())
+        end.y = start.y + ImGui::GetFrameHeight();
+
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsMouseHoveringRect(start, end, true))
+        g_editor->selectedComponent = component;
+
+    if (g_editor->selectedComponent == component)
+    {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddRectFilled(start, end, IM_COL32(45, 105, 175, 24), 3.0f);
+        drawList->AddRect(start, end, IM_COL32(75, 145, 220, 150), 3.0f);
+    }
+}
+
+static bool DrawObjectFieldButton(const char* label, void* iconTexture, const std::string& value, const char* popupId,
+    std::string* droppedPath = nullptr)
+{
+    ImGui::TextUnformatted(label);
+    ImGui::SameLine();
+
+    float rowWidth = ImGui::GetContentRegionAvail().x;
+    if (iconTexture)
+    {
+        ImGui::Image(iconTexture, ImVec2(16.0f, 16.0f), ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::SameLine();
+        rowWidth -= 16.0f + ImGui::GetStyle().ItemSpacing.x;
+    }
+    float fieldWidth = std::max(40.0f, rowWidth);
+
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.13f, 0.16f, 0.19f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.23f, 0.28f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.21f, 0.29f, 0.36f, 1.0f));
+    bool opened = ImGui::Button((value + "##" + std::string(popupId) + "Field").c_str(), ImVec2(fieldWidth, 0.0f));
+    if (droppedPath && ImGui::BeginDragDropTarget())
+    {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PROJECT_FILE"))
+            *droppedPath = static_cast<const char*>(payload->Data);
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::PopStyleColor(3);
+    if (opened)
+        ImGui::OpenPopup(popupId);
+    return opened;
+}
+
+static std::string FileNameFromPath(const std::string& path)
+{
+    size_t pos = path.find_last_of("/\\");
+    return pos == std::string::npos ? path : path.substr(pos + 1);
+}
+
+static std::string ToAssetRelativePath(const std::string& path)
+{
+    Project* project = ProjectManager::GetInstance().GetCurrentProject();
+    if (!project) return path;
+
+    std::filesystem::path filePath = std::filesystem::absolute(path).lexically_normal();
+    std::filesystem::path assetsPath = std::filesystem::absolute(std::filesystem::path(project->path) / "Assets").lexically_normal();
+    std::wstring fileW = filePath.wstring();
+    std::wstring assetsW = assetsPath.wstring();
+    std::replace(fileW.begin(), fileW.end(), L'\\', L'/');
+    std::replace(assetsW.begin(), assetsW.end(), L'\\', L'/');
+
+    if (fileW.rfind(assetsW + L"/", 0) == 0)
+    {
+        std::filesystem::path relative = filePath.lexically_relative(assetsPath);
+        return relative.generic_string();
+    }
+    return path;
+}
+
+static std::string LowerExtension(const std::string& path)
+{
+    std::string ext = std::filesystem::path(path).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+static Ditto::ShaderAsset LoadRendererShaderAsset(const std::string& shaderName)
+{
+    return Ditto::LoadShaderAsset(shaderName.empty() ? RendererComponent::DefaultShaderName : shaderName);
 }
 
 GameObject::GameObject(const std::string _name)
@@ -73,6 +180,8 @@ GameObject::GameObject(GameObject* other)
             AddComponent<RendererComponent>(r);
         else if (auto rb = dynamic_cast<RigidbodyComponent*>(comp))
             AddComponent<RigidbodyComponent>(rb);
+        else if (auto col = dynamic_cast<ColliderComponent*>(comp))
+            AddComponent<ColliderComponent>(col);
         else if (auto cs = dynamic_cast<CSharpScriptComponent*>(comp))
         {
             // CSharpScriptComponent has no copy-ctor; default-construct then
@@ -141,6 +250,8 @@ bool GameObject::IsDescendantOf(GameObject* ancestor) const
 void GameObject::RemoveComponent(Component* component)
 {
     if (component->gameObject != this) return;
+    if (g_editor && g_editor->selectedComponent == component)
+        g_editor->selectedComponent = nullptr;
     removeComps.push_back(component);
 }
 
@@ -152,14 +263,14 @@ void GameObject::ProcessRemovals()
             [comp](const std::unique_ptr<Component>& c) { return c.get() == comp; });
         if (it != components.end())
         {
-            // Clear the mask bit BEFORE erasing: erase destroys the component,
-            // and `comp` aliases it (the old code read comp->index after the
-            // delete -- a use-after-free).
-            compMask &= ~comp->index;
             components.erase(it);
         }
     }
     removeComps.clear();
+
+    compMask = 0;
+    for (const auto& comp : components)
+        compMask |= comp->index;
 }
 
 void GameObject::OnInspectorGUI()
@@ -203,7 +314,9 @@ void GameObject::OnInspectorGUI()
     for (auto& comp : components)
     {
         ImGui::PushID(comp.get());
+        ImVec2 componentStart = ImGui::GetCursorScreenPos();
         comp->OnInspectorGUI();
+        SelectComponentArea(comp.get(), componentStart);
         ImGui::PopID();
         ImGui::Separator();
     }
@@ -263,6 +376,7 @@ void GameObject::Deserialize(std::istream& file)
         case CI::Light:        newComp = std::make_unique<LightComponent>(); break;
         case CI::Renderer:     newComp = std::make_unique<RendererComponent>(); break;
         case CI::Rigidbody:    newComp = std::make_unique<RigidbodyComponent>(); break;
+        case CI::Collider:     newComp = std::make_unique<ColliderComponent>(); break;
         case CI::CSharpScript: newComp = std::make_unique<CSharpScriptComponent>(); break;
         default: continue;
         }
@@ -395,9 +509,11 @@ glm::mat4 TransformComponent::GetWorldModel() const
 
 void TransformComponent::OnInspectorGUI()
 {
+    DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
     ImGui::TextUnformatted("Transform");
+    SelectComponentOnLastItem(this);
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
 
     ImGui::Indent(20.0f);
@@ -447,8 +563,10 @@ LightComponent::LightComponent() : color(1.0f), intensity(1.0f) { index = CI::Li
 LightComponent::LightComponent(LightComponent* other) : color(other->color), intensity(other->intensity) { index = CI::Light; }
 void LightComponent::OnInspectorGUI()
 {
+    DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Light");
+    SelectComponentOnLastItem(this);
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
     if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
@@ -473,38 +591,165 @@ void LightComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&intensity), sizeof(intensity));
 }
 
-RendererComponent::RendererComponent(Type _type) : type(_type), color(1.0f, 1.0f, 1.0f, 1.0f) { index = CI::Renderer; }
-RendererComponent::RendererComponent(RendererComponent* other) : type(other->type), color(other->color), meshPath(other->meshPath) { index = CI::Renderer; }
+RendererComponent::RendererComponent(Type _type)
+    : type(_type), meshSource(BuiltIn), color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
+{
+    index = CI::Renderer;
+}
+RendererComponent::RendererComponent(RendererComponent* other)
+    : type(other->type), meshSource(other->meshSource), color(other->color),
+    shaderName(other->shaderName), mainTexturePath(other->mainTexturePath), meshPath(other->meshPath)
+{
+    index = CI::Renderer;
+}
+
+bool RendererComponent::UsesFileMesh() const
+{
+    return meshSource == File && !meshPath.empty();
+}
+
 void RendererComponent::OnInspectorGUI()
 {
+    DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Renderer");
+    SelectComponentOnLastItem(this);
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
     if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
-    const char* typeNames[] = { "Cube", "Sphere" };
-    int currentType = static_cast<int>(type);
-    ImGui::Text("Type "); ImGui::SameLine();
-    if (ImGui::Combo("##Type", &currentType, typeNames, 2))
-        type = static_cast<Type>(currentType);
-    TrackUndoableEdit();
-    ImGui::Text("Color"); ImGui::SameLine();
-    ImGui::ColorEdit4("##Color", &color.x, ImGuiColorEditFlags_AlphaBar);
-    TrackUndoableEdit();
 
-    // Optional custom mesh override (project-relative .obj path). Empty falls
-    // back to the built-in Cube/Sphere geometry above.
-    char meshBuf[256];
-    strcpy_s(meshBuf, sizeof(meshBuf), meshPath.c_str());
-    ImGui::Text("Mesh "); ImGui::SameLine();
-    if (ImGui::InputText("##MeshPath", meshBuf, sizeof(meshBuf)))
-        meshPath = meshBuf;
-    TrackUndoableEdit();
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Clear##Mesh")) meshPath.clear();
-    if (!meshPath.empty())
-        ImGui::TextDisabled("custom mesh (built-in type used for physics)");
+    std::string meshDisplay;
+    if (meshSource == BuiltIn)
+        meshDisplay = (type == Sphere) ? "Sphere" : "Cube";
+    else
+        meshDisplay = meshPath.empty() ? "None (Mesh)" : FileNameFromPath(meshPath);
+
+    std::string droppedMeshPath;
+    DrawObjectFieldButton("Mesh", nullptr, meshDisplay, "RendererMeshObjectPopup", &droppedMeshPath);
+    if (!droppedMeshPath.empty())
+    {
+        std::string ext = LowerExtension(droppedMeshPath);
+        if (ext == ".obj" || ext == ".fbx" || ext == ".mesh")
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            meshSource = File;
+            meshPath = ToAssetRelativePath(droppedMeshPath);
+        }
+    }
+    if (ImGui::BeginPopup("RendererMeshObjectPopup"))
+    {
+        if (ImGui::MenuItem("Cube", nullptr, meshSource == BuiltIn && type == Cube))
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            meshSource = BuiltIn;
+            type = Cube;
+        }
+        if (ImGui::MenuItem("Sphere", nullptr, meshSource == BuiltIn && type == Sphere))
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            meshSource = BuiltIn;
+            type = Sphere;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Use File Mesh", nullptr, meshSource == File))
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            meshSource = File;
+        }
+        char meshBuf[256];
+        strcpy_s(meshBuf, sizeof(meshBuf), meshPath.c_str());
+        ImGui::TextUnformatted("Path");
+        if (ImGui::InputText("##RendererFileMeshPath", meshBuf, sizeof(meshBuf)))
+        {
+            meshSource = File;
+            meshPath = meshBuf;
+        }
+        TrackUndoableEdit();
+        if (ImGui::SmallButton("Clear Mesh Path"))
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            meshPath.clear();
+        }
+        ImGui::EndPopup();
+    }
+
+    std::string shaderDisplay = shaderName.empty() ? DefaultShaderName : shaderName;
+    std::string droppedShaderPath;
+    DrawObjectFieldButton("Shader", nullptr, shaderDisplay, "RendererShaderObjectPopup", &droppedShaderPath);
+    if (!droppedShaderPath.empty())
+    {
+        std::string ext = LowerExtension(droppedShaderPath);
+        if (ext == ".hlsl" || ext == ".shader" || ext == ".glsl" || ext == ".vert" || ext == ".frag")
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            shaderName = ToAssetRelativePath(droppedShaderPath);
+        }
+    }
+    if (ImGui::BeginPopup("RendererShaderObjectPopup"))
+    {
+        if (ImGui::MenuItem(DefaultShaderName, nullptr, shaderDisplay == DefaultShaderName))
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            shaderName = DefaultShaderName;
+        }
+        ImGui::Separator();
+        char shaderBuf[128];
+        strcpy_s(shaderBuf, sizeof(shaderBuf), shaderName.c_str());
+        ImGui::TextUnformatted("Shader Name");
+        if (ImGui::InputText("##RendererShaderName", shaderBuf, sizeof(shaderBuf)))
+            shaderName = shaderBuf;
+        TrackUndoableEdit();
+        ImGui::EndPopup();
+    }
+
+    Ditto::ShaderAsset shaderAsset = LoadRendererShaderAsset(shaderName);
+    if (shaderAsset.ok && !shaderAsset.properties.empty())
+    {
+        ImGui::TextUnformatted("Properties");
+        ImGui::Indent(12.0f);
+        for (const Ditto::ShaderProperty& property : shaderAsset.properties)
+        {
+            const std::string label = property.displayName.empty() ? property.name : property.displayName;
+            if (property.type == Ditto::ShaderPropertyType::Color)
+            {
+                ImGui::TextUnformatted(label.c_str()); ImGui::SameLine();
+                ImGui::ColorEdit4(("##Material" + property.name).c_str(), &color.x, ImGuiColorEditFlags_AlphaBar);
+                TrackUndoableEdit();
+            }
+            else if (property.type == Ditto::ShaderPropertyType::Texture2D)
+            {
+                std::string droppedTexturePath;
+                std::string textureDisplay = mainTexturePath.empty() ? property.textureDefault : FileNameFromPath(mainTexturePath);
+                DrawObjectFieldButton(label.c_str(), nullptr, textureDisplay, ("RendererTextureObjectPopup" + property.name).c_str(), &droppedTexturePath);
+                if (!droppedTexturePath.empty())
+                {
+                    std::string ext = LowerExtension(droppedTexturePath);
+                    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr")
+                    {
+                        if (g_editor) g_editor->PushUndoSnapshot();
+                        mainTexturePath = ToAssetRelativePath(droppedTexturePath);
+                    }
+                }
+                if (ImGui::BeginPopup(("RendererTextureObjectPopup" + property.name).c_str()))
+                {
+                    char texBuf[256];
+                    strcpy_s(texBuf, sizeof(texBuf), mainTexturePath.c_str());
+                    ImGui::TextUnformatted("Path");
+                    if (ImGui::InputText(("##RendererTexturePath" + property.name).c_str(), texBuf, sizeof(texBuf)))
+                        mainTexturePath = texBuf;
+                    TrackUndoableEdit();
+                    if (ImGui::SmallButton(("Clear##Texture" + property.name).c_str()))
+                    {
+                        if (g_editor) g_editor->PushUndoSnapshot();
+                        mainTexturePath.clear();
+                    }
+                    ImGui::EndPopup();
+                }
+            }
+        }
+        ImGui::Unindent(12.0f);
+    }
 
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
@@ -515,6 +760,10 @@ void RendererComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
     WriteString(file, meshPath);   // scene version 2+
+    int32_t meshSourceInt = static_cast<int32_t>(meshSource);
+    file.write(reinterpret_cast<const char*>(&meshSourceInt), sizeof(meshSourceInt));
+    WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
+    WriteString(file, mainTexturePath);
 }
 void RendererComponent::Deserialize(std::istream& file)
 {
@@ -527,6 +776,24 @@ void RendererComponent::Deserialize(std::istream& file)
         meshPath = ReadString(file);
     else
         meshPath.clear();
+    if (g_sceneLoadingVersion >= 6)
+    {
+        int32_t meshSourceInt = 0;
+        file.read(reinterpret_cast<char*>(&meshSourceInt), sizeof(meshSourceInt));
+        meshSource = static_cast<MeshSource>(meshSourceInt);
+        shaderName = ReadString(file);
+        if (shaderName.empty()) shaderName = DefaultShaderName;
+        if (g_sceneLoadingVersion >= 7)
+            mainTexturePath = ReadString(file);
+        else
+            mainTexturePath.clear();
+    }
+    else
+    {
+        meshSource = meshPath.empty() ? BuiltIn : File;
+        shaderName = DefaultShaderName;
+        mainTexturePath.clear();
+    }
 }
 
 RigidbodyComponent::RigidbodyComponent()
@@ -541,8 +808,10 @@ RigidbodyComponent::RigidbodyComponent(RigidbodyComponent* other)
 }
 void RigidbodyComponent::OnInspectorGUI()
 {
+    DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Rigidbody");
+    SelectComponentOnLastItem(this);
     ImGui::SameLine(ImGui::GetWindowWidth() - 30);
     if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
@@ -622,5 +891,114 @@ void RigidbodyComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&useGravity), sizeof(useGravity));
     file.read(reinterpret_cast<char*>(&damp), sizeof(damp));
     file.read(reinterpret_cast<char*>(&angularDamp), sizeof(angularDamp));
+}
+
+ColliderComponent::ColliderComponent(Type _type)
+    : type(_type), isTrigger(false), biasPosition(0.0f), biasRotation(0.0f), biasScale(1.0f)
+{
+    index = CI::Collider;
+}
+
+ColliderComponent::ColliderComponent(ColliderComponent* other)
+    : type(other->type), isTrigger(other->isTrigger),
+    biasPosition(other->biasPosition), biasRotation(other->biasRotation), biasScale(other->biasScale),
+    meshPath(other->meshPath)
+{
+    index = CI::Collider;
+}
+
+glm::mat4 ColliderComponent::GetBiasMatrix() const
+{
+    glm::mat4 translation = glm::translate(glm::mat4(1.0f), biasPosition);
+    glm::mat4 rotation = glm::mat4(1.0f);
+    rotation = glm::rotate(rotation, glm::radians(biasRotation.y), glm::vec3(0, 1, 0));
+    rotation = glm::rotate(rotation, glm::radians(biasRotation.x), glm::vec3(1, 0, 0));
+    rotation = glm::rotate(rotation, glm::radians(biasRotation.z), glm::vec3(0, 0, 1));
+    glm::mat4 scale = glm::scale(glm::mat4(1.0f), biasScale);
+    return translation * rotation * scale;
+}
+
+void ColliderComponent::OnInspectorGUI()
+{
+    DrawComponentSelectionBackground(this);
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine(); ImGui::TextUnformatted("Collider");
+    SelectComponentOnLastItem(this);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+
+    ImGui::Indent(20.0f);
+    ImGui::Text("Trigger"); ImGui::SameLine();
+    ImGui::Checkbox("##ColliderTrigger", &isTrigger);
+    TrackUndoableEdit();
+
+    const char* typeNames[] = { "Box", "Sphere", "Mesh Convex" };
+    int currentType = static_cast<int>(type);
+    ImGui::Text("Type"); ImGui::SameLine();
+    if (ImGui::Combo("##ColliderType", &currentType, typeNames, 3))
+        type = static_cast<Type>(currentType);
+    TrackUndoableEdit();
+
+    ImGui::Text("Bias Pos"); ImGui::SameLine();
+    ImGui::DragFloat3("##ColliderBiasPosition", &biasPosition.x, 0.1f);
+    TrackUndoableEdit();
+    ImGui::Text("Bias Rot"); ImGui::SameLine();
+    ImGui::DragFloat3("##ColliderBiasRotation", &biasRotation.x, 0.1f);
+    TrackUndoableEdit();
+    ImGui::Text("Bias Scale"); ImGui::SameLine();
+    ImGui::DragFloat3("##ColliderBiasScale", &biasScale.x, 0.1f, 0.001f, 1000.0f);
+    TrackUndoableEdit();
+
+    if (type == MeshConvex)
+    {
+        char meshBuf[256];
+        strcpy_s(meshBuf, sizeof(meshBuf), meshPath.c_str());
+        ImGui::Text("Mesh"); ImGui::SameLine();
+        if (ImGui::InputText("##ColliderMeshPath", meshBuf, sizeof(meshBuf)))
+            meshPath = meshBuf;
+        TrackUndoableEdit();
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Clear##ColliderMesh")) meshPath.clear();
+        ImGui::TextDisabled("OBJ only; used as convex point cloud");
+    }
+    ImGui::Unindent(20.0f);
+
+    if (!enabled) ImGui::PopStyleVar();
+}
+
+void ColliderComponent::Serialize(std::ostream& file) const
+{
+    int32_t typeInt = static_cast<int32_t>(type);
+    file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
+    file.write(reinterpret_cast<const char*>(&isTrigger), sizeof(isTrigger));
+    file.write(reinterpret_cast<const char*>(&biasPosition), sizeof(glm::vec3));
+    file.write(reinterpret_cast<const char*>(&biasRotation), sizeof(glm::vec3));
+    file.write(reinterpret_cast<const char*>(&biasScale), sizeof(glm::vec3));
+    WriteString(file, meshPath);
+}
+
+void ColliderComponent::Deserialize(std::istream& file)
+{
+    int32_t typeInt = 0;
+    file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
+    type = static_cast<Type>(typeInt);
+    if (g_sceneLoadingVersion >= 4)
+        file.read(reinterpret_cast<char*>(&isTrigger), sizeof(isTrigger));
+    else
+        isTrigger = false;
+    if (g_sceneLoadingVersion >= 5)
+    {
+        file.read(reinterpret_cast<char*>(&biasPosition), sizeof(glm::vec3));
+        file.read(reinterpret_cast<char*>(&biasRotation), sizeof(glm::vec3));
+        file.read(reinterpret_cast<char*>(&biasScale), sizeof(glm::vec3));
+    }
+    else
+    {
+        biasPosition = glm::vec3(0.0f);
+        biasRotation = glm::vec3(0.0f);
+        biasScale = glm::vec3(1.0f);
+    }
+    meshPath = ReadString(file);
 }
 

@@ -23,13 +23,14 @@ struct Resource
 struct ModelData // For Rendering
 {
 	std::string modelName; int vertexCount;
-	// Indexed geometry: `vertexData` holds unique pos+normal pairs (interleaved,
-	// 6 floats each), `indices` references them per triangle. Shared (posIdx,
-	// normIdx) corners dedupe to one vertex, so a typical smooth mesh uploads
+	// Indexed geometry: `vertexData` holds unique pos+normal+uv tuples
+	// (interleaved, 8 floats each), `indices` references them per triangle.
+	// Shared (posIdx, normIdx, texIdx) corners dedupe to one vertex, so a typical smooth mesh uploads
 	// far fewer vertices than the old flattened-per-corner layout.
 	std::vector<float> vertexData;
 	std::vector<unsigned int> indices;
 	ModelData(const std::string& path);
+	ModelData(const std::string& path, bool useAssimp);
 	struct FaceIndices { int posIdx, texIdx, normIdx; };
 	FaceIndices ParseFaceIndices(const std::string& token);
 };
@@ -41,4 +42,5 @@ struct MeshData // For Physics
     glm::vec3 aabbMin, aabbMax;
 
     MeshData(const std::string& filePath);
+    MeshData(const std::string& filePath, bool useAssimp);
 };

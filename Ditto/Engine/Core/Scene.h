@@ -20,6 +20,9 @@ struct BaseGeometry
 struct GeometryInstances
 {
     RendererComponent::Type type;
+    std::string meshPath;
+    std::string shaderName;
+    std::string texturePath;
     std::vector<glm::mat4> modelMatrices;
     std::vector<glm::vec4> instanceColors;
     Ditto::StorageBufferHandle modelSBO, colorSBO;   // owned by the renderer
@@ -48,6 +51,10 @@ struct Scene
     // untouched. GL buffers + batches here are owned by the Scene.
     std::unordered_map<std::string, BaseGeometry> customGeometries;
     std::unordered_map<std::string, std::unique_ptr<GeometryInstances>> customBatches;
+    std::unordered_map<std::string, std::unique_ptr<GeometryInstances>> renderBatches;
+    std::unordered_map<std::string, Ditto::PipelineHandle> shaderPipelines;
+    std::unordered_map<std::string, Ditto::TextureHandle> materialTextures;
+    Ditto::TextureHandle whiteTexture;
 
     Resource* resource = nullptr;
     // Non-owning RHI pointer (owned by Engine). Set in InitializeBaseGeometries.
@@ -92,4 +99,6 @@ struct Scene
 
 private:
     void DestroyAllObjects();
+    Ditto::PipelineHandle GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback);
+    Ditto::TextureHandle GetOrCreateMaterialTexture(const std::string& texturePath);
 };

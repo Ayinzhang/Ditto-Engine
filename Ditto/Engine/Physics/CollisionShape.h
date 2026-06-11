@@ -26,13 +26,19 @@ struct AABB
 
 struct Collider
 {
-	TransformComponent* transform;
+	TransformComponent* objectTransform;
+    TransformComponent* bodyTransform;
 	RigidbodyComponent* rigidbody;
 	AABB aabb, localAABB;
 	MeshData* mesh;
+    std::unique_ptr<MeshData> ownedMesh;
+    glm::mat4 biasLocalModel;
+    glm::mat4 biasWorldModel;
+    bool isTrigger;
 
     bool isDirty; int id;
 
+    void UpdateBiasWorldModel();
 	void UpdateWorldAABB();
 };
 

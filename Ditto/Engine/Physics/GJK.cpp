@@ -5,7 +5,7 @@
 
 static glm::vec3 GetSupportPoint(Collider* collider, const glm::vec3& direction)
 {
-    glm::mat4 worldMat = collider->transform->GetWorldModel();
+    glm::mat4 worldMat = collider->biasWorldModel;
 
     glm::mat3 worldToLocalRotScale = glm::mat3(glm::inverse(worldMat));
     glm::vec3 localDir = glm::normalize(worldToLocalRotScale * direction);

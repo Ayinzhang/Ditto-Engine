@@ -242,6 +242,8 @@ void InspectorWindow::Draw()
                 { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RendererComponent>(); }
             if (!(m_currentObject->compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody"))
                 { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RigidbodyComponent>(); }
+            if (ImGui::MenuItem("Collider"))
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(); }
             
             ImGui::Separator();
             ImGui::TextUnformatted("Scripts");

@@ -39,7 +39,8 @@ struct Physics
     float positionCorrectionFactor = 0.8f;
 
     virtual void GenerateColliders(const std::vector<GameObject*>& gameobjects);
-    virtual void CollectCollidersRecursive(GameObject* obj, std::vector<std::unique_ptr<Collider>>& outColliders, bool parentIsDynamic = false);
+    virtual void CollectCollidersRecursive(GameObject* obj, std::vector<std::unique_ptr<Collider>>& outColliders,
+        RigidbodyComponent* activeBody = nullptr, TransformComponent* activeBodyTransform = nullptr, bool parentIsDynamic = false);
     virtual void ClearColliders();  // 清除所有碰撞体
     virtual void UpdatePhysics(float dt);
 

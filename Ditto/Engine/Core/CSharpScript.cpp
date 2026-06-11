@@ -145,6 +145,7 @@ static std::string FindMSBuildPath()
 }
 
 bool CSharpScriptSystem::s_initialized = false;
+float CSharpScriptSystem::s_deltaTime = 0.016f;
 LogCallback CSharpScriptSystem::s_logCallback = nullptr;
 void* CSharpScriptSystem::s_editor = nullptr;
 
@@ -1215,6 +1216,10 @@ void CSharpScriptSystem::RegisterInternalCalls()
 {
     ::MonoRuntime::AddInternalCall("DittoEngine.Transform::GetPosition", (void*)Internal_Transform_GetPosition);
     ::MonoRuntime::AddInternalCall("DittoEngine.Transform::SetPosition", (void*)Internal_Transform_SetPosition);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Transform::GetRotation", (void*)Internal_Transform_GetRotation);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Transform::SetRotation", (void*)Internal_Transform_SetRotation);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Transform::GetScale", (void*)Internal_Transform_GetScale);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Transform::SetScale", (void*)Internal_Transform_SetScale);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.MonoBehaviour::GameObject_GetTransform", (void*)Internal_GameObject_GetTransform);
     ::MonoRuntime::AddInternalCall("DittoEngine.GameObject::GetTransform", (void*)Internal_GameObject_GetTransform);
@@ -1274,6 +1279,51 @@ void Internal_Transform_SetPosition(void* transform, float x, float y, float z)
     trans->UpdateTransform();
 }
 
+void Internal_Transform_GetRotation(void* transform, float* outRot)
+{
+    if (!transform || !outRot) return;
+
+    TransformComponent* trans = static_cast<TransformComponent*>(transform);
+    outRot[0] = trans->rotation.x;
+    outRot[1] = trans->rotation.y;
+    outRot[2] = trans->rotation.z;
+}
+
+void Internal_Transform_SetRotation(void* transform, float x, float y, float z)
+{
+    if (!transform) return;
+
+    TransformComponent* trans = static_cast<TransformComponent*>(transform);
+    trans->rotation.x = x;
+    trans->rotation.y = y;
+    trans->rotation.z = z;
+    trans->useQuatRotation = false;
+    trans->localDirty = true;
+    trans->UpdateTransform();
+}
+
+void Internal_Transform_GetScale(void* transform, float* outScale)
+{
+    if (!transform || !outScale) return;
+
+    TransformComponent* trans = static_cast<TransformComponent*>(transform);
+    outScale[0] = trans->scale.x;
+    outScale[1] = trans->scale.y;
+    outScale[2] = trans->scale.z;
+}
+
+void Internal_Transform_SetScale(void* transform, float x, float y, float z)
+{
+    if (!transform) return;
+
+    TransformComponent* trans = static_cast<TransformComponent*>(transform);
+    trans->scale.x = x;
+    trans->scale.y = y;
+    trans->scale.z = z;
+    trans->localDirty = true;
+    trans->UpdateTransform();
+}
+
 void* Internal_GameObject_GetTransform(void* gameObject)
 {
     if (!gameObject) return nullptr;
@@ -1295,7 +1345,7 @@ void* Internal_GameObject_GetTransform(void* gameObject)
 
 float Internal_Time_GetDeltaTime()
 {
-    return 0.016f;
+    return CSharpScriptSystem::GetDeltaTime();
 }
 
 void Internal_Debug_Log(void* msg)
@@ -1369,6 +1419,7 @@ void Internal_Renderer_SetShapeType(void* renderer, int type)
     if (!renderer) return;
     RendererComponent* rend = static_cast<RendererComponent*>(renderer);
     rend->type = static_cast<RendererComponent::Type>(type);
+    rend->meshSource = RendererComponent::BuiltIn;
 }
 
 void Internal_Light_GetColor(void* light, float* outColor)
