@@ -33,6 +33,16 @@ private:
     glm::vec3 m_originalRotation;
     glm::vec3 m_originalScale;
 
+    // Rotation drag state. We track the grabbed point's parametric position on
+    // the ring and advance it by projecting each frame's mouse motion onto the
+    // ring's *screen-space tangent* (the Unity/Unreal approach). This stays
+    // responsive from any view -- including edge-on rings, where ray->plane
+    // intersection degenerates -- and the direction sign comes from the
+    // projection itself, so no axis ever rotates backwards.
+    float m_rotateRingAngle = 0.0f;   // parametric angle of grab point on ring (radians)
+    float m_rotateTotalAngle = 0.0f;  // accumulated rotation applied (radians)
+    ImVec2D m_rotateLastMouse;        // mouse pos last frame, for incremental delta
+
     ImRect2D GetCurrentViewportRect();
     void DrawGizmos();
     void DrawTranslateGizmo(const glm::vec3& worldPos, float scale);
@@ -46,4 +56,12 @@ private:
     HandleAxis RaycastGizmos(const ImVec2D& mousePos);
     float DistToRotateRing(const ImVec2D& mousePos, const glm::vec3& worldPos, int axis, float ringRadius);
     ImVec2D WorldToScreen(const glm::vec3& worldPos);
+
+    // Right-handed in-plane basis (u, v) for a rotation axis, so (u, v, axis)
+    // is right-handed and +parametric-angle is a CCW turn about +axis.
+    void RingBasis(const glm::vec3& axis, glm::vec3& outU, glm::vec3& outV);
+    // Parametric angle on the ring whose screen projection is closest to the
+    // cursor (where the user grabbed). Robust even when the ring is edge-on.
+    float ClosestRingAngle(const ImVec2D& mousePos, const glm::vec3& center,
+                           const glm::vec3& axis, float radius);
 };

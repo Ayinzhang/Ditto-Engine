@@ -55,6 +55,54 @@ ImVec2D SceneWindow::WorldToScreen(const glm::vec3& worldPos)
     return ImVec2D(screenX, screenY);
 }
 
+void SceneWindow::RingBasis(const glm::vec3& axis, glm::vec3& outU, glm::vec3& outV)
+{
+    // Two orthonormal in-plane vectors. v = axis x u makes (u, v, axis) right-
+    // handed, so increasing the parametric angle is a CCW turn about +axis --
+    // matching glm::rotate's sense, so applying +angle keeps the grab in place.
+    outU = std::abs(axis.x) < 0.9f ? glm::cross(axis, glm::vec3(1, 0, 0))
+                                   : glm::cross(axis, glm::vec3(0, 1, 0));
+    outU = glm::normalize(outU);
+    outV = glm::cross(axis, outU);
+}
+
+float SceneWindow::ClosestRingAngle(const ImVec2D& mousePos, const glm::vec3& center,
+                                    const glm::vec3& axis, float radius)
+{
+    // Parametric angle of the ring point whose screen projection is nearest the
+    // cursor -- i.e. where on the ring the user grabbed. Works from any view,
+    // including edge-on (the ring projects to a line, but a nearest point still
+    // exists). Coarse sample then refine.
+    glm::vec3 u, v;
+    RingBasis(axis, u, v);
+
+    auto screenDistSq = [&](float theta) -> float {
+        glm::vec3 p = center + radius * (std::cos(theta) * u + std::sin(theta) * v);
+        ImVec2D s = WorldToScreen(p);
+        float dx = mousePos.x - s.x, dy = mousePos.y - s.y;
+        return dx * dx + dy * dy;
+    };
+
+    float best = 0.0f, bestD = 1e30f;
+    const int samples = 64;
+    for (int i = 0; i < samples; i++)
+    {
+        float theta = (float)i / (float)samples * 2.0f * 3.14159265f;
+        float d = screenDistSq(theta);
+        if (d < bestD) { bestD = d; best = theta; }
+    }
+    // Refine around the best sample for a tighter grab point.
+    float step = (2.0f * 3.14159265f / samples) * 0.5f;
+    for (int iter = 0; iter < 8; iter++)
+    {
+        float a = screenDistSq(best - step), b = screenDistSq(best + step);
+        if (a < bestD && a <= b) { best -= step; bestD = a; }
+        else if (b < bestD)      { best += step; bestD = b; }
+        step *= 0.5f;
+    }
+    return best;
+}
+
 float SceneWindow::DistToRotateRing(const ImVec2D& mousePos, const glm::vec3& worldPos, int axis, float ringRadius)
 {
     float minDist = 10000.0f;
@@ -397,6 +445,22 @@ void SceneWindow::HandleMouseInput()
         m_originalPosition = transform->position;
         m_originalRotation = transform->rotation;
         m_originalScale = transform->scale;
+
+        if (m_toolMode == ToolMode::Rotate)
+        {
+            // Find where on the ring the user grabbed (parametric angle), so we
+            // can advance that exact point along the ring's screen tangent.
+            glm::vec3 axisDir(0);
+            if (m_draggingAxis == HandleAxis::X) axisDir = glm::vec3(1, 0, 0);
+            else if (m_draggingAxis == HandleAxis::Y) axisDir = glm::vec3(0, 1, 0);
+            else if (m_draggingAxis == HandleAxis::Z) axisDir = glm::vec3(0, 0, 1);
+
+            const float ringRadius = 1.0f;  // matches DrawRotateGizmo
+            m_rotateRingAngle = ClosestRingAngle(m_dragStartMousePos, transform->position,
+                                                 axisDir, ringRadius);
+            m_rotateTotalAngle = 0.0f;
+            m_rotateLastMouse = m_dragStartMousePos;
+        }
     }
 
     if (m_isDragging && ImGui::IsMouseDown(0))
@@ -452,11 +516,53 @@ void SceneWindow::HandleMouseInput()
         }
         case ToolMode::Rotate:
         {
-            float sensitivity = 1.0f;
+            // Screen-tangent method (Unity/Unreal style): advance the grabbed
+            // point along the ring by projecting the frame's mouse motion onto
+            // the ring's screen-space tangent. Robust from any view including
+            // edge-on, stays under the cursor, and the sign comes from the
+            // projection so no axis turns backwards.
+            glm::vec3 axisDir(0);
+            if (m_draggingAxis == HandleAxis::X) axisDir = glm::vec3(1, 0, 0);
+            else if (m_draggingAxis == HandleAxis::Y) axisDir = glm::vec3(0, 1, 0);
+            else if (m_draggingAxis == HandleAxis::Z) axisDir = glm::vec3(0, 0, 1);
+
+            const float ringRadius = 1.0f;
+            glm::vec3 u, v;
+            RingBasis(axisDir, u, v);
+
+            float th = m_rotateRingAngle;
+            glm::vec3 ringPt = m_originalPosition +
+                ringRadius * (std::cos(th) * u + std::sin(th) * v);
+            // World tangent at th (direction of increasing th), projected to screen.
+            glm::vec3 tangentPt = ringPt +
+                ringRadius * (-std::sin(th) * u + std::cos(th) * v);
+            ImVec2D sPt = WorldToScreen(ringPt);
+            ImVec2D sTan = WorldToScreen(tangentPt);
+            ImVec2D screenTangent(sTan.x - sPt.x, sTan.y - sPt.y);
+
+            float tanLen = std::sqrt(screenTangent.x * screenTangent.x +
+                                     screenTangent.y * screenTangent.y);
+            if (tanLen > 1e-4f)
+            {
+                // dTheta = (mouse motion . unit tangent) / pixels-per-radian.
+                // The tangent spans ringRadius radians of arc, so pixels-per-
+                // radian = tanLen / ringRadius.
+                ImVec2D mouseStep(currentMousePos.x - m_rotateLastMouse.x,
+                                  currentMousePos.y - m_rotateLastMouse.y);
+                float along = (mouseStep.x * screenTangent.x +
+                               mouseStep.y * screenTangent.y) / tanLen;
+                float dTheta = along / (tanLen / ringRadius);
+
+                m_rotateTotalAngle += dTheta;
+                m_rotateRingAngle += dTheta;  // grab point rides along with the rotation
+            }
+            m_rotateLastMouse = currentMousePos;
+
+            float degrees = glm::degrees(m_rotateTotalAngle);
             glm::vec3 newRot = m_originalRotation;
-            if (m_draggingAxis == HandleAxis::X) newRot.x += projectedDelta * sensitivity;
-            if (m_draggingAxis == HandleAxis::Y) newRot.y += projectedDelta * sensitivity;
-            if (m_draggingAxis == HandleAxis::Z) newRot.z += projectedDelta * sensitivity;
+            if (m_draggingAxis == HandleAxis::X) newRot.x += degrees;
+            if (m_draggingAxis == HandleAxis::Y) newRot.y += degrees;
+            if (m_draggingAxis == HandleAxis::Z) newRot.z += degrees;
             transform->rotation = newRot;
             break;
         }
