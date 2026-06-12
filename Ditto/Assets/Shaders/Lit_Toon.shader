@@ -2,21 +2,16 @@ Shader "Ditto/Lit_Toon"
 {
     Properties
     {
-        _Color ("Color", Color) = (1, 1, 1, 1)
         _MainTex ("Main Texture", 2D) = "white" {}
+        _Color ("Color", Color) = (1, 1, 1, 1)
     }
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" }
+        Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
         Pass
         {
-            Lighting LitToon
-
             CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-
             struct appdata
             {
                 float4 vertex   : POSITION;

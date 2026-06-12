@@ -1,8 +1,10 @@
 #include "ProjectWindow.h"
 #include "Editor.h"
 #include "InspectorWindow.h"
+#include "../Engine/Core/Engine.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Logger.h"
+#include "../3rdParty/stb_image.h"
 #include <filesystem>
 #include <shlobj.h>
 #include <iostream>
@@ -14,12 +16,123 @@
 #include <windows.h>
 #include <objbase.h>
 #include <comdef.h>
+#include <cctype>
+#include <cstdio>
 
 namespace fs = std::filesystem;
+
+static std::string LowerExt(std::string ext)
+{
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+static bool IsImageExtension(const std::string& ext)
+{
+    const std::string lower = LowerExt(ext);
+    return lower == ".png" || lower == ".jpg" || lower == ".jpeg" || lower == ".tga" || lower == ".bmp" || lower == ".hdr";
+}
+
+static fs::path MakeUniquePath(const fs::path& desired)
+{
+    if (!fs::exists(desired)) return desired;
+
+    fs::path parent = desired.parent_path();
+    std::string stem = desired.stem().string();
+    std::string ext = desired.extension().string();
+    for (int i = 1; i < 10000; ++i)
+    {
+        fs::path candidate = parent / (stem + "_" + std::to_string(i) + ext);
+        if (!fs::exists(candidate))
+            return candidate;
+    }
+    return desired;
+}
+
+static unsigned char* LoadImageRGBA(const fs::path& path, int* width, int* height, int* channels)
+{
+#ifdef _WIN32
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, path.wstring().c_str(), L"rb") != 0 || !file)
+        return nullptr;
+    unsigned char* pixels = stbi_load_from_file(file, width, height, channels, 4);
+    fclose(file);
+    return pixels;
+#else
+    return stbi_load(path.string().c_str(), width, height, channels, 4);
+#endif
+}
 
 ProjectWindow::ProjectWindow(Editor* editor)
     : m_editor(editor)
 {
+}
+
+ProjectWindow::~ProjectWindow()
+{
+    if (!m_editor || !m_editor->engine || !m_editor->engine->renderer) return;
+    for (auto& pair : m_thumbnailCache)
+        m_editor->engine->renderer->DestroyTexture(pair.second);
+}
+
+Ditto::TextureHandle ProjectWindow::GetOrCreateThumbnail(const std::string& filePath, const std::string& ext)
+{
+    if (!IsImageExtension(ext) || !m_editor || !m_editor->engine || !m_editor->engine->renderer)
+        return {};
+
+    auto it = m_thumbnailCache.find(filePath);
+    if (it != m_thumbnailCache.end())
+        return it->second;
+
+    int width = 0, height = 0, channels = 0;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* pixels = LoadImageRGBA(fs::path(filePath), &width, &height, &channels);
+    if (!pixels || width <= 0 || height <= 0)
+    {
+        if (pixels) stbi_image_free(pixels);
+        m_thumbnailCache[filePath] = {};
+        return {};
+    }
+
+    Ditto::TextureHandle texture = m_editor->engine->renderer->CreateTexture(pixels, width, height, 4);
+    stbi_image_free(pixels);
+    m_thumbnailCache[filePath] = texture;
+    return texture;
+}
+
+void ProjectWindow::ImportExternalFiles(const std::vector<std::string>& paths)
+{
+    Project* project = ProjectManager::GetInstance().GetCurrentProject();
+    if (!project || paths.empty()) return;
+
+    std::string relativeFolder = m_currentFolder;
+    if (relativeFolder.rfind("Assets", 0) == 0)
+        relativeFolder = relativeFolder.size() > 6 ? relativeFolder.substr(7) : "";
+
+    fs::path targetFolder = fs::path(project->path) / "Assets" / fs::path(relativeFolder);
+    std::error_code ec;
+    fs::create_directories(targetFolder, ec);
+
+    for (const std::string& pathString : paths)
+    {
+        fs::path source(pathString);
+        if (!fs::exists(source, ec)) continue;
+
+        fs::path target = MakeUniquePath(targetFolder / source.filename());
+        try
+        {
+            if (fs::is_directory(source))
+                fs::copy(source, target, fs::copy_options::recursive);
+            else
+                fs::copy_file(source, target);
+            m_thumbnailCache.erase(target.string());
+            DITTO_LOG_INFO_STREAM("[ProjectWindow] Imported external file: " << target.string());
+        }
+        catch (const std::exception& e)
+        {
+            DITTO_LOG_ERROR_STREAM("[ProjectWindow] Import failed: " << e.what());
+        }
+    }
 }
 
 void ProjectWindow::OnLoadScene(const std::string& scenePath)
@@ -402,7 +515,10 @@ void ProjectWindow::Draw()
                     ImVec2 cursorPos = ImGui::GetCursorPos();
                     ImGui::SetCursorPos(ImVec2(cursorPos.x + (itemWidth - 40) / 2, cursorPos.y));
 
-                    void* iconTexture = m_editor ? m_editor->GetIconByExtension(ext) : nullptr;
+                    Ditto::TextureHandle thumbnail = GetOrCreateThumbnail(entry.path().string(), ext);
+                    void* thumbnailTexture = (thumbnail && m_editor && m_editor->engine && m_editor->engine->renderer)
+                        ? m_editor->engine->renderer->GetImGuiTextureID(thumbnail) : nullptr;
+                    void* iconTexture = thumbnailTexture ? thumbnailTexture : (m_editor ? m_editor->GetIconByExtension(ext) : nullptr);
                     if (iconTexture) {
                         ImGui::Image((void*)(intptr_t)iconTexture, ImVec2(40, 40), ImVec2(0, 1), ImVec2(1, 0));
                     } else {

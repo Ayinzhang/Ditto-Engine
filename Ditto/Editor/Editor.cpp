@@ -30,6 +30,18 @@
 using namespace glm;
 namespace fs = std::filesystem;
 
+static void EditorFileDropCallback(GLFWwindow* window, int count, const char** paths)
+{
+    Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
+    if (!engine || !engine->editor || count <= 0 || !paths) return;
+
+    std::vector<std::string> dropped;
+    dropped.reserve(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i)
+        if (paths[i]) dropped.emplace_back(paths[i]);
+    engine->editor->ImportExternalFilesToProject(dropped);
+}
+
 // Helper function to find editor assets directory
 static std::string FindEditorAssetsPath()
 {
@@ -187,6 +199,8 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     m_projectWindow = std::make_unique<ProjectWindow>(this);
     m_inspectorWindow = std::make_unique<InspectorWindow>(this);
     m_sceneWindow = std::make_unique<SceneWindow>(this);
+    if (m_glfwWindow)
+        glfwSetDropCallback(static_cast<GLFWwindow*>(m_glfwWindow), EditorFileDropCallback);
     
     // Set script log callback
     CSharpScriptSystem::SetEditor(this);
@@ -198,6 +212,12 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
             this->sceneDirty = true;
         };
     }
+}
+
+void Editor::ImportExternalFilesToProject(const std::vector<std::string>& paths)
+{
+    if (m_projectWindow)
+        m_projectWindow->ImportExternalFiles(paths);
 }
 
 Editor::~Editor()
@@ -253,6 +273,12 @@ void Editor::Draw()
         {
             ImGui::Text("Project Name:"); ImGui::SameLine();
             ImGui::InputText("##ProjectName", projectNameBuffer, sizeof(projectNameBuffer));
+            if (ImGui::Button("Cancel", ImVec2(120, 0)))
+            {
+                ImGui::CloseCurrentPopup();
+                strcpy_s(projectNameBuffer, "MyProject");
+            }
+            ImGui::SameLine();
             if (ImGui::Button("Create", ImVec2(120, 0)))
             {
                 if (strlen(projectNameBuffer) > 0)
@@ -265,12 +291,6 @@ void Editor::Draw()
                     }
                 }
                 ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(120, 0)))
-            {
-                ImGui::CloseCurrentPopup();
-                strcpy_s(projectNameBuffer, "MyProject");
             }
             ImGui::EndPopup();
         }

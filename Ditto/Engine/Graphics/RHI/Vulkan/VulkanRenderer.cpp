@@ -887,9 +887,22 @@ namespace Ditto
         return MeshHandle{ (uint32_t)m_meshes.size() };
     }
 
+    // Outside a frame, the last kFramesInFlight submissions may still be
+    // executing on the GPU -- nothing has waited their fences yet (BeginFrame
+    // only ever waits the next frame's, and teardown paths like Scene::~Scene
+    // run after the loop with the final frame still pending). Freeing a
+    // resource those command buffers reference is invalid (e.g. descriptor
+    // sets trip VUID-vkFreeDescriptorSets-pDescriptorSets-00309). Idle the
+    // device first; on an already-idle device this returns immediately.
+    void VulkanRenderer::WaitGpuIdleForDestroy()
+    {
+        if (m_device && !m_frameActive) vkDeviceWaitIdle(m_device);
+    }
+
     void VulkanRenderer::DestroyMesh(MeshHandle h)
     {
         if (h.id == 0 || h.id > m_meshes.size()) return;
+        WaitGpuIdleForDestroy();
         VkMeshRes& m = m_meshes[h.id - 1];
         if (m.vbuf) vmaDestroyBuffer(m_allocator, m.vbuf, m.vmem);
         if (m.ibuf) vmaDestroyBuffer(m_allocator, m.ibuf, m.imem);
@@ -929,6 +942,7 @@ namespace Ditto
     void VulkanRenderer::DestroyStorageBuffer(StorageBufferHandle h)
     {
         if (h.id == 0 || h.id > m_storage.size()) return;
+        WaitGpuIdleForDestroy();
         VkStorageRes& s = m_storage[h.id - 1];
         for (int i = 0; i < kFramesInFlight; ++i)
             if (s.buf[i]) vmaDestroyBuffer(m_allocator, s.buf[i], s.mem[i]);
@@ -936,7 +950,7 @@ namespace Ditto
     }
 
     // ------------------------------ Pipeline ------------------------------
-    PipelineHandle VulkanRenderer::CreatePipeline(const std::string& hlslSource)
+    PipelineHandle VulkanRenderer::CreatePipeline(const std::string& hlslSource, const PipelineState& state)
     {
         if (!m_pushDescriptorOK)
         {
@@ -954,11 +968,17 @@ namespace Ditto
         // set 0 = shared UBO layout (regular, bound). set 1 = 2 storage buffers (push,
         // the single allowed push-descriptor set). p.setLayouts[0] stays null (shared,
         // not owned by the pipeline); only set 1 is created/destroyed per pipeline.
+        // Every binding is visible to BOTH stages: the engine prelude exposes
+        // ModelMatrices/PropertyColors/MainTex to user code in either stage (e.g.
+        // PSMain reads PropertyColors via _Color), and a layout that declares
+        // fewer stages than the SPIR-V actually uses is invalid
+        // (VUID-VkGraphicsPipelineCreateInfo-layout-07988) -> broken draws.
+        const VkShaderStageFlags vsfs = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         VkDescriptorSetLayoutBinding sb[4]{};
-        sb[0].binding = 0; sb[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[0].descriptorCount = 1; sb[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        sb[1].binding = 1; sb[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[1].descriptorCount = 1; sb[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        sb[2].binding = 2; sb[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; sb[2].descriptorCount = 1; sb[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        sb[3].binding = 3; sb[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; sb[3].descriptorCount = 1; sb[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        sb[0].binding = 0; sb[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[0].descriptorCount = 1; sb[0].stageFlags = vsfs;
+        sb[1].binding = 1; sb[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[1].descriptorCount = 1; sb[1].stageFlags = vsfs;
+        sb[2].binding = 2; sb[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; sb[2].descriptorCount = 1; sb[2].stageFlags = vsfs;
+        sb[3].binding = 3; sb[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; sb[3].descriptorCount = 1; sb[3].stageFlags = vsfs;
         VkDescriptorSetLayoutCreateInfo l1{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
         l1.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
         l1.bindingCount = 4; l1.pBindings = sb;
@@ -993,16 +1013,28 @@ namespace Ditto
         vp.viewportCount = 1; vp.scissorCount = 1;   // dynamic
 
         VkPipelineRasterizationStateCreateInfo rs{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-        rs.polygonMode = VK_POLYGON_MODE_FILL; rs.cullMode = VK_CULL_MODE_NONE; rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth = 1.0f;
+        rs.polygonMode = VK_POLYGON_MODE_FILL;
+        rs.cullMode = state.cull == CullMode::Back ? VK_CULL_MODE_BACK_BIT :
+            state.cull == CullMode::Front ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_NONE;
+        rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth = 1.0f;
 
         VkPipelineMultisampleStateCreateInfo msi{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
         msi.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
         VkPipelineDepthStencilStateCreateInfo ds{ VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-        ds.depthTestEnable = VK_TRUE; ds.depthWriteEnable = VK_TRUE; ds.depthCompareOp = VK_COMPARE_OP_LESS;
+        ds.depthTestEnable = state.depthTest ? VK_TRUE : VK_FALSE;
+        ds.depthWriteEnable = state.depthWrite ? VK_TRUE : VK_FALSE;
+        ds.depthCompareOp = state.depthFunc == DepthFunc::LessEqual ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS;
 
         VkPipelineColorBlendAttachmentState cba{};
         cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        cba.blendEnable = state.blend ? VK_TRUE : VK_FALSE;
+        cba.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        cba.colorBlendOp = VK_BLEND_OP_ADD;
+        cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        cba.alphaBlendOp = VK_BLEND_OP_ADD;
         VkPipelineColorBlendStateCreateInfo cb{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
         cb.attachmentCount = 1; cb.pAttachments = &cba;
 
@@ -1030,6 +1062,7 @@ namespace Ditto
     void VulkanRenderer::DestroyPipeline(PipelineHandle h)
     {
         if (h.id == 0 || h.id > m_pipelines.size()) return;
+        WaitGpuIdleForDestroy();
         VkPipelineRes& p = m_pipelines[h.id - 1];
         if (p.pipeline) vkDestroyPipeline(m_device, p.pipeline, nullptr);
         if (p.layout)   vkDestroyPipelineLayout(m_device, p.layout, nullptr);
@@ -1052,12 +1085,7 @@ namespace Ditto
         pci.pPoolSizes = poolSizes;
         vkCreateDescriptorPool(m_device, &pci, nullptr, &m_imguiPool);
 
-        VkSamplerCreateInfo sci{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
-        sci.magFilter = VK_FILTER_LINEAR;
-        sci.minFilter = VK_FILTER_LINEAR;
-        sci.addressModeU = sci.addressModeV = sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sci.maxLod = 1.0f;
-        vkCreateSampler(m_device, &sci, nullptr, &m_sampler);
+        EnsureSampler();
 
         ImGui_ImplGlfw_InitForVulkan(static_cast<GLFWwindow*>(window), true);
 
@@ -1115,6 +1143,21 @@ namespace Ditto
     }
 
     // ------------------------------ Textures ------------------------------
+    // Shared linear-clamp sampler used by scene draws (DrawInstanced's push
+    // descriptor) and by ImGui texture descriptors. Created on first use so
+    // textures also work in game mode, where there is no editor and ImGuiInit
+    // is never called.
+    void VulkanRenderer::EnsureSampler()
+    {
+        if (m_sampler) return;
+        VkSamplerCreateInfo sci{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+        sci.magFilter = VK_FILTER_LINEAR;
+        sci.minFilter = VK_FILTER_LINEAR;
+        sci.addressModeU = sci.addressModeV = sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sci.maxLod = 1.0f;
+        vkCreateSampler(m_device, &sci, nullptr, &m_sampler);
+    }
+
     VkCommandBuffer VulkanRenderer::BeginSingleTime()
     {
         VkCommandBufferAllocateInfo ai{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
@@ -1142,7 +1185,8 @@ namespace Ditto
 
     TextureHandle VulkanRenderer::CreateTexture(const unsigned char* pixels, int w, int h, int /*channels*/)
     {
-        if (!m_imguiInit || !pixels || w <= 0 || h <= 0) return {};   // need ImGui pool for AddTexture
+        if (!m_ready || !pixels || w <= 0 || h <= 0) return {};
+        EnsureSampler();
         const VkDeviceSize size = (VkDeviceSize)w * h * 4;            // Engine uploads RGBA8
 
         // Staging buffer.
@@ -1194,7 +1238,11 @@ namespace Ditto
         vci.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         vkCreateImageView(m_device, &vci, nullptr, &t.view);
 
-        t.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        // The ImGui descriptor (texture id) only exists in editor builds where
+        // ImGui is initialized; scene draws never need it (they push tex->view
+        // + m_sampler directly). GetImGuiTextureID creates it lazily otherwise.
+        if (m_imguiInit)
+            t.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         m_textures.push_back(t);
         return TextureHandle{ (uint32_t)m_textures.size() };
@@ -1213,6 +1261,7 @@ namespace Ditto
             }
             return;
         }
+        WaitGpuIdleForDestroy();
         if (t.descriptor) ImGui_ImplVulkan_RemoveTexture(t.descriptor);
         if (t.view)  vkDestroyImageView(m_device, t.view, nullptr);
         if (t.image) vmaDestroyImage(m_allocator, t.image, t.memory);
@@ -1222,6 +1271,24 @@ namespace Ditto
     void VulkanRenderer::ProcessDeferredDestroys()
     {
         if (m_pendingTextureDestroys.empty()) return;
+
+        // These textures were queued for destruction while a frame was recording
+        // (e.g. a viewport RT torn down mid-frame on resize). Their ImGui descriptor
+        // sets may still be referenced by command buffers from any frame in flight,
+        // not just m_currentFrame -- BeginFrame only waited that one fence. Freeing a
+        // descriptor set still in use is undefined behavior (and trips
+        // VUID-vkFreeDescriptorSets-pDescriptorSets-00309).
+        //
+        // vkDeviceWaitIdle alone is NOT enough: this runs before BeginFrame resets the
+        // current command buffer, so every frame's command buffer is still in the
+        // executable state holding last cycle's ImGui draws that bound these descriptor
+        // sets. The validation layer (correctly) treats a set recorded into a live
+        // command buffer as in-use. Wait for the GPU to finish, then reset all command
+        // buffers so no recorded reference to the freed descriptors survives.
+        vkDeviceWaitIdle(m_device);
+        for (auto cb : m_commandBuffers)
+            if (cb) vkResetCommandBuffer(cb, 0);
+
         std::vector<TextureHandle> pending;
         pending.swap(m_pendingTextureDestroys);
         for (TextureHandle h : pending)
@@ -1236,7 +1303,11 @@ namespace Ditto
     void* VulkanRenderer::GetImGuiTextureID(TextureHandle h)
     {
         if (h.id == 0 || h.id > m_textures.size()) return nullptr;
-        return (void*)m_textures[h.id - 1].descriptor;   // VkDescriptorSet as ImTextureID
+        VkTextureRes& t = m_textures[h.id - 1];
+        // Texture created before ImGuiInit (or in game mode): register lazily.
+        if (!t.descriptor && m_imguiInit && t.view && m_sampler)
+            t.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        return (void*)t.descriptor;   // VkDescriptorSet as ImTextureID
     }
 
     void VulkanRenderer::BindTexture(int binding, TextureHandle h)
@@ -1517,9 +1588,18 @@ namespace Ditto
         VkRenderTargetRes& rt = m_renderTargets[h.id - 1];
         if (!rt.framebuffer && !rt.depthImage && !rt.color) return;
 
-        // Editor-only path (viewport resize): wait out any frame still sampling
-        // this target before tearing it down.
+        // Editor-only path (viewport resize / preview teardown). If a frame is
+        // recording, DestroyTexture(rt.color) below defers the descriptor free to the
+        // next BeginFrame (ProcessDeferredDestroys), which handles synchronization.
+        // Otherwise we free here and now, so we must guarantee no command buffer still
+        // references the color texture's ImGui descriptor set: wait for the GPU, then
+        // reset the command buffers so their recorded bindings are gone. A bare
+        // vkDeviceWaitIdle is not enough -- a recorded-but-unreset buffer still counts
+        // as in-use and trips VUID-vkFreeDescriptorSets-pDescriptorSets-00309.
         vkDeviceWaitIdle(m_device);
+        if (!m_frameActive)
+            for (auto cb : m_commandBuffers)
+                if (cb) vkResetCommandBuffer(cb, 0);
 
         if (rt.framebuffer) vkDestroyFramebuffer(m_device, rt.framebuffer, nullptr);
         if (rt.depthView)   vkDestroyImageView(m_device, rt.depthView, nullptr);

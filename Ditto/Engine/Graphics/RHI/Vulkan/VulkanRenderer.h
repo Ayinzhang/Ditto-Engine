@@ -49,7 +49,7 @@ namespace Ditto
         StorageBufferHandle CreateStorageBuffer(size_t sizeBytes, bool dynamic) override;
         void UpdateStorageBuffer(StorageBufferHandle, const void* data, size_t sizeBytes) override;
         void DestroyStorageBuffer(StorageBufferHandle) override;
-        PipelineHandle CreatePipeline(const std::string& hlslSource) override;
+        PipelineHandle CreatePipeline(const std::string& hlslSource, const PipelineState& state) override;
         void DestroyPipeline(PipelineHandle) override;
         TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) override;
         void DestroyTexture(TextureHandle) override;
@@ -138,6 +138,7 @@ namespace Ditto
 
         VkCommandBuffer BeginSingleTime();
         void EndSingleTime(VkCommandBuffer cmd);
+        void EnsureSampler();
 
         // ---- Scene rendering (Vk4) ----
         // Depth buffer for the swapchain render pass (recreated with the swapchain).
@@ -233,6 +234,7 @@ namespace Ditto
         bool CreateUboDescriptors();
         bool CreateDepthResources();
         void ProcessDeferredDestroys();
+        void WaitGpuIdleForDestroy();
         void DestroyDepthResources();
         VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 

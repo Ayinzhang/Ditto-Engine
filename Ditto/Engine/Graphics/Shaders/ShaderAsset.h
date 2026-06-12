@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include "../RHI/IRenderer.h"
 #include "../../../3rdParty/GLM/glm.hpp"
 
 namespace Ditto
@@ -31,6 +32,7 @@ namespace Ditto
         std::string shaderName;
         std::string sourcePath;
         std::vector<ShaderProperty> properties;
+        PipelineState pipelineState;
         std::string engineHLSL;
         bool ok = false;
         std::string error;

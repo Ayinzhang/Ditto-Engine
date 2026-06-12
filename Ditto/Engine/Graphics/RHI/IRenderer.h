@@ -53,6 +53,18 @@ namespace Ditto
 
     enum ClearFlags : uint32_t { ClearColor = 1u << 0, ClearDepth = 1u << 1 };
     enum class DepthFunc { Less, LessEqual };
+    enum class CullMode { Off, Back, Front };
+
+    struct PipelineState
+    {
+        std::string renderType = "Opaque";
+        int renderQueue = 2000; // Unity Geometry queue
+        bool depthTest = true;
+        bool depthWrite = true;
+        DepthFunc depthFunc = DepthFunc::Less;
+        bool blend = false;
+        CullMode cull = CullMode::Off;
+    };
 
     class IRenderer
     {
@@ -98,7 +110,7 @@ namespace Ditto
 
         // One combined HLSL source with `VSMain` + `PSMain` entry points. Compiled
         // (HLSL->SPIR-V->per-backend) by the shared ShaderCompiler.
-        virtual PipelineHandle CreatePipeline(const std::string& hlslSource) = 0;
+        virtual PipelineHandle CreatePipeline(const std::string& hlslSource, const PipelineState& state = {}) = 0;
         virtual void DestroyPipeline(PipelineHandle) = 0;
 
         virtual TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) = 0;

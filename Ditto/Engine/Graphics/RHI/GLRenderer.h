@@ -45,7 +45,7 @@ namespace Ditto
         void UpdateStorageBuffer(StorageBufferHandle, const void* data, size_t sizeBytes) override;
         void DestroyStorageBuffer(StorageBufferHandle) override;
 
-        PipelineHandle CreatePipeline(const std::string& hlslSource) override;
+        PipelineHandle CreatePipeline(const std::string& hlslSource, const PipelineState& state) override;
         void DestroyPipeline(PipelineHandle) override;
 
         TextureHandle CreateTexture(const unsigned char* pixels, int w, int h, int channels) override;
@@ -70,7 +70,7 @@ namespace Ditto
         // GLAD include. id 0 = released/empty slot.
         struct GLMesh    { unsigned int vao = 0, vbo = 0, ebo = 0; uint32_t vertexCount = 0, indexCount = 0; };
         struct GLBuffer  { unsigned int ssbo = 0; size_t size = 0; };
-        struct GLPipeline{ unsigned int program = 0; };
+        struct GLPipeline{ unsigned int program = 0; PipelineState state; };
         struct GLTexture { unsigned int tex = 0; };
         struct GLRenderTargetRes
         {
@@ -90,6 +90,7 @@ namespace Ditto
         void* m_window = nullptr;   // GLFWwindow* for buffer swap
         unsigned int m_currentProgram = 0;
         unsigned int m_frameUBO = 0;   // FrameUniforms std140 UBO (binding 0)
+        unsigned int m_defaultSampler = 0;
 
         // Saved default-framebuffer state across BeginRenderTarget/EndRenderTarget
         // (single level; the preview never nests render targets).

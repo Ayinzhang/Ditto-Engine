@@ -1,6 +1,9 @@
 #pragma once
 #include <string>
 #include <set>
+#include <vector>
+#include <unordered_map>
+#include "../Engine/Graphics/RHI/IRenderer.h"
 #include "../3rdParty/GLM/glm.hpp"
 
 // 前向声明
@@ -11,9 +14,10 @@ class ProjectWindow
 {
 public:
     ProjectWindow(Editor* editor);
-    ~ProjectWindow() = default;
+    ~ProjectWindow();
 
     void Draw();
+    void ImportExternalFiles(const std::vector<std::string>& paths);
 
     // 回调：加载场景
     void OnLoadScene(const std::string& scenePath);
@@ -85,8 +89,10 @@ private:
     
     // 文件夹展开状态
     std::set<std::string> m_expandedFolders;
+    std::unordered_map<std::string, Ditto::TextureHandle> m_thumbnailCache;
     bool IsFolderExpanded(const std::string& path) const;
     void ToggleFolderExpanded(const std::string& path);
+    Ditto::TextureHandle GetOrCreateThumbnail(const std::string& filePath, const std::string& ext);
     
     // 打开 C# 文件相关
     void OpenCSharpFile(const std::string& filePath);

@@ -2,6 +2,7 @@
 #include "../../Engine/Resources/Resource.h"
 #include "PathUtils.h"
 #include "Logger.h"
+#include "ProjectManager.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
 #include "../../3rdParty/stb_image.h"
 #include <iostream>
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 
 Scene* g_currentScene = nullptr;
 std::uint32_t g_sceneLoadingVersion = 0;
@@ -23,6 +25,20 @@ static std::string ReadString(std::istream& file)
     std::vector<char> buffer(length + 1, '\0');
     file.read(buffer.data(), length);
     return std::string(buffer.data());
+}
+
+static unsigned char* LoadImageRGBA(const std::filesystem::path& path, int* width, int* height, int* channels)
+{
+#ifdef _WIN32
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, path.wstring().c_str(), L"rb") != 0 || !file)
+        return nullptr;
+    unsigned char* pixels = stbi_load_from_file(file, width, height, channels, 4);
+    fclose(file);
+    return pixels;
+#else
+    return stbi_load(path.string().c_str(), width, height, channels, 4);
+#endif
 }
 
 Scene::Scene()
@@ -240,11 +256,23 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     const float w = static_cast<float>(std::max(1, viewportWidth));
     const float h = static_cast<float>(std::max(1, viewportHeight));
     fu.screenParams = glm::vec4(w, h, 1.0f + 1.0f / w, 1.0f + 1.0f / h);
+    std::vector<GeometryInstances*> drawBatches;
+    drawBatches.reserve(renderBatches.size());
     for (auto& pair : renderBatches)
     {
         GeometryInstances* batch = pair.second.get();
         if (!batch || batch->instanceCount == 0) continue;
+        drawBatches.push_back(batch);
+    }
 
+    std::stable_sort(drawBatches.begin(), drawBatches.end(),
+        [&](GeometryInstances* a, GeometryInstances* b)
+        {
+            return GetShaderPipelineState(a->shaderName).renderQueue < GetShaderPipelineState(b->shaderName).renderQueue;
+        });
+
+    for (GeometryInstances* batch : drawBatches)
+    {
         Ditto::PipelineHandle shaderPipeline = GetOrCreateShaderPipeline(batch->shaderName, pipeline);
         renderer->BindPipeline(shaderPipeline ? shaderPipeline : pipeline);
         renderer->SetFrameUniforms(fu);
@@ -282,7 +310,8 @@ Ditto::PipelineHandle Scene::GetOrCreateShaderPipeline(const std::string& shader
         return fallback;
     }
 
-    Ditto::PipelineHandle created = renderer ? renderer->CreatePipeline(shader.engineHLSL) : Ditto::PipelineHandle{};
+    shaderPipelineStates[key] = shader.pipelineState;
+    Ditto::PipelineHandle created = renderer ? renderer->CreatePipeline(shader.engineHLSL, shader.pipelineState) : Ditto::PipelineHandle{};
     if (!created)
     {
         DITTO_LOG_ERROR_STREAM("[Scene] Failed to create shader pipeline: " << key);
@@ -290,6 +319,23 @@ Ditto::PipelineHandle Scene::GetOrCreateShaderPipeline(const std::string& shader
     }
     shaderPipelines[key] = created;
     return created;
+}
+
+Ditto::PipelineState Scene::GetShaderPipelineState(const std::string& shaderName)
+{
+    std::string key = shaderName.empty() ? RendererComponent::DefaultShaderName : shaderName;
+    auto it = shaderPipelineStates.find(key);
+    if (it != shaderPipelineStates.end())
+        return it->second;
+
+    Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(key);
+    if (shader.ok)
+    {
+        shaderPipelineStates[key] = shader.pipelineState;
+        return shader.pipelineState;
+    }
+    shaderPipelineStates[key] = {};
+    return shaderPipelineStates[key];
 }
 
 Ditto::TextureHandle Scene::GetOrCreateMaterialTexture(const std::string& texturePath)
@@ -311,11 +357,14 @@ Ditto::TextureHandle Scene::GetOrCreateMaterialTexture(const std::string& textur
 
     std::filesystem::path resolved = texturePath;
     if (!std::filesystem::exists(resolved))
-        resolved = PathUtils::ResolveAsset(texturePath);
+    {
+        Project* project = ProjectManager::GetInstance().GetCurrentProject();
+        resolved = PathUtils::ResolveAsset(texturePath, project ? std::filesystem::path(project->path) : std::filesystem::path{});
+    }
 
     int width = 0, height = 0, channels = 0;
     stbi_set_flip_vertically_on_load(true);
-    unsigned char* pixels = stbi_load(resolved.string().c_str(), &width, &height, &channels, 4);
+    unsigned char* pixels = LoadImageRGBA(resolved, &width, &height, &channels);
     if (!pixels || width <= 0 || height <= 0)
     {
         DITTO_LOG_ERROR_STREAM("[Scene] Failed to load texture: " << resolved.string());

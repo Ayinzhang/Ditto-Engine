@@ -6,6 +6,7 @@
 #include <regex>
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -30,6 +31,12 @@ namespace Ditto
     static bool HasExtension(const std::string& name)
     {
         return fs::path(name).has_extension();
+    }
+
+    static std::string ToLower(std::string s)
+    {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return s;
     }
 
     fs::path ResolveShaderPath(const std::string& shaderName, const fs::path& preferredRoot)
@@ -119,6 +126,114 @@ namespace Ditto
             p.floatDefault = std::stof((*it)[3].str());
             asset.properties.push_back(p);
         }
+    }
+
+    static int UnityQueueBase(const std::string& name)
+    {
+        const std::string lower = ToLower(name);
+        if (lower == "background") return 1000;
+        if (lower == "geometry") return 2000;
+        if (lower == "alphatest") return 2450;
+        if (lower == "transparent") return 3000;
+        if (lower == "overlay") return 4000;
+        try { return std::stoi(name); }
+        catch (...) { return 2000; }
+    }
+
+    static int ParseUnityQueue(const std::string& value)
+    {
+        std::regex queueRe(R"(^\s*([A-Za-z]+|[-+]?\d+)\s*([+-])?\s*(\d+)?\s*$)");
+        std::smatch match;
+        if (!std::regex_match(value, match, queueRe))
+            return 2000;
+
+        int queue = UnityQueueBase(match[1].str());
+        if (match[2].matched && match[3].matched)
+        {
+            const int offset = std::stoi(match[3].str());
+            queue += match[2].str() == "-" ? -offset : offset;
+        }
+        return queue;
+    }
+
+    static void ApplyRenderTypeDefaults(PipelineState& state)
+    {
+        const std::string type = ToLower(state.renderType);
+        if (type == "transparent")
+        {
+            state.renderQueue = 3000;
+            state.depthWrite = false;
+            state.blend = true;
+        }
+        else if (type == "transparentcutout")
+        {
+            state.renderQueue = 2450;
+            state.depthWrite = true;
+            state.blend = false;
+        }
+        else
+        {
+            state.renderQueue = 2000;
+            state.depthWrite = true;
+            state.blend = false;
+        }
+    }
+
+    static std::unordered_map<std::string, std::string> ParseTagsBlock(const std::string& source)
+    {
+        std::unordered_map<std::string, std::string> tags;
+        size_t tagsPos = source.find("Tags");
+        if (tagsPos == std::string::npos) return tags;
+        size_t open = source.find('{', tagsPos);
+        if (open == std::string::npos) return tags;
+        size_t close = source.find('}', open + 1);
+        if (close == std::string::npos) return tags;
+
+        std::string block = source.substr(open + 1, close - open - 1);
+        std::regex tagRe(R"TAG("([^"]+)"\s*=\s*"([^"]+)")TAG");
+        for (std::sregex_iterator it(block.begin(), block.end(), tagRe), end; it != end; ++it)
+            tags[(*it)[1].str()] = (*it)[2].str();
+        return tags;
+    }
+
+    static void ParseRenderState(const std::string& source, ShaderAsset& asset)
+    {
+        PipelineState state;
+        auto tags = ParseTagsBlock(source);
+        auto renderTypeIt = tags.find("RenderType");
+        if (renderTypeIt != tags.end())
+        {
+            state.renderType = renderTypeIt->second;
+            ApplyRenderTypeDefaults(state);
+        }
+
+        auto queueIt = tags.find("Queue");
+        if (queueIt != tags.end())
+            state.renderQueue = ParseUnityQueue(queueIt->second);
+
+        std::regex zwriteRe(R"(\bZWrite\s+(On|Off)\b)", std::regex_constants::icase);
+        std::regex ztestRe(R"(\bZTest\s+(Less|LEqual|Always|Off)\b)", std::regex_constants::icase);
+        std::regex blendRe(R"(\bBlend\s+(\w+)(?:\s+\w+)?\b)", std::regex_constants::icase);
+        std::regex cullRe(R"(\bCull\s+(Off|Back|Front)\b)", std::regex_constants::icase);
+        std::smatch match;
+
+        if (std::regex_search(source, match, zwriteRe))
+            state.depthWrite = ToLower(match[1].str()) == "on";
+        if (std::regex_search(source, match, ztestRe))
+        {
+            const std::string ztest = ToLower(match[1].str());
+            state.depthTest = ztest != "off";
+            state.depthFunc = ztest == "lequal" ? DepthFunc::LessEqual : DepthFunc::Less;
+        }
+        if (std::regex_search(source, match, blendRe))
+            state.blend = ToLower(match[1].str()) != "off";
+        if (std::regex_search(source, match, cullRe))
+        {
+            const std::string cull = ToLower(match[1].str());
+            state.cull = cull == "back" ? CullMode::Back : cull == "front" ? CullMode::Front : CullMode::Off;
+        }
+
+        asset.pipelineState = state;
     }
 
     static std::string ExtractProgramBlock(const std::string& source)
@@ -685,6 +800,7 @@ v2f VSMain(appdata v)
         }
 
         ParseProperties(source, asset);
+        ParseRenderState(source, asset);
         asset.engineHLSL = BuildEngineHLSL(source, asset);
         asset.ok = !asset.engineHLSL.empty();
         return asset;

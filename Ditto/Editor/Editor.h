@@ -136,6 +136,7 @@ struct Editor
     void LoadPreviewModel(const std::string& modelPath) { if (m_inspectorWindow) m_inspectorWindow->LoadPreviewModel(modelPath); }
     void CleanupModelPreview() { if (m_inspectorWindow) m_inspectorWindow->CleanupModelPreview(); }
     void AddConsoleMessage(const std::string& message) { if (m_projectWindow) m_projectWindow->AddConsoleMessage(message); }
+    void ImportExternalFilesToProject(const std::vector<std::string>& paths);
 
     void DrawGameObjectNode(GameObject* obj, bool isRoot = false, int depth = 0);
     void CopySelectedObject();

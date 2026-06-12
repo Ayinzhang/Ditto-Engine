@@ -28,6 +28,13 @@ CMakeUserPresets.json
 [Bb]in/
 [Oo]bj/
 
+# --- Vendored 3rd-party runtime binaries: keep tracked ---
+# Re-include bin/ dirs under Ditto/3rdParty and the DLLs directly inside
+# them (e.g. Assimp/bin/assimp-vc143-mt.dll). C# build outputs like
+# 3rdParty/Mono/bin/Release/ stay ignored via [Rr]elease/.
+!Ditto/3rdParty/**/[Bb]in/
+!Ditto/3rdParty/**/[Bb]in/*.dll
+
 # --- Compiler / linker intermediates (safe by extension) ---
 *.obj
 !Assets/**/*.obj

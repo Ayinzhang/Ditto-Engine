@@ -36,6 +36,7 @@ namespace Ditto
         }
         for (auto& b : m_buffers) if (b.ssbo) glDeleteBuffers(1, &b.ssbo);
         if (m_frameUBO) glDeleteBuffers(1, &m_frameUBO);
+        if (m_defaultSampler) glDeleteSamplers(1, &m_defaultSampler);
         for (auto& p : m_pipelines) if (p.program) glDeleteProgram(p.program);
         for (auto& t : m_textures) if (t.tex) glDeleteTextures(1, &t.tex);
         for (auto& rt : m_renderTargets)
@@ -211,7 +212,7 @@ namespace Ditto
         return shader;
     }
 
-    PipelineHandle GLRenderer::CreatePipeline(const std::string& hlslSource)
+    PipelineHandle GLRenderer::CreatePipeline(const std::string& hlslSource, const PipelineState& state)
     {
         // HLSL -> SPIR-V -> GLSL (via the shared ShaderCompiler), then the usual
         // GL compile/link.
@@ -228,6 +229,7 @@ namespace Ditto
 
         GLPipeline p;
         p.program = glCreateProgram();
+        p.state = state;
         glAttachShader(p.program, vert);
         glAttachShader(p.program, frag);
         glLinkProgram(p.program);
@@ -289,7 +291,16 @@ namespace Ditto
     void GLRenderer::BindTexture(int binding, TextureHandle h)
     {
         GLTexture* t = GetSlot(m_textures, h.id);
+        if (!m_defaultSampler)
+        {
+            glGenSamplers(1, &m_defaultSampler);
+            glSamplerParameteri(m_defaultSampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glSamplerParameteri(m_defaultSampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glSamplerParameteri(m_defaultSampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glSamplerParameteri(m_defaultSampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
         glBindTextureUnit(static_cast<GLuint>(binding), t ? t->tex : 0);
+        glBindSampler(static_cast<GLuint>(binding + 1), m_defaultSampler);
     }
 
     RenderTargetHandle GLRenderer::CreateRenderTarget(int w, int h)
@@ -364,6 +375,38 @@ namespace Ditto
         GLPipeline* p = GetSlot(m_pipelines, h.id);
         m_currentProgram = p ? p->program : 0;
         glUseProgram(m_currentProgram);
+        if (!p) return;
+
+        if (p->state.depthTest)
+        {
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(p->state.depthFunc == DepthFunc::LessEqual ? GL_LEQUAL : GL_LESS);
+        }
+        else
+        {
+            glDisable(GL_DEPTH_TEST);
+        }
+        glDepthMask(p->state.depthWrite ? GL_TRUE : GL_FALSE);
+
+        if (p->state.blend)
+        {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+        else
+        {
+            glDisable(GL_BLEND);
+        }
+
+        if (p->state.cull == CullMode::Off)
+        {
+            glDisable(GL_CULL_FACE);
+        }
+        else
+        {
+            glEnable(GL_CULL_FACE);
+            glCullFace(p->state.cull == CullMode::Front ? GL_FRONT : GL_BACK);
+        }
     }
 
     void GLRenderer::SetFrameUniforms(const FrameUniforms& u)

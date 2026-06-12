@@ -198,7 +198,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     std::string scenePath = FindDefaultSceneShaderPath(shaderBaseDir);
     Ditto::ShaderAsset defaultShader = Ditto::LoadShaderAsset(scenePath, shaderBaseDir);
     std::string pipelineSource = defaultShader.ok ? defaultShader.engineHLSL : ReadTextFile(scenePath);
-    shaderPipeline = renderer->CreatePipeline(pipelineSource);
+    shaderPipeline = renderer->CreatePipeline(pipelineSource, defaultShader.pipelineState);
 
     if (createEditor)
     {

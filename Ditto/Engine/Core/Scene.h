@@ -53,6 +53,7 @@ struct Scene
     std::unordered_map<std::string, std::unique_ptr<GeometryInstances>> customBatches;
     std::unordered_map<std::string, std::unique_ptr<GeometryInstances>> renderBatches;
     std::unordered_map<std::string, Ditto::PipelineHandle> shaderPipelines;
+    std::unordered_map<std::string, Ditto::PipelineState> shaderPipelineStates;
     std::unordered_map<std::string, Ditto::TextureHandle> materialTextures;
     Ditto::TextureHandle whiteTexture;
 
@@ -100,5 +101,6 @@ struct Scene
 private:
     void DestroyAllObjects();
     Ditto::PipelineHandle GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback);
+    Ditto::PipelineState GetShaderPipelineState(const std::string& shaderName);
     Ditto::TextureHandle GetOrCreateMaterialTexture(const std::string& texturePath);
 };
