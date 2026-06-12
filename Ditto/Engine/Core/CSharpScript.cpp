@@ -10,9 +10,12 @@
 #ifndef DITTO_HEADLESS_TESTS
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
+#include "Input.h"
+#include "../Audio/AudioEngine.h"
 #endif
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
+#include "../Physics/Physics.h"
 
 namespace fs = std::filesystem;
 
@@ -175,6 +178,8 @@ static std::string FindNetStandardDll()
 
 bool CSharpScriptSystem::s_initialized = false;
 float CSharpScriptSystem::s_deltaTime = 0.016f;
+float CSharpScriptSystem::s_time = 0.0f;
+void* CSharpScriptSystem::s_physics = nullptr;
 LogCallback CSharpScriptSystem::s_logCallback = nullptr;
 void* CSharpScriptSystem::s_editor = nullptr;
 
@@ -1276,6 +1281,34 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetAngularVelocity", (void*)Internal_Rigidbody_SetAngularVelocity);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetDeltaTime", (void*)Internal_Time_GetDeltaTime);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetTime", (void*)Internal_Time_GetTime);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetKeyNative", (void*)Internal_Input_GetKey);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetKeyDownNative", (void*)Internal_Input_GetKeyDown);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetKeyUpNative", (void*)Internal_Input_GetKeyUp);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMouseButtonNative", (void*)Internal_Input_GetMouseButton);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMouseButtonDownNative", (void*)Internal_Input_GetMouseButtonDown);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMouseButtonUpNative", (void*)Internal_Input_GetMouseButtonUp);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMousePositionNative", (void*)Internal_Input_GetMousePosition);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.Physics::RaycastNative", (void*)Internal_Physics_Raycast);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.AudioSource::PlayNative", (void*)Internal_AudioSource_Play);
+    ::MonoRuntime::AddInternalCall("DittoEngine.AudioSource::StopNative", (void*)Internal_AudioSource_Stop);
+    ::MonoRuntime::AddInternalCall("DittoEngine.AudioSource::GetVolume", (void*)Internal_AudioSource_GetVolume);
+    ::MonoRuntime::AddInternalCall("DittoEngine.AudioSource::SetVolume", (void*)Internal_AudioSource_SetVolume);
+    ::MonoRuntime::AddInternalCall("DittoEngine.AudioSource::GetLoop", (void*)Internal_AudioSource_GetLoop);
+    ::MonoRuntime::AddInternalCall("DittoEngine.AudioSource::SetLoop", (void*)Internal_AudioSource_SetLoop);
+    ::MonoRuntime::AddInternalCall("DittoEngine.AudioSource::IsPlayingNative", (void*)Internal_AudioSource_IsPlaying);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIText::SetTextNative", (void*)Internal_UIText_SetText);
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIText::GetTextNative", (void*)Internal_UIText_GetText);
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIText::SetColorNative", (void*)Internal_UIText_SetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIImage::SetColorNative", (void*)Internal_UIImage_SetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIImage::GetColorNative", (void*)Internal_UIImage_GetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIButton::ConsumeClick", (void*)Internal_UIButton_ConsumeClick);
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIButton::IsHoveredNative", (void*)Internal_UIButton_IsHovered);
+    ::MonoRuntime::AddInternalCall("DittoEngine.UIButton::SetLabelNative", (void*)Internal_UIButton_SetLabel);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Debug::Log", (void*)Internal_Debug_Log);
 }
@@ -1373,6 +1406,54 @@ float Internal_Time_GetDeltaTime()
     return CSharpScriptSystem::GetDeltaTime();
 }
 
+float Internal_Time_GetTime()
+{
+    return CSharpScriptSystem::GetTime();
+}
+
+#ifndef DITTO_HEADLESS_TESTS
+int Internal_Input_GetKey(int key)            { return Input::GetKey(key) ? 1 : 0; }
+int Internal_Input_GetKeyDown(int key)        { return Input::GetKeyDown(key) ? 1 : 0; }
+int Internal_Input_GetKeyUp(int key)          { return Input::GetKeyUp(key) ? 1 : 0; }
+int Internal_Input_GetMouseButton(int b)      { return Input::GetMouseButton(b) ? 1 : 0; }
+int Internal_Input_GetMouseButtonDown(int b)  { return Input::GetMouseButtonDown(b) ? 1 : 0; }
+int Internal_Input_GetMouseButtonUp(int b)    { return Input::GetMouseButtonUp(b) ? 1 : 0; }
+
+void Internal_Input_GetMousePosition(float* outPos)
+{
+    if (!outPos) return;
+    glm::vec2 p = Input::GetMousePosition();
+    outPos[0] = p.x;
+    outPos[1] = p.y;
+}
+#else
+// Headless test builds (DittoTests) compile this file without GLFW/Input.
+int Internal_Input_GetKey(int)            { return 0; }
+int Internal_Input_GetKeyDown(int)        { return 0; }
+int Internal_Input_GetKeyUp(int)          { return 0; }
+int Internal_Input_GetMouseButton(int)    { return 0; }
+int Internal_Input_GetMouseButtonDown(int){ return 0; }
+int Internal_Input_GetMouseButtonUp(int)  { return 0; }
+void Internal_Input_GetMousePosition(float* outPos) { if (outPos) { outPos[0] = 0; outPos[1] = 0; } }
+#endif
+
+int Internal_Physics_Raycast(float ox, float oy, float oz,
+    float dx, float dy, float dz, float maxDist, float* out7, void** outGo)
+{
+    Physics* physics = static_cast<Physics*>(CSharpScriptSystem::GetPhysics());
+    if (!physics || !out7 || !outGo) return 0;
+
+    RaycastHit hit;
+    if (!physics->Raycast(glm::vec3(ox, oy, oz), glm::vec3(dx, dy, dz), maxDist, hit))
+        return 0;
+
+    out7[0] = hit.point.x;  out7[1] = hit.point.y;  out7[2] = hit.point.z;
+    out7[3] = hit.normal.x; out7[4] = hit.normal.y; out7[5] = hit.normal.z;
+    out7[6] = hit.distance;
+    *outGo = hit.gameObject;
+    return 1;
+}
+
 void Internal_Debug_Log(void* msg)
 {
     std::string message = MonoRuntime::GetStringFromMono((MonoString*)msg);
@@ -1406,8 +1487,133 @@ void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName)
         for (const auto& comp : go->components)
             if (comp && comp->index == (1 << 3)) return comp.get();
     }
+    else if (typeStr == "AudioSource")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::AudioSource) return comp.get();
+    }
+    else if (typeStr == "UIText")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::UIText) return comp.get();
+    }
+    else if (typeStr == "UIImage")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::UIImage) return comp.get();
+    }
+    else if (typeStr == "UIButton")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::UIButton) return comp.get();
+    }
 
     return nullptr;
+}
+
+void Internal_UIText_SetText(void* uiText, void* text)
+{
+    if (!uiText || !text) return;
+    static_cast<UITextComponent*>(uiText)->text =
+        MonoRuntime::GetStringFromMono((MonoString*)text);
+}
+
+void* Internal_UIText_GetText(void* uiText)
+{
+    if (!uiText) return nullptr;
+    return MonoRuntime::CreateString(static_cast<UITextComponent*>(uiText)->text);
+}
+
+void Internal_UIText_SetColor(void* uiText, float r, float g, float b, float a)
+{
+    if (!uiText) return;
+    static_cast<UITextComponent*>(uiText)->color = glm::vec4(r, g, b, a);
+}
+
+void Internal_UIImage_SetColor(void* uiImage, float r, float g, float b, float a)
+{
+    if (!uiImage) return;
+    static_cast<UIImageComponent*>(uiImage)->color = glm::vec4(r, g, b, a);
+}
+
+void Internal_UIImage_GetColor(void* uiImage, float* outColor)
+{
+    if (!uiImage || !outColor) return;
+    const glm::vec4& c = static_cast<UIImageComponent*>(uiImage)->color;
+    outColor[0] = c.r; outColor[1] = c.g; outColor[2] = c.b; outColor[3] = c.a;
+}
+
+int Internal_UIButton_ConsumeClick(void* uiButton)
+{
+    if (!uiButton) return 0;
+    UIButtonComponent* btn = static_cast<UIButtonComponent*>(uiButton);
+    int clicked = btn->wasClicked ? 1 : 0;
+    btn->wasClicked = false;   // read-clears
+    return clicked;
+}
+
+int Internal_UIButton_IsHovered(void* uiButton)
+{
+    if (!uiButton) return 0;
+    return static_cast<UIButtonComponent*>(uiButton)->hovered ? 1 : 0;
+}
+
+void Internal_UIButton_SetLabel(void* uiButton, void* label)
+{
+    if (!uiButton || !label) return;
+    static_cast<UIButtonComponent*>(uiButton)->label =
+        MonoRuntime::GetStringFromMono((MonoString*)label);
+}
+
+void Internal_AudioSource_Play(void* audioSource)
+{
+    if (!audioSource) return;
+    static_cast<AudioSourceComponent*>(audioSource)->Play();
+}
+
+void Internal_AudioSource_Stop(void* audioSource)
+{
+    if (!audioSource) return;
+    static_cast<AudioSourceComponent*>(audioSource)->Stop();
+}
+
+float Internal_AudioSource_GetVolume(void* audioSource)
+{
+    if (!audioSource) return 1.0f;
+    return static_cast<AudioSourceComponent*>(audioSource)->volume;
+}
+
+void Internal_AudioSource_SetVolume(void* audioSource, float volume)
+{
+    if (!audioSource) return;
+    AudioSourceComponent* audio = static_cast<AudioSourceComponent*>(audioSource);
+    audio->volume = volume;
+#ifndef DITTO_HEADLESS_TESTS
+    if (audio->soundHandle != 0) AudioEngine::SetVolume(audio->soundHandle, volume);
+#endif
+}
+
+int Internal_AudioSource_GetLoop(void* audioSource)
+{
+    if (!audioSource) return 0;
+    return static_cast<AudioSourceComponent*>(audioSource)->loop ? 1 : 0;
+}
+
+void Internal_AudioSource_SetLoop(void* audioSource, int loop)
+{
+    if (!audioSource) return;
+    static_cast<AudioSourceComponent*>(audioSource)->loop = loop != 0;
+}
+
+int Internal_AudioSource_IsPlaying(void* audioSource)
+{
+    if (!audioSource) return 0;
+#ifndef DITTO_HEADLESS_TESTS
+    AudioSourceComponent* audio = static_cast<AudioSourceComponent*>(audioSource);
+    return (audio->soundHandle != 0 && AudioEngine::IsPlaying(audio->soundHandle)) ? 1 : 0;
+#else
+    return 0;
+#endif
 }
 
 void Internal_Renderer_GetColor(void* renderer, float* outColor)

@@ -11,8 +11,12 @@
 
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/gtc/matrix_transform.hpp"
+#include "../3rdParty/GLM/gtc/type_ptr.hpp"
+#define GLM_ENABLE_EXPERIMENTAL
+#include "../3rdParty/GLM/gtx/euler_angles.hpp"
 #include "../3rdParty/GLFW/glfw3.h"
 #include "../3rdParty/ImGui/imgui.h"
+#include "../3rdParty/ImGuizmo/ImGuizmo.h"
 #include <iostream>
 #include <cmath>
 #include <filesystem>
@@ -63,398 +67,6 @@ ImVec2D SceneWindow::WorldToScreen(const glm::vec3& worldPos)
     float screenY = (1.0f - ndcPos.y) * 0.5f * viewportSize.y + viewportMin.y;
 
     return ImVec2D(screenX, screenY);
-}
-
-void SceneWindow::RingBasis(const glm::vec3& axis, glm::vec3& outU, glm::vec3& outV)
-{
-    // Two orthonormal in-plane vectors. v = axis x u makes (u, v, axis) right-
-    // handed, so increasing the parametric angle is a CCW turn about +axis --
-    // matching glm::rotate's sense, so applying +angle keeps the grab in place.
-    outU = std::abs(axis.x) < 0.9f ? glm::cross(axis, glm::vec3(1, 0, 0))
-                                   : glm::cross(axis, glm::vec3(0, 1, 0));
-    outU = glm::normalize(outU);
-    outV = glm::cross(axis, outU);
-}
-
-float SceneWindow::ClosestRingAngle(const ImVec2D& mousePos, const glm::vec3& center,
-                                    const glm::vec3& axis, float radius)
-{
-    // Parametric angle of the ring point whose screen projection is nearest the
-    // cursor -- i.e. where on the ring the user grabbed. Works from any view,
-    // including edge-on (the ring projects to a line, but a nearest point still
-    // exists). Coarse sample then refine.
-    glm::vec3 u, v;
-    RingBasis(axis, u, v);
-
-    auto screenDistSq = [&](float theta) -> float {
-        glm::vec3 p = center + radius * (std::cos(theta) * u + std::sin(theta) * v);
-        ImVec2D s = WorldToScreen(p);
-        float dx = mousePos.x - s.x, dy = mousePos.y - s.y;
-        return dx * dx + dy * dy;
-    };
-
-    float best = 0.0f, bestD = 1e30f;
-    const int samples = 64;
-    for (int i = 0; i < samples; i++)
-    {
-        float theta = (float)i / (float)samples * 2.0f * 3.14159265f;
-        float d = screenDistSq(theta);
-        if (d < bestD) { bestD = d; best = theta; }
-    }
-    // Refine around the best sample for a tighter grab point.
-    float step = (2.0f * 3.14159265f / samples) * 0.5f;
-    for (int iter = 0; iter < 8; iter++)
-    {
-        float a = screenDistSq(best - step), b = screenDistSq(best + step);
-        if (a < bestD && a <= b) { best -= step; bestD = a; }
-        else if (b < bestD)      { best += step; bestD = b; }
-        step *= 0.5f;
-    }
-    return best;
-}
-
-float SceneWindow::DistToRotateRing(const ImVec2D& mousePos, const glm::vec3& worldPos, int axis, float ringRadius)
-{
-    float minDist = 10000.0f;
-    int samples = 32;
-    
-    for (int i = 0; i < samples; i++)
-    {
-        float angle = (float)i / (float)samples * 2.0f * 3.14159265f;
-        float ca = cosf(angle);
-        float sa = sinf(angle);
-        
-        glm::vec3 ringPoint;
-        if (axis == 0)
-            ringPoint = worldPos + glm::vec3(0, ca * ringRadius, sa * ringRadius);
-        else if (axis == 1)
-            ringPoint = worldPos + glm::vec3(sa * ringRadius, 0, ca * ringRadius);
-        else
-            ringPoint = worldPos + glm::vec3(ca * ringRadius, sa * ringRadius, 0);
-        
-        ImVec2D screenPoint = WorldToScreen(ringPoint);
-        float dx = mousePos.x - screenPoint.x;
-        float dy = mousePos.y - screenPoint.y;
-        float dist = std::sqrt(dx * dx + dy * dy);
-        
-        if (dist < minDist)
-            minDist = dist;
-    }
-    
-    return minDist;
-}
-
-HandleAxis SceneWindow::RaycastGizmos(const ImVec2D& mousePos)
-{
-    if (!m_selectedObject)
-        return HandleAxis::None;
-
-    TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
-    if (!transform)
-        return HandleAxis::None;
-
-    glm::vec3 gizmoWorldPos = GetGizmoWorldPosition();
-    ImVec2D screenCenter = WorldToScreen(gizmoWorldPos);
-    if (screenCenter.x < -500) return HandleAxis::None;
-
-    const float threshold = 8.0f;
-
-    if (m_toolMode == ToolMode::Rotate)
-    {
-        float ringRadius = 1.0f;
-        
-        float distX = DistToRotateRing(mousePos, gizmoWorldPos, 0, ringRadius);
-        float distY = DistToRotateRing(mousePos, gizmoWorldPos, 1, ringRadius);
-        float distZ = DistToRotateRing(mousePos, gizmoWorldPos, 2, ringRadius);
-        
-        if (distX < threshold && distX <= distY && distX <= distZ) return HandleAxis::X;
-        if (distY < threshold && distY <= distX && distY <= distZ) return HandleAxis::Y;
-        if (distZ < threshold && distZ <= distX && distZ <= distY) return HandleAxis::Z;
-    }
-    else
-    {
-        float axisLength = 1.5f;
-        ImVec2D xEnd = WorldToScreen(gizmoWorldPos + glm::vec3(axisLength, 0, 0));
-        ImVec2D yEnd = WorldToScreen(gizmoWorldPos + glm::vec3(0, axisLength, 0));
-        ImVec2D zEnd = WorldToScreen(gizmoWorldPos + glm::vec3(0, 0, axisLength));
-
-        auto distToLine = [](ImVec2D p, ImVec2D a, ImVec2D b) -> float {
-            float dx = b.x - a.x;
-            float dy = b.y - a.y;
-            float len = std::sqrt(dx * dx + dy * dy);
-            if (len < 1.0f) return 10000.0f;
-            float t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (len * len);
-            t = std::max(0.0f, std::min(1.0f, t));
-            float projX = a.x + t * dx;
-            float projY = a.y + t * dy;
-            return std::sqrt((p.x - projX) * (p.x - projX) + (p.y - projY) * (p.y - projY));
-        };
-
-        float distX = distToLine(mousePos, screenCenter, xEnd);
-        float distY = distToLine(mousePos, screenCenter, yEnd);
-        float distZ = distToLine(mousePos, screenCenter, zEnd);
-
-        if (distX < threshold && distX <= distY && distX <= distZ) return HandleAxis::X;
-        if (distY < threshold && distY <= distX && distY <= distZ) return HandleAxis::Y;
-        if (distZ < threshold && distZ <= distX && distZ <= distY) return HandleAxis::Z;
-    }
-
-    return HandleAxis::None;
-}
-
-void SceneWindow::DrawTranslateGizmo(const glm::vec3& worldPos, float scale)
-{
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-    ImU32 xColor = IM_COL32(255, 50, 50, 255);
-    ImU32 yColor = IM_COL32(50, 255, 50, 255);
-    ImU32 zColor = IM_COL32(50, 50, 255, 255);
-
-    ImVec2D center = WorldToScreen(worldPos);
-    if (center.x < -500) return;
-
-    float axisLength = 1.5f;
-    ImVec2D xEnd = WorldToScreen(worldPos + glm::vec3(axisLength, 0, 0));
-    ImVec2D yEnd = WorldToScreen(worldPos + glm::vec3(0, axisLength, 0));
-    ImVec2D zEnd = WorldToScreen(worldPos + glm::vec3(0, 0, axisLength));
-
-    ImU32 xCol = (m_highlightedAxis == HandleAxis::X) ? IM_COL32(255, 200, 0, 255) : xColor;
-    ImU32 yCol = (m_highlightedAxis == HandleAxis::Y) ? IM_COL32(255, 200, 0, 255) : yColor;
-    ImU32 zCol = (m_highlightedAxis == HandleAxis::Z) ? IM_COL32(255, 200, 0, 255) : zColor;
-
-    drawList->AddLine(ImVec2(center.x, center.y), ImVec2(xEnd.x, xEnd.y), xCol, 3.0f);
-    drawList->AddLine(ImVec2(center.x, center.y), ImVec2(yEnd.x, yEnd.y), yCol, 3.0f);
-    drawList->AddLine(ImVec2(center.x, center.y), ImVec2(zEnd.x, zEnd.y), zCol, 3.0f);
-
-    float arrowSize = 12.0f;
-    ImVec2 dirX(xEnd.x - center.x, xEnd.y - center.y);
-    float lenX = std::sqrt(dirX.x * dirX.x + dirX.y * dirX.y);
-    if (lenX > 0) {
-        dirX.x /= lenX; dirX.y /= lenX;
-        ImVec2 perpX(-dirX.y, dirX.x);
-        drawList->AddTriangleFilled(
-            ImVec2(xEnd.x, xEnd.y),
-            ImVec2(xEnd.x - dirX.x * arrowSize + perpX.x * arrowSize * 0.4f, xEnd.y - dirX.y * arrowSize + perpX.y * arrowSize * 0.4f),
-            ImVec2(xEnd.x - dirX.x * arrowSize - perpX.x * arrowSize * 0.4f, xEnd.y - dirX.y * arrowSize - perpX.y * arrowSize * 0.4f),
-            xCol);
-    }
-
-    ImVec2 dirY(yEnd.x - center.x, yEnd.y - center.y);
-    float lenY = std::sqrt(dirY.x * dirY.x + dirY.y * dirY.y);
-    if (lenY > 0) {
-        dirY.x /= lenY; dirY.y /= lenY;
-        ImVec2 perpY(-dirY.y, dirY.x);
-        drawList->AddTriangleFilled(
-            ImVec2(yEnd.x, yEnd.y),
-            ImVec2(yEnd.x - dirY.x * arrowSize + perpY.x * arrowSize * 0.4f, yEnd.y - dirY.y * arrowSize + perpY.y * arrowSize * 0.4f),
-            ImVec2(yEnd.x - dirY.x * arrowSize - perpY.x * arrowSize * 0.4f, yEnd.y - dirY.y * arrowSize - perpY.y * arrowSize * 0.4f),
-            yCol);
-    }
-
-    ImVec2 dirZ(zEnd.x - center.x, zEnd.y - center.y);
-    float lenZ = std::sqrt(dirZ.x * dirZ.x + dirZ.y * dirZ.y);
-    if (lenZ > 0) {
-        dirZ.x /= lenZ; dirZ.y /= lenZ;
-        ImVec2 perpZ(-dirZ.y, dirZ.x);
-        drawList->AddTriangleFilled(
-            ImVec2(zEnd.x, zEnd.y),
-            ImVec2(zEnd.x - dirZ.x * arrowSize + perpZ.x * arrowSize * 0.4f, zEnd.y - dirZ.y * arrowSize + perpZ.y * arrowSize * 0.4f),
-            ImVec2(zEnd.x - dirZ.x * arrowSize - perpZ.x * arrowSize * 0.4f, zEnd.y - dirZ.y * arrowSize - perpZ.y * arrowSize * 0.4f),
-            zCol);
-    }
-}
-
-void SceneWindow::DrawRotateGizmo(const glm::vec3& worldPos, float scale)
-{
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-    ImU32 xColor = IM_COL32(255, 50, 50, 255);
-    ImU32 yColor = IM_COL32(50, 255, 50, 255);
-    ImU32 zColor = IM_COL32(50, 50, 255, 255);
-
-    ImVec2D center = WorldToScreen(worldPos);
-    if (center.x < -500) return;
-
-    float radius = 1.0f;
-    int segments = 64;
-
-    ImU32 xCol = (m_highlightedAxis == HandleAxis::X) ? IM_COL32(255, 200, 0, 255) : xColor;
-    ImU32 yCol = (m_highlightedAxis == HandleAxis::Y) ? IM_COL32(255, 200, 0, 255) : yColor;
-    ImU32 zCol = (m_highlightedAxis == HandleAxis::Z) ? IM_COL32(255, 200, 0, 255) : zColor;
-
-    Camera* cam = m_editor->engine->sceneCamera.get();
-    glm::vec3 camDir = cam ? glm::normalize(worldPos - cam->position) : glm::vec3(0, 0, -1);
-
-    // X axis ring (YZ plane) - red, axis=(1,0,0)
-    {
-        ImVec2 prevPoint;
-        bool firstPoint = true;
-        for (int i = 0; i <= segments; i++)
-        {
-            float angle = (float)i / (float)segments * 2.0f * 3.14159265f;
-            float ca = cosf(angle);
-            float sa = sinf(angle);
-            // YZ plane: X=0, Y=cos, Z=sin
-            glm::vec3 ringPoint = worldPos + glm::vec3(0, ca * radius, sa * radius);
-            glm::vec3 pointNormal = glm::vec3(0, ca, sa);
-            float d = glm::dot(pointNormal, camDir);
-            // Draw back-facing half (d < 0)
-            if (d < 0)
-            {
-                ImVec2D screenPoint = WorldToScreen(ringPoint);
-                if (!firstPoint)
-                    drawList->AddLine(prevPoint, ImVec2(screenPoint.x, screenPoint.y), xCol, 2.5f);
-                prevPoint = ImVec2(screenPoint.x, screenPoint.y);
-                firstPoint = false;
-            }
-            else
-            {
-                firstPoint = true;
-            }
-        }
-    }
-
-    // Y axis ring (XZ plane) - green, axis=(0,1,0)
-    {
-        ImVec2 prevPoint;
-        bool firstPoint = true;
-        for (int i = 0; i <= segments; i++)
-        {
-            float angle = (float)i / (float)segments * 2.0f * 3.14159265f;
-            float ca = cosf(angle);
-            float sa = sinf(angle);
-            // XZ plane: X=cos, Y=0, Z=sin
-            glm::vec3 ringPoint = worldPos + glm::vec3(ca * radius, 0, sa * radius);
-            glm::vec3 pointNormal = glm::vec3(ca, 0, sa);
-            float d = glm::dot(pointNormal, camDir);
-            // Draw back-facing half (d < 0)
-            if (d < 0)
-            {
-                ImVec2D screenPoint = WorldToScreen(ringPoint);
-                if (!firstPoint)
-                    drawList->AddLine(prevPoint, ImVec2(screenPoint.x, screenPoint.y), yCol, 2.5f);
-                prevPoint = ImVec2(screenPoint.x, screenPoint.y);
-                firstPoint = false;
-            }
-            else
-            {
-                firstPoint = true;
-            }
-        }
-    }
-    
-    // Z axis ring (XY plane) - blue, axis=(0,0,1)
-    {
-        ImVec2 prevPoint;
-        bool firstPoint = true;
-        for (int i = 0; i <= segments; i++)
-        {
-            float angle = (float)i / (float)segments * 2.0f * 3.14159265f;
-            float ca = cosf(angle);
-            float sa = sinf(angle);
-            // XY plane: X=cos, Y=sin, Z=0
-            glm::vec3 ringPoint = worldPos + glm::vec3(ca * radius, sa * radius, 0);
-            glm::vec3 pointNormal = glm::vec3(ca, sa, 0);
-            float d = glm::dot(pointNormal, camDir);
-            // Draw back-facing half (d < 0)
-            if (d < 0)
-            {
-                ImVec2D screenPoint = WorldToScreen(ringPoint);
-                if (!firstPoint)
-                    drawList->AddLine(prevPoint, ImVec2(screenPoint.x, screenPoint.y), zCol, 2.5f);
-                prevPoint = ImVec2(screenPoint.x, screenPoint.y);
-                firstPoint = false;
-            }
-            else
-            {
-                firstPoint = true;
-            }
-        }
-    }
-}
-
-void SceneWindow::DrawScaleGizmo(const glm::vec3& worldPos, float scale)
-{
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-    ImU32 xColor = IM_COL32(255, 50, 50, 255);
-    ImU32 yColor = IM_COL32(50, 255, 50, 255);
-    ImU32 zColor = IM_COL32(50, 50, 255, 255);
-
-    ImVec2D center = WorldToScreen(worldPos);
-    if (center.x < -500) return;
-
-    float axisLength = 1.5f;
-    ImVec2D xEnd = WorldToScreen(worldPos + glm::vec3(axisLength, 0, 0));
-    ImVec2D yEnd = WorldToScreen(worldPos + glm::vec3(0, axisLength, 0));
-    ImVec2D zEnd = WorldToScreen(worldPos + glm::vec3(0, 0, axisLength));
-
-    ImU32 xCol = (m_highlightedAxis == HandleAxis::X) ? IM_COL32(255, 200, 0, 255) : xColor;
-    ImU32 yCol = (m_highlightedAxis == HandleAxis::Y) ? IM_COL32(255, 200, 0, 255) : yColor;
-    ImU32 zCol = (m_highlightedAxis == HandleAxis::Z) ? IM_COL32(255, 200, 0, 255) : zColor;
-
-    ImVec2 centerImGui(center.x, center.y);
-    ImVec2 xEndImGui(xEnd.x, xEnd.y);
-    ImVec2 yEndImGui(yEnd.x, yEnd.y);
-    ImVec2 zEndImGui(zEnd.x, zEnd.y);
-
-    drawList->AddLine(centerImGui, xEndImGui, xCol, 3.0f);
-    drawList->AddLine(centerImGui, yEndImGui, yCol, 3.0f);
-    drawList->AddLine(centerImGui, zEndImGui, zCol, 3.0f);
-
-    float boxSize = 8.0f;
-    drawList->AddRectFilled(ImVec2(xEnd.x - boxSize/2, xEnd.y - boxSize/2), ImVec2(xEnd.x + boxSize/2, xEnd.y + boxSize/2), xCol);
-    drawList->AddRectFilled(ImVec2(yEnd.x - boxSize/2, yEnd.y - boxSize/2), ImVec2(yEnd.x + boxSize/2, yEnd.y + boxSize/2), yCol);
-    drawList->AddRectFilled(ImVec2(zEnd.x - boxSize/2, zEnd.y - boxSize/2), ImVec2(zEnd.x + boxSize/2, zEnd.y + boxSize/2), zCol);
-}
-
-void SceneWindow::DrawGizmos()
-{
-    m_selectedObject = m_editor->activeSelection;
-    if (!m_selectedObject)
-        return;
-
-    TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
-    if (!transform)
-        return;
-
-    ImVec2 mousePosImGui = ImGui::GetMousePos();
-    ImVec2D mousePos(mousePosImGui.x, mousePosImGui.y);
-    m_highlightedAxis = RaycastGizmos(mousePos);
-
-    float gizmoScale = 2.0f;
-
-    glm::vec3 gizmoWorldPos = GetGizmoWorldPosition();
-    switch (m_toolMode)
-    {
-    case ToolMode::Translate:
-        DrawTranslateGizmo(gizmoWorldPos, gizmoScale);
-        break;
-    case ToolMode::Rotate:
-        DrawRotateGizmo(gizmoWorldPos, gizmoScale);
-        break;
-    case ToolMode::Scale:
-        DrawScaleGizmo(gizmoWorldPos, gizmoScale);
-        break;
-    }
-}
-
-ColliderComponent* SceneWindow::GetSelectedCollider() const
-{
-    auto* collider = dynamic_cast<ColliderComponent*>(m_editor ? m_editor->selectedComponent : nullptr);
-    if (!collider || collider->gameObject != m_selectedObject || !collider->enabled)
-        return nullptr;
-    return collider;
-}
-
-glm::vec3 SceneWindow::GetGizmoWorldPosition() const
-{
-    if (!m_selectedObject) return glm::vec3(0.0f);
-    TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
-    if (!transform) return glm::vec3(0.0f);
-    if (ColliderComponent* collider = GetSelectedCollider())
-        return glm::vec3(transform->GetWorldModel() * glm::vec4(collider->biasPosition, 1.0f));
-    return transform->position;
 }
 
 void SceneWindow::DrawWorldLine(const glm::vec3& a, const glm::vec3& b, ImU32 color, float thickness)
@@ -640,192 +252,6 @@ void SceneWindow::DrawPhysicsMeshGizmos()
     }
 }
 
-void SceneWindow::HandleMouseInput()
-{
-    if (!m_selectedObject)
-        return;
-
-    TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
-    if (!transform)
-        return;
-    ColliderComponent* selectedCollider = GetSelectedCollider();
-
-    if (ImGui::IsMouseClicked(0) && m_highlightedAxis != HandleAxis::None)
-    {
-        m_isDragging = true;
-        m_draggingAxis = m_highlightedAxis;
-        if (m_editor) m_editor->BeginInspectorEdit();   // capture pre-drag state (one undo step)
-        m_dragStartMousePos = ImVec2D(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-        m_originalPosition = selectedCollider ? selectedCollider->biasPosition : transform->position;
-        m_originalRotation = selectedCollider ? selectedCollider->biasRotation : transform->rotation;
-        m_originalScale = selectedCollider ? selectedCollider->biasScale : transform->scale;
-
-        if (m_toolMode == ToolMode::Rotate)
-        {
-            // Find where on the ring the user grabbed (parametric angle), so we
-            // can advance that exact point along the ring's screen tangent.
-            glm::vec3 axisDir(0);
-            if (m_draggingAxis == HandleAxis::X) axisDir = glm::vec3(1, 0, 0);
-            else if (m_draggingAxis == HandleAxis::Y) axisDir = glm::vec3(0, 1, 0);
-            else if (m_draggingAxis == HandleAxis::Z) axisDir = glm::vec3(0, 0, 1);
-
-            const float ringRadius = 1.0f;  // matches DrawRotateGizmo
-            m_rotateRingAngle = ClosestRingAngle(m_dragStartMousePos, GetGizmoWorldPosition(),
-                                                 axisDir, ringRadius);
-            m_rotateTotalAngle = 0.0f;
-            m_rotateLastMouse = m_dragStartMousePos;
-        }
-    }
-
-    if (m_isDragging && ImGui::IsMouseDown(0))
-    {
-        ImVec2D currentMousePos(ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-        
-        // Calculate screen-space axis direction for more accurate dragging
-        Camera* camera = m_editor->engine->sceneCamera.get();
-        glm::vec3 worldPos = GetGizmoWorldPosition();
-        ImVec2D screenPos = WorldToScreen(worldPos);
-        
-        // Get screen-space axis directions
-        glm::vec3 axisDir(0);
-        if (m_draggingAxis == HandleAxis::X) axisDir = glm::vec3(1, 0, 0);
-        else if (m_draggingAxis == HandleAxis::Y) axisDir = glm::vec3(0, 1, 0);
-        else if (m_draggingAxis == HandleAxis::Z) axisDir = glm::vec3(0, 0, 1);
-        
-        ImVec2D screenAxisEnd = WorldToScreen(worldPos + axisDir * 0.5f);
-        ImVec2D screenAxisDir(screenAxisEnd.x - screenPos.x, screenAxisEnd.y - screenPos.y);
-        
-        // Normalize screen axis direction
-        float axisLen = std::sqrt(screenAxisDir.x * screenAxisDir.x + screenAxisDir.y * screenAxisDir.y);
-        if (axisLen > 0.001f)
-        {
-            screenAxisDir.x /= axisLen;
-            screenAxisDir.y /= axisLen;
-        }
-        else
-        {
-            // Fallback if axis is perpendicular to view
-            screenAxisDir.x = (m_draggingAxis == HandleAxis::X) ? 1 : 0;
-            screenAxisDir.y = (m_draggingAxis == HandleAxis::Y) ? -1 : 0;
-        }
-        
-        // Calculate mouse movement projected onto screen axis
-        ImVec2D mouseDelta(currentMousePos.x - m_dragStartMousePos.x, currentMousePos.y - m_dragStartMousePos.y);
-        float projectedDelta = mouseDelta.x * screenAxisDir.x + mouseDelta.y * screenAxisDir.y;
-        
-        // Calculate perpendicular movement for Z axis fallback
-        float perpDelta = mouseDelta.x;
-        
-        switch (m_toolMode)
-        {
-        case ToolMode::Translate:
-        {
-            float sensitivity = 0.02f;
-            glm::vec3 worldDelta(0.0f);
-            if (m_draggingAxis == HandleAxis::X) worldDelta.x += projectedDelta * sensitivity;
-            if (m_draggingAxis == HandleAxis::Y) worldDelta.y += projectedDelta * sensitivity;
-            if (m_draggingAxis == HandleAxis::Z) worldDelta.z += projectedDelta * sensitivity;
-            if (selectedCollider)
-            {
-                glm::vec3 localDelta = glm::mat3(glm::inverse(transform->GetWorldModel())) * worldDelta;
-                selectedCollider->biasPosition = m_originalPosition + localDelta;
-            }
-            else
-            {
-                transform->position = m_originalPosition + worldDelta;
-            }
-            break;
-        }
-        case ToolMode::Rotate:
-        {
-            // Screen-tangent method (Unity/Unreal style): advance the grabbed
-            // point along the ring by projecting the frame's mouse motion onto
-            // the ring's screen-space tangent. Robust from any view including
-            // edge-on, stays under the cursor, and the sign comes from the
-            // projection so no axis turns backwards.
-            glm::vec3 axisDir(0);
-            if (m_draggingAxis == HandleAxis::X) axisDir = glm::vec3(1, 0, 0);
-            else if (m_draggingAxis == HandleAxis::Y) axisDir = glm::vec3(0, 1, 0);
-            else if (m_draggingAxis == HandleAxis::Z) axisDir = glm::vec3(0, 0, 1);
-
-            const float ringRadius = 1.0f;
-            glm::vec3 u, v;
-            RingBasis(axisDir, u, v);
-
-            float th = m_rotateRingAngle;
-            glm::vec3 ringPt = m_originalPosition +
-                ringRadius * (std::cos(th) * u + std::sin(th) * v);
-            // World tangent at th (direction of increasing th), projected to screen.
-            glm::vec3 tangentPt = ringPt +
-                ringRadius * (-std::sin(th) * u + std::cos(th) * v);
-            ImVec2D sPt = WorldToScreen(ringPt);
-            ImVec2D sTan = WorldToScreen(tangentPt);
-            ImVec2D screenTangent(sTan.x - sPt.x, sTan.y - sPt.y);
-
-            float tanLen = std::sqrt(screenTangent.x * screenTangent.x +
-                                     screenTangent.y * screenTangent.y);
-            if (tanLen > 1e-4f)
-            {
-                // dTheta = (mouse motion . unit tangent) / pixels-per-radian.
-                // The tangent spans ringRadius radians of arc, so pixels-per-
-                // radian = tanLen / ringRadius.
-                ImVec2D mouseStep(currentMousePos.x - m_rotateLastMouse.x,
-                                  currentMousePos.y - m_rotateLastMouse.y);
-                float along = (mouseStep.x * screenTangent.x +
-                               mouseStep.y * screenTangent.y) / tanLen;
-                float dTheta = along / (tanLen / ringRadius);
-
-                m_rotateTotalAngle += dTheta;
-                m_rotateRingAngle += dTheta;  // grab point rides along with the rotation
-            }
-            m_rotateLastMouse = currentMousePos;
-
-            float degrees = glm::degrees(m_rotateTotalAngle);
-            glm::vec3 newRot = m_originalRotation;
-            if (m_draggingAxis == HandleAxis::X) newRot.x += degrees;
-            if (m_draggingAxis == HandleAxis::Y) newRot.y += degrees;
-            if (m_draggingAxis == HandleAxis::Z) newRot.z += degrees;
-            if (selectedCollider) selectedCollider->biasRotation = newRot;
-            else transform->rotation = newRot;
-            break;
-        }
-        case ToolMode::Scale:
-        {
-            float sensitivity = 0.02f;
-            glm::vec3 newScale = m_originalScale;
-            if (m_draggingAxis == HandleAxis::X) newScale.x = std::max(0.1f, m_originalScale.x + projectedDelta * sensitivity);
-            if (m_draggingAxis == HandleAxis::Y) newScale.y = std::max(0.1f, m_originalScale.y + projectedDelta * sensitivity);
-            if (m_draggingAxis == HandleAxis::Z) newScale.z = std::max(0.1f, m_originalScale.z + projectedDelta * sensitivity);
-            if (selectedCollider) selectedCollider->biasScale = newScale;
-            else transform->scale = newScale;
-            break;
-        }
-        }
-        
-        // Mark transform as modified to ensure Inspector updates
-        if (selectedCollider)
-        {
-            if (m_editor) m_editor->MarkSceneDirty();
-        }
-        else
-        {
-            transform->localDirty = true;
-            transform->UpdateTransform();
-        }
-    }
-
-    if (ImGui::IsMouseReleased(0))
-    {
-        if (m_isDragging)
-        {
-            m_justFinishedDrag = true;  // Mark that we just finished a drag operation
-            if (m_editor) m_editor->EndInspectorEdit();   // commit the drag as one undo step (if changed)
-        }
-        m_isDragging = false;
-        m_draggingAxis = HandleAxis::None;
-    }
-}
-
 void SceneWindow::HandleCameraMovement()
 {
     if (!m_editor->isSceneActive)
@@ -849,6 +275,90 @@ void SceneWindow::HandleCameraMovement()
         camera->position += camera->up * keySpeed;
     if (ImGui::IsKeyDown(ImGuiKey_PageDown))
         camera->position -= camera->up * keySpeed;
+}
+
+// ImGuizmo translate/rotate/scale manipulator for the selected object,
+// replacing the old hand-rolled gizmos. Edit mode only.
+void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
+{
+    m_selectedObject = m_editor->activeSelection;
+    m_isDragging = false;
+
+    if (!m_selectedObject || !m_editor->engine || m_editor->engine->state != Engine::Edit)
+    {
+        m_gizmoWasUsing = false;
+        return;
+    }
+    TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
+    if (!transform) { m_gizmoWasUsing = false; return; }
+
+    Camera* camera = m_editor->engine->sceneCamera.get();
+    if (!camera) return;
+
+    const float w = viewMax.x - viewMin.x;
+    const float h = viewMax.y - viewMin.y;
+    if (w <= 0.0f || h <= 0.0f) return;
+
+    // MUST match RenderSceneToTexture's projection exactly or the gizmo drifts.
+    glm::mat4 view = camera->GetViewMatrix();
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f), w / h, 0.1f, 100.0f);
+
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(viewMin.x, viewMin.y, w, h);
+
+    ImGuizmo::OPERATION op =
+        m_toolMode == ToolMode::Rotate ? ImGuizmo::ROTATE :
+        m_toolMode == ToolMode::Scale ? ImGuizmo::SCALE : ImGuizmo::TRANSLATE;
+
+    glm::mat4 model = transform->GetWorldModel();
+
+    bool manipulated = ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj),
+        op, ImGuizmo::LOCAL, glm::value_ptr(model));
+
+    // One undo snapshot per drag (rising edge of IsUsing).
+    bool usingNow = ImGuizmo::IsUsing();
+    if (usingNow && !m_gizmoWasUsing)
+        m_editor->PushUndoSnapshot();
+    if (m_gizmoWasUsing && !usingNow)
+        m_justFinishedDrag = true;   // suppress click-selection this frame
+    m_gizmoWasUsing = usingNow;
+    m_isDragging = usingNow;
+
+    if (manipulated)
+    {
+        // Manipulate edits the WORLD matrix; convert back to local space for
+        // parented objects before decomposing.
+        glm::mat4 local = model;
+        if (m_selectedObject->parent)
+        {
+            if (TransformComponent* pt = m_selectedObject->parent->GetComponent<TransformComponent>())
+                local = glm::inverse(pt->GetWorldModel()) * model;
+        }
+
+        glm::vec3 t(local[3]);
+        glm::vec3 s(glm::length(glm::vec3(local[0])),
+                    glm::length(glm::vec3(local[1])),
+                    glm::length(glm::vec3(local[2])));
+
+        // Normalize the rotation part, then extract euler in the engine's
+        // Y*X*Z order (matches TransformComponent::UpdateTransform).
+        glm::mat4 rotMat(1.0f);
+        if (s.x > 1e-6f) rotMat[0] = glm::vec4(glm::vec3(local[0]) / s.x, 0.0f);
+        if (s.y > 1e-6f) rotMat[1] = glm::vec4(glm::vec3(local[1]) / s.y, 0.0f);
+        if (s.z > 1e-6f) rotMat[2] = glm::vec4(glm::vec3(local[2]) / s.z, 0.0f);
+        float ry = 0.0f, rx = 0.0f, rz = 0.0f;
+        glm::extractEulerAngleYXZ(rotMat, ry, rx, rz);
+
+        transform->position = t;
+        transform->rotation = glm::degrees(glm::vec3(rx, ry, rz));
+        transform->scale = s;
+        transform->useQuatRotation = false;
+        transform->localDirty = true;
+        transform->UpdateTransform();
+
+        if (m_editor->engine->scene) m_editor->engine->scene->MarkDirty();
+    }
 }
 
 void SceneWindow::Draw()
@@ -902,13 +412,14 @@ void SceneWindow::Draw()
         ImGui::GetWindowDrawList()->AddImage((ImTextureID)sceneTex, min, max, ImVec2(0, 1), ImVec2(1, 0));
 
     DrawPhysicsMeshGizmos();
-    DrawGizmos();
-    HandleMouseInput();
+    DrawImGuizmo(min, max);
     HandleCameraRotation();
     DrawAxisGizmo();
 
-    // Only handle object selection when not dragging Gizmo, not rotating camera, and not just finished drag
-    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !m_isRotatingCamera && !m_isDragging && !m_justFinishedDrag)
+    // Only handle object selection when not dragging the gizmo, not hovering
+    // it, not rotating the camera, and not just finished a drag.
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !m_isRotatingCamera &&
+        !m_isDragging && !m_justFinishedDrag && !ImGuizmo::IsOver())
     {
         HandleObjectSelection();
     }

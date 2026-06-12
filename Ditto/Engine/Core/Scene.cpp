@@ -4,6 +4,7 @@
 #include "ProjectManager.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
 #include "../Graphics/Materials/MaterialAsset.h"
+#include "../Graphics/UI/UIRenderer.h"
 #include "../../3rdParty/stb_image.h"
 #endif
 #include "PathUtils.h"
@@ -89,6 +90,15 @@ Scene::~Scene()
     for (auto& pair : materialTextures)
         if (renderer) renderer->DestroyTexture(pair.second);
     if (renderer) renderer->DestroyTexture(whiteTexture);
+
+#ifndef DITTO_HEADLESS_SCENE
+    if (uiRenderer)
+    {
+        uiRenderer->Shutdown();
+        delete uiRenderer;
+        uiRenderer = nullptr;
+    }
+#endif
 }
 
 // Single source of truth for tearing down the object graph.
@@ -307,6 +317,12 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
             DrawBatch(renderer, geoIt->second, batch);
         }
     }
+
+    // Screen-space UI overlay (UIImage/UIText/UIButton), drawn last on top of
+    // the 3D scene. Works for the editor's offscreen viewports and the
+    // standalone game-mode backbuffer alike.
+    if (!uiRenderer) uiRenderer = new UIRenderer();
+    uiRenderer->Render(this, viewportWidth, viewportHeight);
 }
 
 Ditto::PipelineHandle Scene::GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback)
@@ -636,8 +652,10 @@ struct SceneHeader
 // v1: original format. v2: RendererComponent::meshPath. v3: ColliderComponent.
 // v4: ColliderComponent::isTrigger. v5: ColliderComponent bias TRS.
 // v6: Renderer mesh source + shader name. v7: Renderer main texture path.
-// v8: Renderer material path.
-const uint32_t SCENE_VERSION = 8;
+// v8: Renderer material path. v9: AudioSource + UIImage/UIText/UIButton
+// components (new component types -- old files never contain them, so no
+// field gating is needed; old engines reject v9 files via the version check).
+const uint32_t SCENE_VERSION = 9;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
 void Scene::WriteToStream(std::ostream& file)

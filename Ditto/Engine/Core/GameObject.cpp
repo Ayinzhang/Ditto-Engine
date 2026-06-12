@@ -11,6 +11,7 @@
 #include "PathUtils.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
 #include "../Graphics/Materials/MaterialAsset.h"
+#include "../Audio/AudioEngine.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #endif
@@ -407,6 +408,10 @@ void GameObject::Deserialize(std::istream& file)
         case CI::Renderer:     newComp = std::make_unique<RendererComponent>(); break;
         case CI::Rigidbody:    newComp = std::make_unique<RigidbodyComponent>(); break;
         case CI::Collider:     newComp = std::make_unique<ColliderComponent>(); break;
+        case CI::AudioSource:  newComp = std::make_unique<AudioSourceComponent>(); break;
+        case CI::UIImage:      newComp = std::make_unique<UIImageComponent>(); break;
+        case CI::UIText:       newComp = std::make_unique<UITextComponent>(); break;
+        case CI::UIButton:     newComp = std::make_unique<UIButtonComponent>(); break;
         case CI::CSharpScript: newComp = std::make_unique<CSharpScriptComponent>(); break;
         default: continue;
         }
@@ -1145,5 +1150,322 @@ void ColliderComponent::Deserialize(std::istream& file)
         biasScale = glm::vec3(1.0f);
     }
     meshPath = ReadString(file);
+}
+
+AudioSourceComponent::AudioSourceComponent()
+{
+    index = CI::AudioSource;
+}
+
+AudioSourceComponent::AudioSourceComponent(AudioSourceComponent* other)
+    : clipPath(other->clipPath), volume(other->volume),
+    loop(other->loop), playOnAwake(other->playOnAwake)
+{
+    index = CI::AudioSource;
+}
+
+void AudioSourceComponent::Play()
+{
+#ifndef DITTO_HEADLESS_TESTS
+    if (clipPath.empty()) return;
+    Stop();
+    std::filesystem::path resolved = clipPath;
+    if (!std::filesystem::exists(resolved))
+        resolved = PathUtils::ResolveAsset(clipPath);
+    soundHandle = AudioEngine::Play(resolved.string(), volume, loop);
+#endif
+}
+
+void AudioSourceComponent::Stop()
+{
+#ifndef DITTO_HEADLESS_TESTS
+    if (soundHandle != 0)
+    {
+        AudioEngine::Stop(soundHandle);
+        soundHandle = 0;
+    }
+#endif
+}
+
+void AudioSourceComponent::OnInspectorGUI()
+{
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
+    DrawComponentSelectionBackground(this);
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine(); ImGui::TextUnformatted("Audio Source");
+    SelectComponentOnLastItem(this);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+
+    ImGui::Indent(20.0f);
+
+    static char clipBuf[256];
+    strcpy_s(clipBuf, sizeof(clipBuf), clipPath.c_str());
+    ImGui::Text("Clip        "); ImGui::SameLine();
+    if (ImGui::InputText("##AudioClipPath", clipBuf, sizeof(clipBuf)))
+        clipPath = clipBuf;
+    TrackUndoableEdit();
+
+    ImGui::Text("Volume      "); ImGui::SameLine();
+    if (ImGui::SliderFloat("##AudioVolume", &volume, 0.0f, 1.0f))
+    {
+        if (soundHandle != 0) AudioEngine::SetVolume(soundHandle, volume);
+    }
+    TrackUndoableEdit();
+
+    ImGui::Text("Loop        "); ImGui::SameLine();
+    ImGui::Checkbox("##AudioLoop", &loop);
+    TrackUndoableEdit();
+
+    ImGui::Text("Play On Awake"); ImGui::SameLine();
+    ImGui::Checkbox("##AudioPlayOnAwake", &playOnAwake);
+    TrackUndoableEdit();
+
+    ImGui::Unindent(20.0f);
+    if (!enabled) ImGui::PopStyleVar();
+#endif
+}
+
+void AudioSourceComponent::Serialize(std::ostream& file) const
+{
+    WriteString(file, clipPath);
+    file.write(reinterpret_cast<const char*>(&volume), sizeof(volume));
+    file.write(reinterpret_cast<const char*>(&loop), sizeof(loop));
+    file.write(reinterpret_cast<const char*>(&playOnAwake), sizeof(playOnAwake));
+}
+
+void AudioSourceComponent::Deserialize(std::istream& file)
+{
+    clipPath = ReadString(file);
+    file.read(reinterpret_cast<char*>(&volume), sizeof(volume));
+    file.read(reinterpret_cast<char*>(&loop), sizeof(loop));
+    file.read(reinterpret_cast<char*>(&playOnAwake), sizeof(playOnAwake));
+}
+
+// ---- UI components ----
+
+#ifndef DITTO_HEADLESS_TESTS
+static void DrawUIAnchorCombo(UIAnchor& anchor)
+{
+    static const char* kAnchorNames[] = {
+        "Top Left", "Top", "Top Right",
+        "Left", "Center", "Right",
+        "Bottom Left", "Bottom", "Bottom Right",
+    };
+    int idx = static_cast<int>(anchor);
+    ImGui::Text("Anchor  "); ImGui::SameLine();
+    if (ImGui::Combo("##UIAnchor", &idx, kAnchorNames, 9))
+        anchor = static_cast<UIAnchor>(idx);
+}
+#endif
+
+UIImageComponent::UIImageComponent() { index = CI::UIImage; }
+UIImageComponent::UIImageComponent(UIImageComponent* other)
+    : anchor(other->anchor), offset(other->offset), size(other->size),
+    color(other->color), texturePath(other->texturePath)
+{
+    index = CI::UIImage;
+}
+
+void UIImageComponent::OnInspectorGUI()
+{
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
+    DrawComponentSelectionBackground(this);
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine(); ImGui::TextUnformatted("UI Image");
+    SelectComponentOnLastItem(this);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    ImGui::Indent(20.0f);
+
+    DrawUIAnchorCombo(anchor); TrackUndoableEdit();
+    ImGui::Text("Offset  "); ImGui::SameLine();
+    ImGui::DragFloat2("##UIImgOffset", &offset.x, 1.0f); TrackUndoableEdit();
+    ImGui::Text("Size    "); ImGui::SameLine();
+    ImGui::DragFloat2("##UIImgSize", &size.x, 1.0f, 0.0f, 8192.0f); TrackUndoableEdit();
+    ImGui::Text("Color   "); ImGui::SameLine();
+    ImGui::ColorEdit4("##UIImgColor", &color.x); TrackUndoableEdit();
+
+    static char texBuf[256];
+    strcpy_s(texBuf, sizeof(texBuf), texturePath.c_str());
+    ImGui::Text("Texture "); ImGui::SameLine();
+    if (ImGui::InputText("##UIImgTexture", texBuf, sizeof(texBuf)))
+        texturePath = texBuf;
+    TrackUndoableEdit();
+
+    ImGui::Unindent(20.0f);
+    if (!enabled) ImGui::PopStyleVar();
+#endif
+}
+
+void UIImageComponent::Serialize(std::ostream& file) const
+{
+    int32_t anchorInt = static_cast<int32_t>(anchor);
+    file.write(reinterpret_cast<const char*>(&anchorInt), sizeof(anchorInt));
+    file.write(reinterpret_cast<const char*>(&offset), sizeof(glm::vec2));
+    file.write(reinterpret_cast<const char*>(&size), sizeof(glm::vec2));
+    file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
+    WriteString(file, texturePath);
+}
+
+void UIImageComponent::Deserialize(std::istream& file)
+{
+    int32_t anchorInt = 0;
+    file.read(reinterpret_cast<char*>(&anchorInt), sizeof(anchorInt));
+    anchor = static_cast<UIAnchor>(anchorInt);
+    file.read(reinterpret_cast<char*>(&offset), sizeof(glm::vec2));
+    file.read(reinterpret_cast<char*>(&size), sizeof(glm::vec2));
+    file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
+    texturePath = ReadString(file);
+}
+
+UITextComponent::UITextComponent() { index = CI::UIText; }
+UITextComponent::UITextComponent(UITextComponent* other)
+    : anchor(other->anchor), offset(other->offset), fontSize(other->fontSize),
+    color(other->color), text(other->text)
+{
+    index = CI::UIText;
+}
+
+void UITextComponent::OnInspectorGUI()
+{
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
+    DrawComponentSelectionBackground(this);
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine(); ImGui::TextUnformatted("UI Text");
+    SelectComponentOnLastItem(this);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    ImGui::Indent(20.0f);
+
+    static char textBuf[1024];
+    strcpy_s(textBuf, sizeof(textBuf), text.c_str());
+    ImGui::Text("Text    "); ImGui::SameLine();
+    if (ImGui::InputTextMultiline("##UIText", textBuf, sizeof(textBuf),
+            ImVec2(-1, ImGui::GetTextLineHeight() * 3)))
+        text = textBuf;
+    TrackUndoableEdit();
+
+    DrawUIAnchorCombo(anchor); TrackUndoableEdit();
+    ImGui::Text("Offset  "); ImGui::SameLine();
+    ImGui::DragFloat2("##UITextOffset", &offset.x, 1.0f); TrackUndoableEdit();
+    ImGui::Text("Size    "); ImGui::SameLine();
+    ImGui::DragFloat("##UITextSize", &fontSize, 0.5f, 4.0f, 256.0f); TrackUndoableEdit();
+    ImGui::Text("Color   "); ImGui::SameLine();
+    ImGui::ColorEdit4("##UITextColor", &color.x); TrackUndoableEdit();
+
+    ImGui::Unindent(20.0f);
+    if (!enabled) ImGui::PopStyleVar();
+#endif
+}
+
+void UITextComponent::Serialize(std::ostream& file) const
+{
+    int32_t anchorInt = static_cast<int32_t>(anchor);
+    file.write(reinterpret_cast<const char*>(&anchorInt), sizeof(anchorInt));
+    file.write(reinterpret_cast<const char*>(&offset), sizeof(glm::vec2));
+    file.write(reinterpret_cast<const char*>(&fontSize), sizeof(fontSize));
+    file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
+    WriteString(file, text);
+}
+
+void UITextComponent::Deserialize(std::istream& file)
+{
+    int32_t anchorInt = 0;
+    file.read(reinterpret_cast<char*>(&anchorInt), sizeof(anchorInt));
+    anchor = static_cast<UIAnchor>(anchorInt);
+    file.read(reinterpret_cast<char*>(&offset), sizeof(glm::vec2));
+    file.read(reinterpret_cast<char*>(&fontSize), sizeof(fontSize));
+    file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
+    text = ReadString(file);
+}
+
+UIButtonComponent::UIButtonComponent() { index = CI::UIButton; }
+UIButtonComponent::UIButtonComponent(UIButtonComponent* other)
+    : anchor(other->anchor), offset(other->offset), size(other->size),
+    color(other->color), hoverColor(other->hoverColor), pressedColor(other->pressedColor),
+    label(other->label), fontSize(other->fontSize), labelColor(other->labelColor)
+{
+    index = CI::UIButton;
+}
+
+void UIButtonComponent::OnInspectorGUI()
+{
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
+    DrawComponentSelectionBackground(this);
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine(); ImGui::TextUnformatted("UI Button");
+    SelectComponentOnLastItem(this);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    ImGui::Indent(20.0f);
+
+    static char labelBuf[256];
+    strcpy_s(labelBuf, sizeof(labelBuf), label.c_str());
+    ImGui::Text("Label        "); ImGui::SameLine();
+    if (ImGui::InputText("##UIBtnLabel", labelBuf, sizeof(labelBuf)))
+        label = labelBuf;
+    TrackUndoableEdit();
+
+    DrawUIAnchorCombo(anchor); TrackUndoableEdit();
+    ImGui::Text("Offset       "); ImGui::SameLine();
+    ImGui::DragFloat2("##UIBtnOffset", &offset.x, 1.0f); TrackUndoableEdit();
+    ImGui::Text("Size         "); ImGui::SameLine();
+    ImGui::DragFloat2("##UIBtnSize", &size.x, 1.0f, 0.0f, 8192.0f); TrackUndoableEdit();
+    ImGui::Text("Color        "); ImGui::SameLine();
+    ImGui::ColorEdit4("##UIBtnColor", &color.x); TrackUndoableEdit();
+    ImGui::Text("Hover Color  "); ImGui::SameLine();
+    ImGui::ColorEdit4("##UIBtnHover", &hoverColor.x); TrackUndoableEdit();
+    ImGui::Text("Pressed Color"); ImGui::SameLine();
+    ImGui::ColorEdit4("##UIBtnPressed", &pressedColor.x); TrackUndoableEdit();
+    ImGui::Text("Font Size    "); ImGui::SameLine();
+    ImGui::DragFloat("##UIBtnFontSize", &fontSize, 0.5f, 4.0f, 256.0f); TrackUndoableEdit();
+    ImGui::Text("Label Color  "); ImGui::SameLine();
+    ImGui::ColorEdit4("##UIBtnLabelColor", &labelColor.x); TrackUndoableEdit();
+
+    ImGui::Unindent(20.0f);
+    if (!enabled) ImGui::PopStyleVar();
+#endif
+}
+
+void UIButtonComponent::Serialize(std::ostream& file) const
+{
+    int32_t anchorInt = static_cast<int32_t>(anchor);
+    file.write(reinterpret_cast<const char*>(&anchorInt), sizeof(anchorInt));
+    file.write(reinterpret_cast<const char*>(&offset), sizeof(glm::vec2));
+    file.write(reinterpret_cast<const char*>(&size), sizeof(glm::vec2));
+    file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
+    file.write(reinterpret_cast<const char*>(&hoverColor), sizeof(glm::vec4));
+    file.write(reinterpret_cast<const char*>(&pressedColor), sizeof(glm::vec4));
+    WriteString(file, label);
+    file.write(reinterpret_cast<const char*>(&fontSize), sizeof(fontSize));
+    file.write(reinterpret_cast<const char*>(&labelColor), sizeof(glm::vec4));
+}
+
+void UIButtonComponent::Deserialize(std::istream& file)
+{
+    int32_t anchorInt = 0;
+    file.read(reinterpret_cast<char*>(&anchorInt), sizeof(anchorInt));
+    anchor = static_cast<UIAnchor>(anchorInt);
+    file.read(reinterpret_cast<char*>(&offset), sizeof(glm::vec2));
+    file.read(reinterpret_cast<char*>(&size), sizeof(glm::vec2));
+    file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
+    file.read(reinterpret_cast<char*>(&hoverColor), sizeof(glm::vec4));
+    file.read(reinterpret_cast<char*>(&pressedColor), sizeof(glm::vec4));
+    label = ReadString(file);
+    file.read(reinterpret_cast<char*>(&fontSize), sizeof(fontSize));
+    file.read(reinterpret_cast<char*>(&labelColor), sizeof(glm::vec4));
 }
 

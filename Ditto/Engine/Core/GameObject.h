@@ -28,6 +28,10 @@ namespace ComponentIndex
     constexpr int Renderer     = 1 << 2;
     constexpr int Rigidbody    = 1 << 3;
     constexpr int Collider     = 1 << 4;
+    constexpr int AudioSource  = 1 << 5;
+    constexpr int UIImage      = 1 << 6;
+    constexpr int UIText       = 1 << 7;
+    constexpr int UIButton     = 1 << 8;
     constexpr int CSharpScript = 1 << 10;
 }
 
@@ -259,6 +263,112 @@ struct ColliderComponent : Component
     ColliderComponent(Type _type = Box);
     ColliderComponent(ColliderComponent* other);
     glm::mat4 GetBiasMatrix() const;
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
+struct AudioSourceComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::AudioSource;
+    std::string clipPath;        // project-relative audio file (wav/mp3/ogg/flac)
+    float volume = 1.0f;
+    bool loop = false;
+    bool playOnAwake = true;
+
+    // Runtime-only: handle of the currently playing sound (AudioEngine).
+    uint32_t soundHandle = 0;
+
+    AudioSourceComponent();
+    AudioSourceComponent(AudioSourceComponent* other);
+    void Play();
+    void Stop();
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
+// ---- In-game UI (screen-space) ----
+
+enum class UIAnchor : int
+{
+    TopLeft = 0, Top, TopRight,
+    Left, Center, Right,
+    BottomLeft, Bottom, BottomRight,
+};
+
+// Normalized anchor position inside the viewport ((0,0)=top-left .. (1,1)=
+// bottom-right). Also used as the element pivot so e.g. a BottomRight element
+// grows up-left from the corner.
+inline glm::vec2 UIAnchorFactor(UIAnchor anchor)
+{
+    const int i = static_cast<int>(anchor);
+    return glm::vec2(static_cast<float>(i % 3) * 0.5f, static_cast<float>(i / 3) * 0.5f);
+}
+
+// Screen rect (x, y, w, h) in pixels, top-left origin, for an anchored
+// element. Shared by the UI renderer and the button hit test.
+inline glm::vec4 ComputeUIRect(UIAnchor anchor, const glm::vec2& offset,
+    const glm::vec2& size, float viewW, float viewH)
+{
+    glm::vec2 f = UIAnchorFactor(anchor);
+    glm::vec2 base = glm::vec2(viewW, viewH) * f;
+    glm::vec2 pos = base + offset - size * f;
+    return glm::vec4(pos, size);
+}
+
+struct UIImageComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::UIImage;
+    UIAnchor anchor = UIAnchor::TopLeft;
+    glm::vec2 offset{ 0.0f };
+    glm::vec2 size{ 100.0f, 100.0f };
+    glm::vec4 color{ 1.0f };
+    std::string texturePath;   // empty = solid color (white texture)
+
+    UIImageComponent();
+    UIImageComponent(UIImageComponent* other);
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
+struct UITextComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::UIText;
+    UIAnchor anchor = UIAnchor::TopLeft;
+    glm::vec2 offset{ 0.0f };
+    float fontSize = 24.0f;
+    glm::vec4 color{ 1.0f };
+    std::string text = "Text";
+
+    UITextComponent();
+    UITextComponent(UITextComponent* other);
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
+struct UIButtonComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::UIButton;
+    UIAnchor anchor = UIAnchor::TopLeft;
+    glm::vec2 offset{ 0.0f };
+    glm::vec2 size{ 160.0f, 40.0f };
+    glm::vec4 color{ 0.25f, 0.25f, 0.25f, 1.0f };
+    glm::vec4 hoverColor{ 0.35f, 0.35f, 0.35f, 1.0f };
+    glm::vec4 pressedColor{ 0.15f, 0.15f, 0.15f, 1.0f };
+    std::string label = "Button";
+    float fontSize = 20.0f;
+    glm::vec4 labelColor{ 1.0f };
+
+    // Runtime-only interaction state (driven by Engine in Play mode).
+    bool hovered = false;
+    bool pressed = false;
+    bool wasClicked = false;   // sticky until read by a script (read-clears)
+
+    UIButtonComponent();
+    UIButtonComponent(UIButtonComponent* other);
     void OnInspectorGUI() override;
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;

@@ -14,6 +14,8 @@
 #include "SceneWindow.h"
 #include "BuildSystem.h"
 #include "../Engine/Core/ProjectManager.h"
+#include "../Engine/Core/Input.h"
+#include "../3rdParty/ImGuizmo/ImGuizmo.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
 #include "../Engine/Core/CSharpScript.h"
@@ -250,6 +252,7 @@ void Editor::Draw()
 
     if (engine && engine->renderer) engine->renderer->ImGuiNewFrame();
     ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
     
     // Global Ctrl+S shortcut - save current scene
     if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_S))
@@ -980,6 +983,10 @@ void Editor::DrawGame()
     // Render the Game view (game camera) into an offscreen target and display
     // it as an ImGui image (flipped V: GL bottom-up memory order on both backends).
     ImRect gameViewportRect = GetCurrentViewportRect();
+    // Report the Game panel rect so Input::GetMousePosition() is viewport-relative.
+    Input::SetGameViewport(gameViewportRect.Min.x, gameViewportRect.Min.y,
+        gameViewportRect.Max.x - gameViewportRect.Min.x,
+        gameViewportRect.Max.y - gameViewportRect.Min.y);
     void* gameTex = engine->RenderSceneToTexture(
         (int)(gameViewportRect.Max.x - gameViewportRect.Min.x),
         (int)(gameViewportRect.Max.y - gameViewportRect.Min.y), true);

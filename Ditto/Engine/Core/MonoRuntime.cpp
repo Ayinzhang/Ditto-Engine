@@ -362,6 +362,17 @@ namespace MonoRuntime
         return p_mono_class_get_method_from_name(klass, methodName.c_str(), paramCount);
     }
 
+    MonoMethod* GetMethodRecursive(MonoClass* klass, const std::string& methodName, int paramCount)
+    {
+        if (!g_initialized) return nullptr;
+        for (MonoClass* k = klass; k != nullptr; k = GetParentClass(k))
+        {
+            MonoMethod* m = p_mono_class_get_method_from_name(k, methodName.c_str(), paramCount);
+            if (m) return m;
+        }
+        return nullptr;
+    }
+
     MonoObject* CreateInstance(MonoClass* klass)
     {
         if (!g_initialized || !g_domain || !klass) return nullptr;
@@ -478,6 +489,9 @@ namespace MonoRuntime
         script->startMethod = GetMethod(klass, "Start", 0);
         script->updateMethod = GetMethod(klass, "Update", 0);
         script->onDestroyMethod = GetMethod(klass, "OnDestroy", 0);
+        // The dispatch bridge lives on the MonoBehaviour base class; walk the
+        // parent chain to find it (GetMethod alone won't search base classes).
+        script->dispatchCollisionMethod = GetMethodRecursive(klass, "__DispatchCollision", 9);
 
         DITTO_LOG_INFO_STREAM("[Mono] LoadScript: klass=" << klass
             << " instance=" << script->instance
@@ -539,6 +553,16 @@ namespace MonoRuntime
     {
         if (!script || !script->instance || !script->onDestroyMethod) return;
         InvokeMethod(script->instance, script->onDestroyMethod, nullptr);
+    }
+
+    void CallDispatchCollision(std::shared_ptr<ScriptInstance> script, int kind,
+        void* otherGameObject, float px, float py, float pz,
+        float nx, float ny, float nz, float depth)
+    {
+        if (!script || !script->instance || !script->dispatchCollisionMethod) return;
+
+        void* params[9] = { &kind, &otherGameObject, &px, &py, &pz, &nx, &ny, &nz, &depth };
+        InvokeMethod(script->instance, script->dispatchCollisionMethod, params);
     }
 
     void SetFieldValue(MonoObject* obj, const std::string& fieldName, void* value)

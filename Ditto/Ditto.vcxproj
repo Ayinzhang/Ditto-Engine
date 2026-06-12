@@ -335,6 +335,10 @@
     <ClInclude Include="Engine\Core\MonoRuntime.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
+    <ClInclude Include="Engine\Core\Input.h" />
+    <ClInclude Include="Engine\Audio\AudioEngine.h" />
+    <ClInclude Include="Engine\Graphics\UI\FontAtlas.h" />
+    <ClInclude Include="Engine\Graphics\UI\UIRenderer.h" />
     <ClInclude Include="Engine\Core\Logger.h" />
     <ClInclude Include="Engine\Core\ProjectManager.h" />
     <ClInclude Include="Engine\Core\PathUtils.h" />
@@ -525,6 +529,7 @@
     <ClCompile Include="3rdParty\ImGui\imgui_impl_win32.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_tables.cpp" />
     <ClCompile Include="3rdParty\ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="3rdParty\ImGuizmo\ImGuizmo.cpp" />
     <ClCompile Include="Editor\BuildSystem.cpp" />
     <ClCompile Include="Editor\Editor.cpp" />
     <ClCompile Include="Editor\InspectorWindow.cpp" />
@@ -535,6 +540,10 @@
     <ClCompile Include="Engine\Core\MonoRuntime.cpp" />
     <ClCompile Include="Engine\Core\Engine.cpp" />
     <ClCompile Include="Engine\Core\GameObject.cpp" />
+    <ClCompile Include="Engine\Core\Input.cpp" />
+    <ClCompile Include="Engine\Audio\AudioEngine.cpp" />
+    <ClCompile Include="Engine\Graphics\UI\FontAtlas.cpp" />
+    <ClCompile Include="Engine\Graphics\UI\UIRenderer.cpp" />
     <ClCompile Include="Engine\Core\Logger.cpp" />
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />
     <ClCompile Include="Engine\Core\PathUtils.cpp" />
@@ -675,6 +684,8 @@
       <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)3rdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)3rdParty/ImGuizmo;$(MSBuildThisFileDirectory)3rdParty/ImGui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -713,6 +724,8 @@ if "$(EnableAssimp)"=="true" copy /Y "$(AssimpRoot)\bin\assimp-vc143-mt.dll" "$(
       <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)3rdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)3rdParty/ImGuizmo;$(MSBuildThisFileDirectory)3rdParty/ImGui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

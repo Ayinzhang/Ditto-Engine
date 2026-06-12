@@ -9,6 +9,7 @@ file(GLOB_RECURSE SOURCES
     "3rdParty/GLAD/*.c"
     "3rdParty/GLM/detail/*.cpp"
     "3rdParty/ImGui/*.cpp"
+    "3rdParty/ImGuizmo/*.cpp"
     "Editor/*.cpp"
     "Engine/*.cpp"
     "Engine/*/*.cpp"
@@ -145,11 +146,16 @@ add_executable(DittoRenderSmoke
     Engine/Core/ProjectManager.cpp
     Engine/Core/CSharpScript.cpp
     Engine/Core/MonoRuntime.cpp
+    Engine/Physics/Physics.cpp
+    Engine/Physics/CollisionShape.cpp
+    Engine/Physics/GJK.cpp
     Engine/Resources/Resource.cpp
     Engine/Graphics/Materials/MaterialAsset.cpp
     Engine/Graphics/RHI/GLRenderer.cpp
     Engine/Graphics/Shaders/ShaderAsset.cpp
     Engine/Graphics/Shaders/ShaderCompiler.cpp
+    Engine/Graphics/UI/FontAtlas.cpp
+    Engine/Graphics/UI/UIRenderer.cpp
     3rdParty/GLAD/glad.c
     3rdParty/ImGui/imgui.cpp
     3rdParty/ImGui/imgui_draw.cpp

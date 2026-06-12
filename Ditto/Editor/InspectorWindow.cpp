@@ -399,6 +399,14 @@ void InspectorWindow::Draw()
                 { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RigidbodyComponent>(); }
             if (ImGui::MenuItem("Collider"))
                 { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(); }
+            if (!(m_currentObject->compMask >> 5 & 1) && ImGui::MenuItem("Audio Source"))
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<AudioSourceComponent>(); }
+            if (!(m_currentObject->compMask >> 6 & 1) && ImGui::MenuItem("UI Image"))
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIImageComponent>(); }
+            if (!(m_currentObject->compMask >> 7 & 1) && ImGui::MenuItem("UI Text"))
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UITextComponent>(); }
+            if (!(m_currentObject->compMask >> 8 & 1) && ImGui::MenuItem("UI Button"))
+                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIButtonComponent>(); }
             
             ImGui::Separator();
             ImGui::TextUnformatted("Scripts");

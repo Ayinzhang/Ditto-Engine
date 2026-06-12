@@ -99,6 +99,9 @@ struct CSharpScriptSystem
     static bool IsInitialized() { return s_initialized; }
     static void SetDeltaTime(float dt) { s_deltaTime = dt; }
     static float GetDeltaTime() { return s_deltaTime; }
+    // Accumulated play-mode time (seconds since entering Play); reset on Play.
+    static void SetTime(float t) { s_time = t; }
+    static float GetTime() { return s_time; }
 
     static void SetLogCallback(LogCallback callback) { s_logCallback = callback; }
     static void Log(const std::string& message) { 
@@ -108,8 +111,13 @@ struct CSharpScriptSystem
     
     static void SetEditor(void* editor) { s_editor = editor; }
     static void LogToConsole(const std::string& message);
-    
+
     static void* GetEditor() { return s_editor; }
+
+    // Physics instance for Physics.Raycast internal calls (set by Engine after
+    // construction; works in both editor and standalone game mode).
+    static void SetPhysics(void* physics) { s_physics = physics; }
+    static void* GetPhysics() { return s_physics; }
     
     friend struct Editor;
     
@@ -118,8 +126,10 @@ struct CSharpScriptSystem
 private:
     static bool s_initialized;
     static float s_deltaTime;
+    static float s_time;
     static LogCallback s_logCallback;
     static void* s_editor;
+    static void* s_physics;
 };
 
 // Internal call function declarations (C++ functions callable from C#)
@@ -155,5 +165,32 @@ extern "C" {
     void Internal_Rigidbody_GetAngularVelocity(void* rigidbody, float* outVel);
     void Internal_Rigidbody_SetAngularVelocity(void* rigidbody, float x, float y, float z);
     float Internal_Time_GetDeltaTime();
+    float Internal_Time_GetTime();
     void Internal_Debug_Log(void* msg);
+    int Internal_Input_GetKey(int key);
+    int Internal_Input_GetKeyDown(int key);
+    int Internal_Input_GetKeyUp(int key);
+    int Internal_Input_GetMouseButton(int button);
+    int Internal_Input_GetMouseButtonDown(int button);
+    int Internal_Input_GetMouseButtonUp(int button);
+    void Internal_Input_GetMousePosition(float* outPos);
+    // out7: point(3) + normal(3) + distance(1); outGo: hit GameObject pointer.
+    // Returns 1 on hit, 0 on miss. Only valid in Play mode (colliders exist).
+    int Internal_Physics_Raycast(float ox, float oy, float oz,
+        float dx, float dy, float dz, float maxDist, float* out7, void** outGo);
+    void Internal_AudioSource_Play(void* audioSource);
+    void Internal_AudioSource_Stop(void* audioSource);
+    float Internal_AudioSource_GetVolume(void* audioSource);
+    void Internal_AudioSource_SetVolume(void* audioSource, float volume);
+    int Internal_AudioSource_GetLoop(void* audioSource);
+    void Internal_AudioSource_SetLoop(void* audioSource, int loop);
+    int Internal_AudioSource_IsPlaying(void* audioSource);
+    void Internal_UIText_SetText(void* uiText, void* text);
+    void* Internal_UIText_GetText(void* uiText);
+    void Internal_UIText_SetColor(void* uiText, float r, float g, float b, float a);
+    void Internal_UIImage_SetColor(void* uiImage, float r, float g, float b, float a);
+    void Internal_UIImage_GetColor(void* uiImage, float* outColor);
+    int Internal_UIButton_ConsumeClick(void* uiButton);
+    int Internal_UIButton_IsHovered(void* uiButton);
+    void Internal_UIButton_SetLabel(void* uiButton, void* label);
 }

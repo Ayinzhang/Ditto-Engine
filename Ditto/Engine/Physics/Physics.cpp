@@ -54,11 +54,15 @@ void Physics::UpdatePhysics(float dt)
 
         HandleNarrowCollisions();
 
+        AccumulateFrameContacts();
+
         for (int iter = 0; iter < iterations; ++iter)
             SolveCollisions(iter);
 
         ApplyPositionCorrections();
     }
+
+    DetectContactEvents();
 
     for (auto& collider : colliders)
     {
@@ -74,6 +78,7 @@ void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
     // not nulled, so an empty collect left it pointing at freed memory.
     colliders.clear();
     bvhTree.reset();
+    ResetContactState();
 
     for (GameObject* root : gameobjects) CollectCollidersRecursive(root, colliders);
 
@@ -90,6 +95,7 @@ void Physics::ClearColliders()
 {
     colliders.clear();
     bvhTree.reset();
+    ResetContactState();
 }
 
 void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique_ptr<Collider>>& outColliders,
@@ -424,4 +430,189 @@ void Physics::ApplyPositionCorrections()
             a->isDirty = true; b->isDirty = true;
         }
     }
+}
+
+// ==================== Contact events ====================
+
+static GameObject* ColliderGameObject(Collider* c)
+{
+    return (c && c->objectTransform) ? c->objectTransform->gameObject : nullptr;
+}
+
+void Physics::AccumulateFrameContacts()
+{
+    for (const auto& data : collisionData)
+    {
+        Collider* a = data.colliderA; Collider* b = data.colliderB;
+        ContactKey key = (a < b) ? ContactKey{ a, b } : ContactKey{ b, a };
+
+        ContactInfo info;
+        info.point = (data.info.contactPointA + data.info.contactPointB) * 0.5f;
+        // Keep the normal oriented from key.first towards key.second so event
+        // consumers get a stable convention regardless of GJK pair order.
+        info.normal = (a < b) ? data.info.normal : -data.info.normal;
+        info.depth = data.info.depth;
+        info.isTrigger = a->isTrigger || b->isTrigger;
+
+        // Last substep wins (most recent contact info for the frame).
+        frameContacts[key] = info;
+    }
+}
+
+void Physics::DetectContactEvents()
+{
+    enterEvents.clear();
+    exitEvents.clear();
+
+    // Enter: touching now, not touching last frame.
+    for (const auto& [key, info] : frameContacts)
+    {
+        if (prevContacts.count(key)) continue;
+        ContactEvent ev;
+        ev.a = ColliderGameObject(key.first);
+        ev.b = ColliderGameObject(key.second);
+        ev.point = info.point; ev.normal = info.normal;
+        ev.depth = info.depth; ev.isTrigger = info.isTrigger;
+        if (ev.a && ev.b) enterEvents.push_back(ev);
+    }
+
+    // Exit: touching last frame, not touching now.
+    for (const auto& key : prevContacts)
+    {
+        if (frameContacts.count(key)) continue;
+        ContactEvent ev;
+        ev.a = ColliderGameObject(key.first);
+        ev.b = ColliderGameObject(key.second);
+        // No contact data on exit; report trigger flag from the colliders.
+        ev.isTrigger = key.first->isTrigger || key.second->isTrigger;
+        if (ev.a && ev.b) exitEvents.push_back(ev);
+    }
+
+    prevContacts.clear();
+    for (const auto& [key, info] : frameContacts) prevContacts.insert(key);
+    frameContacts.clear();
+}
+
+void Physics::ResetContactState()
+{
+    frameContacts.clear();
+    prevContacts.clear();
+    enterEvents.clear();
+    exitEvents.clear();
+}
+
+// ==================== Raycast ====================
+
+// Slab-method ray vs AABB intersection. Returns true if the ray hits within
+// [0, maxDist]; tMin receives the entry distance (clamped to 0 inside the box).
+static bool RayIntersectsAABB(const glm::vec3& origin, const glm::vec3& invDir,
+    const AABB& box, float maxDist, float& tMin)
+{
+    float t0 = 0.0f, t1 = maxDist;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        float tNear = (box.min[axis] - origin[axis]) * invDir[axis];
+        float tFar = (box.max[axis] - origin[axis]) * invDir[axis];
+        if (tNear > tFar) std::swap(tNear, tFar);
+        t0 = glm::max(t0, tNear);
+        t1 = glm::min(t1, tFar);
+        if (t0 > t1) return false;
+    }
+    tMin = t0;
+    return true;
+}
+
+// Moller-Trumbore ray-triangle intersection (one-sided not enforced; both
+// faces hit so rays work from inside boxes too).
+static bool RayIntersectsTriangle(const glm::vec3& orig, const glm::vec3& dir,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float& t)
+{
+    const float EPSILON = 1e-6f;
+    glm::vec3 edge1 = v1 - v0, edge2 = v2 - v0;
+    glm::vec3 h = glm::cross(dir, edge2);
+    float a = glm::dot(edge1, h);
+    if (a > -EPSILON && a < EPSILON) return false;
+
+    float f = 1.0f / a;
+    glm::vec3 s = orig - v0;
+    float u = f * glm::dot(s, h);
+    if (u < 0.0f || u > 1.0f) return false;
+
+    glm::vec3 q = glm::cross(s, edge1);
+    float v = f * glm::dot(dir, q);
+    if (v < 0.0f || u + v > 1.0f) return false;
+
+    t = f * glm::dot(edge2, q);
+    return t > EPSILON;
+}
+
+bool Physics::Raycast(const glm::vec3& origin, const glm::vec3& direction,
+    float maxDistance, RaycastHit& out) const
+{
+    glm::vec3 dir = direction;
+    float len = glm::length(dir);
+    if (len < 1e-6f || maxDistance <= 0.0f || colliders.empty()) return false;
+    dir /= len;
+
+    glm::vec3 invDir(
+        1.0f / (dir.x != 0.0f ? dir.x : 1e-30f),
+        1.0f / (dir.y != 0.0f ? dir.y : 1e-30f),
+        1.0f / (dir.z != 0.0f ? dir.z : 1e-30f));
+
+    float closestT = maxDistance;
+    Collider* closestCollider = nullptr;
+    glm::vec3 closestNormal(0.0f);
+
+    for (const auto& colliderPtr : colliders)
+    {
+        Collider* collider = colliderPtr.get();
+        if (!collider->mesh || collider->mesh->vertices.empty()) continue;
+
+        float aabbT;
+        if (!RayIntersectsAABB(origin, invDir, collider->aabb, closestT, aabbT)) continue;
+
+        const glm::mat4& worldMat = collider->biasWorldModel;
+        const auto& verts = collider->mesh->vertices;
+        const auto& indices = collider->mesh->indices;
+
+        // Indexed triangles when available, else consecutive vertex triples.
+        size_t triCount = indices.size() >= 3 ? indices.size() / 3
+            : verts.size() / 3;
+
+        for (size_t i = 0; i < triCount; ++i)
+        {
+            glm::vec3 v0, v1, v2;
+            if (indices.size() >= 3)
+            {
+                v0 = glm::vec3(worldMat * glm::vec4(verts[indices[i * 3 + 0]], 1.0f));
+                v1 = glm::vec3(worldMat * glm::vec4(verts[indices[i * 3 + 1]], 1.0f));
+                v2 = glm::vec3(worldMat * glm::vec4(verts[indices[i * 3 + 2]], 1.0f));
+            }
+            else
+            {
+                v0 = glm::vec3(worldMat * glm::vec4(verts[i * 3 + 0], 1.0f));
+                v1 = glm::vec3(worldMat * glm::vec4(verts[i * 3 + 1], 1.0f));
+                v2 = glm::vec3(worldMat * glm::vec4(verts[i * 3 + 2], 1.0f));
+            }
+
+            float triT;
+            if (RayIntersectsTriangle(origin, dir, v0, v1, v2, triT) && triT < closestT)
+            {
+                closestT = triT;
+                closestCollider = collider;
+                glm::vec3 n = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+                // Face the normal against the ray.
+                if (glm::dot(n, dir) > 0.0f) n = -n;
+                closestNormal = n;
+            }
+        }
+    }
+
+    if (!closestCollider) return false;
+
+    out.gameObject = ColliderGameObject(closestCollider);
+    out.point = origin + dir * closestT;
+    out.normal = closestNormal;
+    out.distance = closestT;
+    return out.gameObject != nullptr;
 }

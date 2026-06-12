@@ -20,6 +20,7 @@ void ParallelPhysics::UpdatePhysics(float dt) {
         if (bvhTree) bvhTree->UpdateBVHTree();
         HandleBroadCollisions();
         HandleNarrowCollisions();
+        AccumulateFrameContacts();
         BuildCollisionGroups();
 
         for (int iter = 0; iter < iterations; ++iter)
@@ -27,6 +28,8 @@ void ParallelPhysics::UpdatePhysics(float dt) {
 
         ApplyPositionCorrections();
     }
+
+    DetectContactEvents();
 
     size_t n = colliders.size();
     if (n > 0) {

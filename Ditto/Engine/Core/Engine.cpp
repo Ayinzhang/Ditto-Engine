@@ -11,8 +11,10 @@
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "CSharpScript.h"
+#include "Input.h"
 #include "PathUtils.h"
 #include "Logger.h"
+#include "../Audio/AudioEngine.h"
 #include "../Graphics/RHI/GLRenderer.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
 #ifdef DITTO_ENABLE_VULKAN
@@ -207,8 +209,11 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     }
 
     physics = std::make_unique<ParallelPhysics>(); physics->engine = this;
+    CSharpScriptSystem::SetPhysics(physics.get());
 
     scene->InitializeBaseGeometries(resource.get(), renderer.get());
+    Input::Init(window);
+    AudioEngine::Init();
     CSharpScriptSystem::Initialize();
 }
 
@@ -236,6 +241,7 @@ Engine::Engine(bool isGameMode, const std::string& projectPath, const std::strin
 Engine::~Engine()
 {
     CSharpScriptSystem::Shutdown();
+    AudioEngine::Shutdown();
 
     // Destruction order is load-bearing -- reset explicitly instead of relying
     // on member declaration order: the Scene frees its GPU handles through
@@ -263,9 +269,19 @@ void Engine::Run()
         bool enteredPlay = (state == Play && prevState != Play);
         prevState = state;
 
+        // Poll window events and snapshot input state BEFORE gameplay runs so
+        // C# scripts see this frame's key edges (GetKeyDown/Up) correctly.
+        glfwPollEvents();
+        Input::NewFrame();
+        ProcessInput();
+        if (gameMode)
+            Input::SetGameViewport(0.0f, 0.0f, (float)window_width, (float)window_height);
+
         if (state == Play)
         {
             CSharpScriptSystem::SetDeltaTime(deltaTime);
+            if (enteredPlay) CSharpScriptSystem::SetTime(0.0f);
+            CSharpScriptSystem::SetTime(CSharpScriptSystem::GetTime() + deltaTime);
 
             if (enteredPlay)
             {
@@ -291,6 +307,68 @@ void Engine::Run()
             physicsCnt++;
             physicsTime += glfwGetTime() - physStart;
 
+            // Dispatch collision/trigger Enter/Exit events to C# scripts
+            // (before Update so scripts see the events for this frame).
+            // kind: 0=CollisionEnter 1=CollisionExit 2=TriggerEnter 3=TriggerExit
+            {
+                auto dispatch = [](GameObject* self, GameObject* other,
+                    const ContactEvent& ev, bool flipNormal, bool isEnter)
+                {
+                    if (!self || !other) return;
+                    int kind = (ev.isTrigger ? 2 : 0) + (isEnter ? 0 : 1);
+                    glm::vec3 n = flipNormal ? -ev.normal : ev.normal;
+                    ForEachScriptComponent(self, [&](CSharpScriptComponent* script)
+                    {
+                        if (!script->enabled || !script->scriptInstance) return;
+                        MonoRuntime::CallDispatchCollision(script->scriptInstance, kind,
+                            other, ev.point.x, ev.point.y, ev.point.z,
+                            n.x, n.y, n.z, ev.depth);
+                    });
+                };
+
+                // ev.normal points from a towards b. Unity convention: the
+                // collision normal points AWAY from the other collider (the
+                // direction that separates self from other) -- so a receives
+                // the flipped normal (b->a) and b receives it as-is (a->b).
+                for (const ContactEvent& ev : physics->enterEvents)
+                {
+                    dispatch(ev.a, ev.b, ev, /*flipNormal=*/true, /*isEnter=*/true);
+                    dispatch(ev.b, ev.a, ev, /*flipNormal=*/false, /*isEnter=*/true);
+                }
+                for (const ContactEvent& ev : physics->exitEvents)
+                {
+                    dispatch(ev.a, ev.b, ev, true, false);
+                    dispatch(ev.b, ev.a, ev, false, false);
+                }
+                physics->enterEvents.clear();
+                physics->exitEvents.clear();
+            }
+
+            // UI button interaction (hover/press/click), using the viewport-
+            // relative mouse position. Runs before script Update so scripts
+            // observe wasClicked the same frame the click happened.
+            {
+                glm::vec2 mouse = Input::GetMousePosition();
+                glm::vec2 vp = Input::GetGameViewportSize();
+                bool lmbDown = Input::GetMouseButton(0);
+                bool lmbUp = Input::GetMouseButtonUp(0);
+
+                ForEachGameObject(scene.get(), [&](GameObject* obj)
+                {
+                    if (!obj->enabled) return;
+                    for (const auto& comp : obj->components)
+                    {
+                        if (!comp || comp->index != ComponentIndex::UIButton || !comp->enabled) continue;
+                        auto* btn = static_cast<UIButtonComponent*>(comp.get());
+                        glm::vec4 rect = ComputeUIRect(btn->anchor, btn->offset, btn->size, vp.x, vp.y);
+                        btn->hovered = mouse.x >= rect.x && mouse.x < rect.x + rect.z &&
+                                       mouse.y >= rect.y && mouse.y < rect.y + rect.w;
+                        btn->pressed = btn->hovered && lmbDown;
+                        if (btn->hovered && lmbUp) btn->wasClicked = true;
+                    }
+                });
+            }
+
             ForEachGameObject(scene.get(), [](GameObject* obj)
             {
                 ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
@@ -299,7 +377,6 @@ void Engine::Run()
                 });
             });
         }
-        ProcessInput(); glfwPollEvents();
 
         glfwGetFramebufferSize(window, &window_width, &window_height);
         if (window_width <= 0 || window_height <= 0) continue;
@@ -463,6 +540,11 @@ void Engine::SetEngineState(State newState)
                     {
                         script->Start();
                     });
+
+                    // Kick off play-on-awake audio sources.
+                    for (AudioSourceComponent* audio : obj->GetComponents<AudioSourceComponent>())
+                        if (audio->enabled && audio->playOnAwake)
+                            audio->Play();
                 });
             }
             break;
@@ -491,6 +573,7 @@ void Engine::SetEngineState(State newState)
             });
 
             physics->ClearColliders();
+            AudioEngine::StopAll();
             break;
         }
     }
@@ -612,6 +695,11 @@ void Engine::LoadGameScene()
         {
             script->Start();
         });
+
+        // Kick off play-on-awake audio sources (mirrors SetEngineState(Play)).
+        for (AudioSourceComponent* audio : obj->GetComponents<AudioSourceComponent>())
+            if (audio->enabled && audio->playOnAwake)
+                audio->Play();
     });
 
     state = Play;

@@ -54,7 +54,8 @@ namespace Ditto
 
     // Bump when the dxc/spirv-cross flags below change, so stale artifacts
     // compiled with old flags are not reused.
-    static constexpr uint32_t kCacheVersion = 1;
+    // v2: --combined-samplers-inherit-bindings (UI shader texture sampling).
+    static constexpr uint32_t kCacheVersion = 2;
 
     static uint64_t Fnv1a64(const void* data, size_t len, uint64_t h = 14695981039346656037ull)
     {
@@ -206,8 +207,12 @@ namespace Ditto
         if (generateGLSL)
         {
             // SPIR-V -> desktop GLSL 460 for the OpenGL backend.
+            // --combined-samplers-inherit-bindings: GLSL has no separate
+            // texture/sampler, so SPIRV-Cross fuses them; this flag makes the
+            // fused sampler keep the TEXTURE's binding so BindTexture(unit)
+            // matches the shader (otherwise the combined sampler lands on 0).
             std::string sc = "\"" + bin + "\\spirv-cross.exe\" \"" + spvP.string() +
-                "\" --version 460 --no-es --output \"" + glslP.string() + "\" 2>\"" + errP.string() + "\"";
+                "\" --version 460 --no-es --combined-samplers-inherit-bindings --output \"" + glslP.string() + "\" 2>\"" + errP.string() + "\"";
             if (run(sc) != 0)
             {
                 out.error = "spirv-cross failed: " + ReadText(errP);

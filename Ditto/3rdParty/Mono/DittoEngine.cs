@@ -455,6 +455,174 @@ namespace DittoEngine
         private static extern void SetAngularVelocity(IntPtr rigidbody, float x, float y, float z);
     }
     
+    // AudioSource 组件
+    public class AudioSource
+    {
+        private IntPtr _nativeAudioSource;
+
+        public float volume
+        {
+            get
+            {
+                if (_nativeAudioSource == IntPtr.Zero) return 1.0f;
+                return GetVolume(_nativeAudioSource);
+            }
+            set
+            {
+                if (_nativeAudioSource == IntPtr.Zero) return;
+                SetVolume(_nativeAudioSource, value);
+            }
+        }
+
+        public bool loop
+        {
+            get
+            {
+                if (_nativeAudioSource == IntPtr.Zero) return false;
+                return GetLoop(_nativeAudioSource) != 0;
+            }
+            set
+            {
+                if (_nativeAudioSource == IntPtr.Zero) return;
+                SetLoop(_nativeAudioSource, value ? 1 : 0);
+            }
+        }
+
+        public bool isPlaying
+        {
+            get
+            {
+                if (_nativeAudioSource == IntPtr.Zero) return false;
+                return IsPlayingNative(_nativeAudioSource) != 0;
+            }
+        }
+
+        public void Play()
+        {
+            if (_nativeAudioSource == IntPtr.Zero) return;
+            PlayNative(_nativeAudioSource);
+        }
+
+        public void Stop()
+        {
+            if (_nativeAudioSource == IntPtr.Zero) return;
+            StopNative(_nativeAudioSource);
+        }
+
+        internal AudioSource(IntPtr native)
+        {
+            _nativeAudioSource = native;
+        }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void PlayNative(IntPtr audioSource);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void StopNative(IntPtr audioSource);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetVolume(IntPtr audioSource);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetVolume(IntPtr audioSource, float volume);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetLoop(IntPtr audioSource);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetLoop(IntPtr audioSource, int loop);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int IsPlayingNative(IntPtr audioSource);
+    }
+
+    // UI Text 组件
+    public class UIText
+    {
+        private IntPtr _native;
+
+        public string text
+        {
+            get => _native == IntPtr.Zero ? "" : GetTextNative(_native);
+            set { if (_native != IntPtr.Zero) SetTextNative(_native, value ?? ""); }
+        }
+
+        public Vector4 color
+        {
+            set { if (_native != IntPtr.Zero) SetColorNative(_native, value.x, value.y, value.z, value.w); }
+        }
+
+        internal UIText(IntPtr native) { _native = native; }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetTextNative(IntPtr uiText, string text);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern string GetTextNative(IntPtr uiText);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetColorNative(IntPtr uiText, float r, float g, float b, float a);
+    }
+
+    // UI Image 组件
+    public class UIImage
+    {
+        private IntPtr _native;
+
+        public Vector4 color
+        {
+            get
+            {
+                if (_native == IntPtr.Zero) return Vector4.one;
+                float[] c = new float[4];
+                GetColorNative(_native, c);
+                return new Vector4(c[0], c[1], c[2], c[3]);
+            }
+            set { if (_native != IntPtr.Zero) SetColorNative(_native, value.x, value.y, value.z, value.w); }
+        }
+
+        internal UIImage(IntPtr native) { _native = native; }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetColorNative(IntPtr uiImage, float r, float g, float b, float a);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void GetColorNative(IntPtr uiImage, float[] outColor);
+    }
+
+    // UI Button 组件
+    public class UIButton
+    {
+        private IntPtr _native;
+
+        // 自上次读取以来是否被点击过（读取后自动清零）
+        public bool wasClicked
+        {
+            get => _native != IntPtr.Zero && ConsumeClick(_native) != 0;
+        }
+
+        public bool isHovered
+        {
+            get => _native != IntPtr.Zero && IsHoveredNative(_native) != 0;
+        }
+
+        public string label
+        {
+            set { if (_native != IntPtr.Zero) SetLabelNative(_native, value ?? ""); }
+        }
+
+        internal UIButton(IntPtr native) { _native = native; }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int ConsumeClick(IntPtr uiButton);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int IsHoveredNative(IntPtr uiButton);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetLabelNative(IntPtr uiButton, string label);
+    }
+
     // GameObject 类
     public class GameObject
     {
@@ -505,7 +673,15 @@ namespace DittoEngine
                 return new Light(compPtr) as T;
             if (typeof(T) == typeof(Rigidbody))
                 return new Rigidbody(compPtr) as T;
-            
+            if (typeof(T) == typeof(AudioSource))
+                return new AudioSource(compPtr) as T;
+            if (typeof(T) == typeof(UIText))
+                return new UIText(compPtr) as T;
+            if (typeof(T) == typeof(UIImage))
+                return new UIImage(compPtr) as T;
+            if (typeof(T) == typeof(UIButton))
+                return new UIButton(compPtr) as T;
+
             return null;
         }
         
@@ -521,10 +697,90 @@ namespace DittoEngine
     {
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern float GetDeltaTime();
-        
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetTime();
+
         public static float deltaTime => GetDeltaTime();
-        public static float time => 0;
+        public static float time => GetTime();
         public static float fixedDeltaTime => 0.02f;
+    }
+
+    // 按键码（值与 GLFW key code 一致，跨边界直接传 int）
+    public enum KeyCode
+    {
+        Space = 32,
+        Apostrophe = 39,
+        Comma = 44, Minus = 45, Period = 46, Slash = 47,
+        Alpha0 = 48, Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52,
+        Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Alpha8 = 56, Alpha9 = 57,
+        Semicolon = 59, Equal = 61,
+        A = 65, B = 66, C = 67, D = 68, E = 69, F = 70, G = 71, H = 72,
+        I = 73, J = 74, K = 75, L = 76, M = 77, N = 78, O = 79, P = 80,
+        Q = 81, R = 82, S = 83, T = 84, U = 85, V = 86, W = 87, X = 88,
+        Y = 89, Z = 90,
+        LeftBracket = 91, Backslash = 92, RightBracket = 93, GraveAccent = 96,
+        Escape = 256, Enter = 257, Tab = 258, Backspace = 259,
+        Insert = 260, Delete = 261,
+        RightArrow = 262, LeftArrow = 263, DownArrow = 264, UpArrow = 265,
+        PageUp = 266, PageDown = 267, Home = 268, End = 269,
+        CapsLock = 280, ScrollLock = 281, NumLock = 282,
+        PrintScreen = 283, Pause = 284,
+        F1 = 290, F2 = 291, F3 = 292, F4 = 293, F5 = 294, F6 = 295,
+        F7 = 296, F8 = 297, F9 = 298, F10 = 299, F11 = 300, F12 = 301,
+        Keypad0 = 320, Keypad1 = 321, Keypad2 = 322, Keypad3 = 323,
+        Keypad4 = 324, Keypad5 = 325, Keypad6 = 326, Keypad7 = 327,
+        Keypad8 = 328, Keypad9 = 329,
+        KeypadDecimal = 330, KeypadDivide = 331, KeypadMultiply = 332,
+        KeypadSubtract = 333, KeypadAdd = 334, KeypadEnter = 335,
+        LeftShift = 340, LeftControl = 341, LeftAlt = 342, LeftSuper = 343,
+        RightShift = 344, RightControl = 345, RightAlt = 346, RightSuper = 347,
+        Menu = 348,
+    }
+
+    // Input 类 - 键盘/鼠标查询（每帧由引擎快照，Down/Up 为边沿检测）
+    // 鼠标坐标相对 Game 视口左上角（像素）。
+    public static class Input
+    {
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetKeyNative(int key);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetKeyDownNative(int key);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetKeyUpNative(int key);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetMouseButtonNative(int button);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetMouseButtonDownNative(int button);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetMouseButtonUpNative(int button);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void GetMousePositionNative(float[] outPos);
+
+        public static bool GetKey(KeyCode key) => GetKeyNative((int)key) != 0;
+        public static bool GetKeyDown(KeyCode key) => GetKeyDownNative((int)key) != 0;
+        public static bool GetKeyUp(KeyCode key) => GetKeyUpNative((int)key) != 0;
+
+        // button: 0=左键 1=右键 2=中键
+        public static bool GetMouseButton(int button) => GetMouseButtonNative(button) != 0;
+        public static bool GetMouseButtonDown(int button) => GetMouseButtonDownNative(button) != 0;
+        public static bool GetMouseButtonUp(int button) => GetMouseButtonUpNative(button) != 0;
+
+        public static Vector2 mousePosition
+        {
+            get
+            {
+                float[] p = new float[2];
+                GetMousePositionNative(p);
+                return new Vector2(p[0], p[1]);
+            }
+        }
     }
     
     // Debug 类
@@ -538,15 +794,72 @@ namespace DittoEngine
         public static void LogError(object msg) => Log("[Error] " + msg?.ToString());
     }
     
+    // 碰撞信息（OnCollisionEnter/Exit 的参数）
+    public class Collision
+    {
+        public GameObject gameObject;       // 对方对象
+        public Vector3 contactPoint;        // 接触点（世界坐标，Exit 时为零）
+        public Vector3 normal;              // 法线，指向远离对方的方向
+        public float depth;                 // 穿透深度
+
+        public Transform transform => gameObject?.transform;
+    }
+
+    // Raycast 命中信息
+    public struct RaycastHit
+    {
+        public GameObject gameObject;
+        public Vector3 point;
+        public Vector3 normal;
+        public float distance;
+    }
+
+    // Physics 静态 API（仅 Play 模式有效，物理碰撞体在进入 Play 时构建）
+    public static class Physics
+    {
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int RaycastNative(float ox, float oy, float oz,
+            float dx, float dy, float dz, float maxDist, float[] out7, out IntPtr outGo);
+
+        public static bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RaycastHit hit)
+        {
+            float[] data = new float[7];
+            IntPtr go;
+            int result = RaycastNative(origin.x, origin.y, origin.z,
+                direction.x, direction.y, direction.z, maxDistance, data, out go);
+
+            if (result == 0 || go == IntPtr.Zero)
+            {
+                hit = default(RaycastHit);
+                return false;
+            }
+
+            hit = new RaycastHit
+            {
+                gameObject = new GameObject(go),
+                point = new Vector3(data[0], data[1], data[2]),
+                normal = new Vector3(data[3], data[4], data[5]),
+                distance = data[6],
+            };
+            return true;
+        }
+
+        public static bool Raycast(Vector3 origin, Vector3 direction, float maxDistance)
+        {
+            RaycastHit hit;
+            return Raycast(origin, direction, maxDistance, out hit);
+        }
+    }
+
     // MonoBehaviour 基类
     public class MonoBehaviour
     {
         private IntPtr _nativeGameObject;
         private GameObject _gameObject;
-        
-        public GameObject gameObject 
-        { 
-            get 
+
+        public GameObject gameObject
+        {
+            get
             {
                 if (_nativeGameObject == IntPtr.Zero)
                 {
@@ -560,18 +873,54 @@ namespace DittoEngine
                 return _gameObject;
             }
         }
-        
+
         public Transform transform => gameObject?.transform;
-        
+
         public void SetNativeGameObject(IntPtr ptr)
         {
             _nativeGameObject = ptr;
         }
-        
+
         public virtual void Start() { }
         public virtual void Update() { }
         public virtual void OnDestroy() { }
         public virtual void OnEnable() { }
         public virtual void OnDisable() { }
+
+        // 物理事件回调（由引擎在物理步进后、Update 前派发）
+        public virtual void OnCollisionEnter(Collision collision) { }
+        public virtual void OnCollisionExit(Collision collision) { }
+        public virtual void OnTriggerEnter(GameObject other) { }
+        public virtual void OnTriggerExit(GameObject other) { }
+
+        // 引擎派发桥：C++ 只调这个方法（全部基础类型参数），在 C# 侧组装
+        // Collision 对象再转发给虚回调。kind: 0=CollisionEnter 1=CollisionExit
+        // 2=TriggerEnter 3=TriggerExit。不要在脚本里覆盖此方法。
+        public void __DispatchCollision(int kind, IntPtr otherGO,
+            float px, float py, float pz, float nx, float ny, float nz, float depth)
+        {
+            if (otherGO == IntPtr.Zero) return;
+            var other = new GameObject(otherGO);
+
+            switch (kind)
+            {
+                case 0:
+                case 1:
+                {
+                    var collision = new Collision
+                    {
+                        gameObject = other,
+                        contactPoint = new Vector3(px, py, pz),
+                        normal = new Vector3(nx, ny, nz),
+                        depth = depth,
+                    };
+                    if (kind == 0) OnCollisionEnter(collision);
+                    else OnCollisionExit(collision);
+                    break;
+                }
+                case 2: OnTriggerEnter(other); break;
+                case 3: OnTriggerExit(other); break;
+            }
+        }
     }
 }

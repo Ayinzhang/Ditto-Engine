@@ -11,6 +11,7 @@
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 
 class Resource;
+struct UIRenderer;
 
 struct BaseGeometry
 {
@@ -62,6 +63,10 @@ struct Scene
     // Used for all GPU resource creation/draw/teardown.
     Ditto::IRenderer* renderer = nullptr;
 
+    // In-game UI pass (owned; lazily created by Render, absent in headless
+    // builds). Raw pointer so this header doesn't need the UIRenderer type.
+    UIRenderer* uiRenderer = nullptr;
+
     std::function<void()> onModified;
 
     Scene();
@@ -98,9 +103,12 @@ struct Scene
     glm::vec3 GetLightDirection() const;
     float GetLightIntensity() const;
 
+    // Cached texture lookup (empty path = shared 1x1 white). Public: also used
+    // by the UI renderer for UIImage textures.
+    Ditto::TextureHandle GetOrCreateMaterialTexture(const std::string& texturePath);
+
 private:
     void DestroyAllObjects();
     Ditto::PipelineHandle GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback);
     Ditto::PipelineState GetShaderPipelineState(const std::string& shaderName);
-    Ditto::TextureHandle GetOrCreateMaterialTexture(const std::string& texturePath);
 };
