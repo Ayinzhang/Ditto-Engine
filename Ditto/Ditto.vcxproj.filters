@@ -996,6 +996,9 @@
     <ClInclude Include="Engine\Graphics\Camera.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Graphics\Materials\MaterialAsset.h">
+      <Filter>头文件\Engine\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Graphics\RHI\IRenderer.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
@@ -1516,6 +1519,9 @@
     <None Include="3rdParty\GLM\gtx\wrap.inl">
       <Filter>三方库\GLM</Filter>
     </None>
+    <None Include="Assets\Materials\Lit_Toon.mat">
+      <Filter>资源文件</Filter>
+    </None>
     <None Include="Assets\Shaders\Fragment.glsl">
       <Filter>资源文件</Filter>
     </None>
@@ -1582,6 +1588,9 @@
       <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\Camera.cpp">
+      <Filter>源文件\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\Materials\MaterialAsset.cpp">
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp">

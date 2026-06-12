@@ -18,6 +18,7 @@
 
 # --- CMake output ---
 /build/
+/build-*/
 [Bb]uild/
 CMakeCache.txt
 CMakeFiles/

@@ -63,7 +63,8 @@ struct GameObject
     std::vector<std::unique_ptr<Component>> components;
     std::vector<Component*> removeComps;
 
-    GameObject(const std::string _name = "New GameObject");
+    GameObject(const std::string& _name = "New GameObject");
+    GameObject(const char* _name);
     explicit GameObject(bool createComponents);
     GameObject(GameObject* other);
     ~GameObject();
@@ -196,6 +197,7 @@ struct RendererComponent : Component
     Type type;
     MeshSource meshSource;
     glm::vec4 color;
+    std::string materialPath;
     std::string shaderName;
     std::string mainTexturePath;
 

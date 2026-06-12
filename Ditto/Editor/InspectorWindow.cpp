@@ -8,6 +8,8 @@
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
 #include "../Engine/Core/ProjectManager.h"
+#include "../Engine/Graphics/Materials/MaterialAsset.h"
+#include "../Engine/Graphics/Shaders/ShaderAsset.h"
 
 // Defined below; the model preview routes all GPU work through the RHI.
 static Ditto::IRenderer* PreviewRenderer(Editor* editor);
@@ -15,10 +17,156 @@ static Ditto::IRenderer* PreviewRenderer(Editor* editor);
 #include <sstream>
 #include <iostream>
 #include <filesystem>
+#include <algorithm>
+#include <cctype>
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
 
 namespace fs = std::filesystem;
+
+namespace
+{
+    std::string LowerExtension(const std::string& path)
+    {
+        std::string ext = fs::path(path).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return ext;
+    }
+
+    std::string FileNameFromPath(const std::string& path)
+    {
+        size_t pos = path.find_last_of("/\\");
+        return pos == std::string::npos ? path : path.substr(pos + 1);
+    }
+
+    std::string ToAssetRelativePath(const std::string& path)
+    {
+        Project* project = ProjectManager::GetInstance().GetCurrentProject();
+        if (!project) return path;
+
+        fs::path filePath = fs::absolute(path).lexically_normal();
+        fs::path assetsPath = fs::absolute(fs::path(project->path) / "Assets").lexically_normal();
+        std::wstring fileW = filePath.wstring();
+        std::wstring assetsW = assetsPath.wstring();
+        std::replace(fileW.begin(), fileW.end(), L'\\', L'/');
+        std::replace(assetsW.begin(), assetsW.end(), L'\\', L'/');
+
+        if (fileW.rfind(assetsW + L"/", 0) == 0)
+            return filePath.lexically_relative(assetsPath).generic_string();
+        return path;
+    }
+
+    bool DrawFileObjectField(const char* label, const std::string& value, const char* id, std::string* droppedPath)
+    {
+        ImGui::TextUnformatted(label);
+        ImGui::SameLine();
+        float width = std::max(60.0f, ImGui::GetContentRegionAvail().x);
+        std::string display = value.empty() ? "None" : FileNameFromPath(value);
+        bool opened = ImGui::Button((display + "##" + id).c_str(), ImVec2(width, 0.0f));
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PROJECT_FILE"))
+                *droppedPath = static_cast<const char*>(payload->Data);
+            ImGui::EndDragDropTarget();
+        }
+        return opened;
+    }
+
+    void DrawMaterialFileInspector(const std::string& materialPath)
+    {
+        Ditto::MaterialAsset material = Ditto::LoadMaterialAsset(materialPath);
+        if (!material.ok)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Material load failed");
+            ImGui::TextWrapped("%s", material.error.c_str());
+            return;
+        }
+
+        bool changed = false;
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Material");
+        ImGui::Separator();
+
+        char shaderBuf[256];
+        strcpy_s(shaderBuf, sizeof(shaderBuf), material.shaderName.c_str());
+        ImGui::TextUnformatted("Shader");
+        ImGui::SameLine();
+        if (ImGui::InputText("##MaterialShader", shaderBuf, sizeof(shaderBuf)))
+        {
+            material.shaderName = shaderBuf;
+            changed = true;
+        }
+
+        std::string droppedShader;
+        DrawFileObjectField("Shader Asset", material.shaderName, "MaterialShaderAsset", &droppedShader);
+        if (!droppedShader.empty())
+        {
+            std::string ext = LowerExtension(droppedShader);
+            if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag")
+            {
+                material.shaderName = ToAssetRelativePath(droppedShader);
+                changed = true;
+            }
+        }
+
+        Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(material.shaderName);
+        if (!shader.ok)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f), "Shader unavailable");
+            ImGui::TextWrapped("%s", shader.error.c_str());
+        }
+        else
+        {
+            ImGui::Separator();
+            ImGui::TextUnformatted("Properties");
+            ImGui::Indent(12.0f);
+            for (const Ditto::ShaderProperty& property : shader.properties)
+            {
+                const std::string label = property.displayName.empty() ? property.name : property.displayName;
+                if (property.type == Ditto::ShaderPropertyType::Color)
+                {
+                    ImGui::TextUnformatted(label.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::ColorEdit4(("##MaterialFileColor" + property.name).c_str(), &material.color.x, ImGuiColorEditFlags_AlphaBar))
+                        changed = true;
+                }
+                else if (property.type == Ditto::ShaderPropertyType::Texture2D)
+                {
+                    std::string droppedTexture;
+                    DrawFileObjectField(label.c_str(), material.mainTexturePath, ("MaterialFileTexture" + property.name).c_str(), &droppedTexture);
+                    if (!droppedTexture.empty())
+                    {
+                        std::string ext = LowerExtension(droppedTexture);
+                        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr")
+                        {
+                            material.mainTexturePath = ToAssetRelativePath(droppedTexture);
+                            changed = true;
+                        }
+                    }
+
+                    char texBuf[256];
+                    strcpy_s(texBuf, sizeof(texBuf), material.mainTexturePath.c_str());
+                    ImGui::TextUnformatted("Path");
+                    ImGui::SameLine();
+                    if (ImGui::InputText(("##MaterialFileTexturePath" + property.name).c_str(), texBuf, sizeof(texBuf)))
+                    {
+                        material.mainTexturePath = texBuf;
+                        changed = true;
+                    }
+                    if (!material.mainTexturePath.empty() && ImGui::SmallButton(("Clear##MaterialFileTexture" + property.name).c_str()))
+                    {
+                        material.mainTexturePath.clear();
+                        changed = true;
+                    }
+                }
+            }
+            ImGui::Unindent(12.0f);
+        }
+
+        if (changed)
+            Ditto::SaveMaterialAsset(material, materialPath);
+    }
+}
 
 InspectorWindow::InspectorWindow(Editor* editor)
     : m_editor(editor)
@@ -114,6 +262,13 @@ void InspectorWindow::Draw()
 
         ImGui::Text("Path: "); ImGui::SameLine();
         ImGui::TextDisabled(m_editor->selectedFile.path.c_str());
+
+        if (m_editor->selectedFile.extension == ".mat")
+        {
+            DrawMaterialFileInspector(m_editor->selectedFile.path);
+            ImGui::End();
+            return;
+        }
 
         // If it's a model file, show model info
         if (m_editor->selectedFile.extension == ".obj" || m_editor->selectedFile.extension == ".fbx")

@@ -341,6 +341,7 @@
     <ClInclude Include="Engine\Core\Scene.h" />
     <ClInclude Include="Engine\Core\ScriptFileWatcher.h" />
     <ClInclude Include="Engine\Graphics\Camera.h" />
+    <ClInclude Include="Engine\Graphics\Materials\MaterialAsset.h" />
     <ClInclude Include="Engine\Graphics\Shaders\CompiledShader.h" />
     <ClInclude Include="Engine\Graphics\Shaders\ShaderAsset.h" />
     <ClInclude Include="Engine\Graphics\Shaders\ShaderCompiler.h" />
@@ -505,6 +506,7 @@
     <None Include="3rdParty\GLM\gtx\vector_query.inl" />
     <None Include="3rdParty\GLM\gtx\wrap.inl" />
     <None Include="3rdParty\Mono\DittoEngine.cs" />
+    <None Include="Assets\Materials\Lit_Toon.mat" />
     <None Include="Assets\Shaders\Fragment.glsl" />
     <None Include="Assets\Shaders\Lit_Toon.shader" />
     <None Include="Assets\Shaders\Lit_Toon.hlsl" />
@@ -539,6 +541,7 @@
     <ClCompile Include="Engine\Core\Scene.cpp" />
     <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp" />
     <ClCompile Include="Engine\Graphics\Camera.cpp" />
+    <ClCompile Include="Engine\Graphics\Materials\MaterialAsset.cpp" />
     <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp" />
     <ClCompile Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.cpp" Condition="'$(EnableVulkan)'=='true'" />
     <ClCompile Include="Engine\Graphics\Shaders\ShaderAsset.cpp" />

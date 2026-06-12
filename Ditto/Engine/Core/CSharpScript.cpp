@@ -7,8 +7,10 @@
 #include "MonoRuntime.h"
 #include "GameObject.h"
 #include "Logger.h"
+#ifndef DITTO_HEADLESS_TESTS
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
+#endif
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 
@@ -17,10 +19,15 @@ namespace fs = std::filesystem;
 static std::string FindDittoEngineDll()
 {
     const std::vector<std::string> possiblePaths = {
+        "3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
+        "Ditto/3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
+        "../Ditto/3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
+        "../../Ditto/3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
         "3rdParty/Mono/DittoEngine.dll",
         "../../3rdParty/Mono/DittoEngine.dll",
         "../3rdParty/Mono/DittoEngine.dll",
         "Ditto/3rdParty/Mono/DittoEngine.dll",
+        "../Ditto/3rdParty/Mono/DittoEngine.dll",
         "../../Ditto/3rdParty/Mono/DittoEngine.dll",
     };
 
@@ -141,6 +148,28 @@ static std::string FindMSBuildPath()
         }
     }
 
+    return "";
+}
+
+static std::string FindNetStandardDll()
+{
+    std::vector<fs::path> candidates = {
+        fs::path("C:/Program Files/dotnet/sdk"),
+        fs::path("C:/Program Files/dotnet/packs/NETStandard.Library.Ref"),
+        fs::path("C:/Program Files/dotnet/packs/Microsoft.NETCore.App.Ref"),
+    };
+
+    for (const fs::path& root : candidates)
+    {
+        std::error_code ec;
+        if (!fs::exists(root, ec)) continue;
+        for (const auto& entry : fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec))
+        {
+            if (ec) break;
+            if (entry.is_regular_file(ec) && entry.path().filename() == "netstandard.dll")
+                return fs::absolute(entry.path()).string();
+        }
+    }
     return "";
 }
 
@@ -442,33 +471,22 @@ void CSharpScriptComponent::ParseScriptFields()
     buffer << file.rdbuf();
     std::string source = StripComments(buffer.str());
 
-    // Walk the source one top-level statement at a time. A statement ends at
-    // ';'. A '{' opens a block: if it follows a field-looking head it's an
-    // auto-property (`{ get; set; }`) or a method body, so we discard the head
-    // and skip the balanced block. This keeps us from misreading properties,
-    // methods, and nested initializers as serializable fields.
+    // Walk the source one statement at a time. A statement ends at ';'.
+    // Braces clear the pending head: class/namespace braces should not hide
+    // fields inside the type, while property/method blocks should not be parsed
+    // as fields. Method-body statements are later ignored by ParseFieldDeclaration
+    // because they contain '(' before any '='.
     std::string stmt;
-    int depth = 0;
     for (size_t i = 0; i < source.size(); ++i)
     {
         char c = source[i];
-        if (depth > 0)
-        {
-            if (c == '{') ++depth;
-            else if (c == '}') --depth;
-            continue;   // inside a method/property/initializer block
-        }
-
         if (c == '{')
         {
-            // A '{' at top level: drop the pending head (property/method/type)
-            // and enter block-skipping mode.
             stmt.clear();
-            ++depth;
         }
         else if (c == '}')
         {
-            stmt.clear();   // closing a type/namespace brace
+            stmt.clear();
         }
         else if (c == ';')
         {
@@ -699,6 +717,9 @@ void CSharpScriptComponent::Deserialize(std::istream& file)
 
 void CSharpScriptComponent::OnInspectorGUI()
 {
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
     ImGui::TextUnformatted(scriptName.empty() ? "C# Script" : scriptName.c_str());
@@ -818,6 +839,7 @@ void CSharpScriptComponent::OnInspectorGUI()
 
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
+#endif
 }
 
 void CSharpScriptSystem::Initialize()
@@ -1141,6 +1163,7 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
             "../../3rdParty/Mono/mscorlib.dll",
             "../3rdParty/Mono/mscorlib.dll",
             "Ditto/3rdParty/Mono/mscorlib.dll",
+            "../Ditto/3rdParty/Mono/mscorlib.dll",
             "../../Ditto/3rdParty/Mono/mscorlib.dll",
         };
         for (const auto& path : mscorlibPaths)
@@ -1154,6 +1177,9 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
     }
 
     if (monoMscorlib.empty()) return false;
+
+    std::string netstandardDll = FindNetStandardDll();
+    if (netstandardDll.empty()) return false;
 
     std::string roslynPath = FindMSBuildPath();
     if (roslynPath.empty()) return false;
@@ -1171,16 +1197,15 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
         }
     }
 
-    size_t lastSlash = cscPath.find_last_of("\\/");
-    std::string cscDir = cscPath.substr(0, lastSlash);
-    std::string cmd = "cmd /c cd /d \"" + cscDir + "\" && csc.exe"
+    std::string cmd = "cmd /c \"\"" + cscPath + "\""
         + " /target:library"
         + " /nostdlib+"
         + " /reference:\"" + monoMscorlib + "\""
+        + " /reference:\"" + netstandardDll + "\""
         + " /reference:\"" + dittoEngineDll + "\""
         + " /out:\"" + outDllPath + "\""
         + " \"" + absScriptPath.string() + "\""
-        + " 2>&1";
+        + " 2>&1\"";
 
     int result = system(cmd.c_str());
     if (result != 0 || !fs::exists(outDllPath)) return false;

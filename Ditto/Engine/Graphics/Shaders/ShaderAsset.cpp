@@ -1,5 +1,6 @@
 #include "ShaderAsset.h"
 #include "../../Core/PathUtils.h"
+#include "../../Core/ProjectManager.h"
 #include "../../Core/Logger.h"
 #include <fstream>
 #include <sstream>
@@ -54,6 +55,16 @@ namespace Ditto
         {
             fs::path direct(candidate);
             if (direct.is_absolute() && fs::exists(direct)) return direct;
+
+            Project* project = ProjectManager::GetInstance().GetCurrentProject();
+            if (project)
+            {
+                fs::path projectAsset = fs::path(project->path) / "Assets" / candidate;
+                if (fs::exists(projectAsset)) return projectAsset;
+
+                projectAsset = fs::path(project->path) / "Assets" / "Shaders" / candidate;
+                if (fs::exists(projectAsset)) return projectAsset;
+            }
 
             fs::path resolved = PathUtils::ResolveAsset("Shaders/" + candidate, preferredRoot);
             if (fs::exists(resolved)) return resolved;

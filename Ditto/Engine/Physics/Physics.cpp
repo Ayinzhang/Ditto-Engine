@@ -3,8 +3,17 @@
 #endif
 
 #include "Physics.h"
+#ifdef DITTO_HEADLESS_TESTS
+#include "../Resources/Resource.h"
+struct Engine
+{
+    std::unique_ptr<Resource> resource;
+};
+#else
 #include "../Core/Engine.h"
+#endif
 #include "../Core/PathUtils.h"
+#include "../Core/Logger.h"
 #include <iostream>
 #include <algorithm>
 #include <set>

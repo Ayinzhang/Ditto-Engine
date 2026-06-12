@@ -90,3 +90,105 @@ target_include_directories(Ditto PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GL
 
 # Copy Assets and shaders to build directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Assets DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
+enable_testing()
+
+find_program(DOTNET_EXECUTABLE dotnet
+    HINTS "$ENV{ProgramFiles}/dotnet" "$ENV{ProgramFiles\(x86\)}/dotnet")
+if(DOTNET_EXECUTABLE)
+    add_custom_target(DittoEngineCSharp
+        COMMAND "${DOTNET_EXECUTABLE}" build "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/Mono/DittoEngine.csproj" -c Release
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/Mono"
+        COMMENT "Building DittoEngine C# API")
+endif()
+
+add_executable(DittoTests
+    Tests/TestMain.cpp
+    Engine/Core/GameObject.cpp
+    Engine/Core/Scene.cpp
+    Engine/Core/PathUtils.cpp
+    Engine/Core/Logger.cpp
+    Engine/Core/ProjectManager.cpp
+    Engine/Core/CSharpScript.cpp
+    Engine/Core/MonoRuntime.cpp
+    Engine/Physics/Physics.cpp
+    Engine/Physics/CollisionShape.cpp
+    Engine/Physics/GJK.cpp
+    Engine/Resources/Resource.cpp
+    Engine/Graphics/Materials/MaterialAsset.cpp
+)
+
+target_compile_definitions(DittoTests PRIVATE DITTO_HEADLESS_TESTS=1 DITTO_HEADLESS_SCENE=1)
+target_include_directories(DittoTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLAD
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLFW
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLM
+)
+target_link_libraries(DittoTests PRIVATE advapi32 user32)
+if(TARGET DittoEngineCSharp)
+    add_dependencies(DittoTests DittoEngineCSharp)
+endif()
+
+add_test(NAME Ditto.FileOps COMMAND DittoTests --stage file)
+add_test(NAME Ditto.CSharp COMMAND DittoTests --stage csharp)
+set_tests_properties(Ditto.FileOps PROPERTIES LABELS "file")
+set_tests_properties(Ditto.CSharp PROPERTIES LABELS "csharp")
+
+add_executable(DittoRenderSmoke
+    Tests/RenderSmoke.cpp
+    Tests/StbImage.cpp
+    Engine/Core/GameObject.cpp
+    Engine/Core/Scene.cpp
+    Engine/Core/PathUtils.cpp
+    Engine/Core/Logger.cpp
+    Engine/Core/ProjectManager.cpp
+    Engine/Core/CSharpScript.cpp
+    Engine/Core/MonoRuntime.cpp
+    Engine/Resources/Resource.cpp
+    Engine/Graphics/Materials/MaterialAsset.cpp
+    Engine/Graphics/RHI/GLRenderer.cpp
+    Engine/Graphics/Shaders/ShaderAsset.cpp
+    Engine/Graphics/Shaders/ShaderCompiler.cpp
+    3rdParty/GLAD/glad.c
+    3rdParty/ImGui/imgui.cpp
+    3rdParty/ImGui/imgui_draw.cpp
+    3rdParty/ImGui/imgui_tables.cpp
+    3rdParty/ImGui/imgui_widgets.cpp
+    3rdParty/ImGui/imgui_impl_glfw.cpp
+    3rdParty/ImGui/imgui_impl_opengl3.cpp
+)
+
+target_compile_definitions(DittoRenderSmoke PRIVATE DITTO_HEADLESS_TESTS=1)
+target_include_directories(DittoRenderSmoke PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLAD
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLFW
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLM
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/ImGui
+)
+target_link_libraries(DittoRenderSmoke PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/GLFW/glfw3.lib
+    opengl32
+    gdi32
+    user32
+    shell32
+    advapi32
+)
+if(TARGET DittoEngineCSharp)
+    add_dependencies(DittoRenderSmoke DittoEngineCSharp)
+endif()
+
+add_test(NAME Ditto.Render COMMAND DittoRenderSmoke --out ${CMAKE_CURRENT_BINARY_DIR}/TestOutput/RenderSmoke)
+set_tests_properties(Ditto.Render PROPERTIES LABELS "render")
+
+add_test(NAME Ditto.Simulation COMMAND DittoTests --stage simulation)
+set_tests_properties(Ditto.Simulation PROPERTIES LABELS "simulation")
+
+add_test(NAME Ditto.FullFlow
+    COMMAND powershell -ExecutionPolicy Bypass -File
+        ${CMAKE_CURRENT_SOURCE_DIR}/Tests/RunBuiltTests.ps1
+        -TestsExe $<TARGET_FILE:DittoTests>
+        -RenderExe $<TARGET_FILE:DittoRenderSmoke>
+        -RenderOut ${CMAKE_CURRENT_BINARY_DIR}/TestOutput/RenderSmoke)
+set_tests_properties(Ditto.FullFlow PROPERTIES LABELS "full")

@@ -6,6 +6,16 @@ using System.Runtime.CompilerServices;
 
 namespace DittoEngine
 {
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeFieldAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class HideInInspectorAttribute : Attribute
+    {
+    }
+
     // Vector2
     public struct Vector2
     {

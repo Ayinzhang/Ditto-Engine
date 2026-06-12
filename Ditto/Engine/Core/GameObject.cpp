@@ -5,11 +5,15 @@
 #include "Scene.h"
 #include "GameObject.h"
 #include "Logger.h"
+#include "CSharpScript.h"
+#ifndef DITTO_HEADLESS_TESTS
 #include "ProjectManager.h"
 #include "PathUtils.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
+#include "../Graphics/Materials/MaterialAsset.h"
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
+#endif
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include <fstream>
 #include <algorithm>
@@ -36,6 +40,9 @@ static std::string ReadString(std::istream& file)
     return str;
 }
 
+#ifdef DITTO_HEADLESS_TESTS
+Editor* g_editor = nullptr;
+#else
 // Bracket an ImGui value-editing widget so a whole drag counts as ONE undo
 // step, committed only if the value actually changed. Call immediately AFTER
 // the widget. Uses the global editor pointer.
@@ -148,10 +155,27 @@ static Ditto::ShaderAsset LoadRendererShaderAsset(const std::string& shaderName)
     return Ditto::LoadShaderAsset(shaderName.empty() ? RendererComponent::DefaultShaderName : shaderName);
 }
 
-GameObject::GameObject(const std::string _name)
+static std::filesystem::path ResolveAssetFilePath(const std::string& assetPath)
+{
+    std::filesystem::path path(assetPath);
+    if (path.is_absolute()) return path;
+    Project* project = ProjectManager::GetInstance().GetCurrentProject();
+    if (!project) return path;
+    if (!assetPath.empty() && assetPath.rfind("Assets/", 0) == 0)
+        return std::filesystem::path(project->path) / assetPath;
+    return std::filesystem::path(project->path) / "Assets" / path;
+}
+#endif
+
+GameObject::GameObject(const std::string& _name)
 {
     name = _name;
     AddComponent<TransformComponent>();
+}
+
+GameObject::GameObject(const char* _name)
+    : GameObject(std::string(_name ? _name : "New GameObject"))
+{
 }
 
 GameObject::GameObject(bool createComponents)
@@ -207,7 +231,7 @@ GameObject::~GameObject() = default;
 GameObject* GameObject::AddChild(std::unique_ptr<GameObject> child)
 {
     if (!child || child.get() == this) return nullptr;
-    if (child->IsDescendantOf(this)) return nullptr;
+    if (this->IsDescendantOf(child.get())) return nullptr;
     child->parent = this;
     children.push_back(std::move(child));
     return children.back().get();
@@ -217,7 +241,7 @@ void GameObject::AddChild(GameObject* existingChild)
 {
     if (!existingChild || existingChild == this) return;
     // Cycle guard must run BEFORE detaching (IsDescendantOf walks parents).
-    if (existingChild->IsDescendantOf(this)) return;
+    if (this->IsDescendantOf(existingChild)) return;
     if (!existingChild->parent) return;   // every live non-root object has an owner
 
     auto owned = existingChild->parent->DetachChild(existingChild);
@@ -250,8 +274,10 @@ bool GameObject::IsDescendantOf(GameObject* ancestor) const
 void GameObject::RemoveComponent(Component* component)
 {
     if (component->gameObject != this) return;
+#ifndef DITTO_HEADLESS_TESTS
     if (g_editor && g_editor->selectedComponent == component)
         g_editor->selectedComponent = nullptr;
+#endif
     removeComps.push_back(component);
 }
 
@@ -275,6 +301,9 @@ void GameObject::ProcessRemovals()
 
 void GameObject::OnInspectorGUI()
 {
+#ifdef DITTO_HEADLESS_TESTS
+    ProcessRemovals();
+#else
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
     char nameBuffer[256];
@@ -321,6 +350,7 @@ void GameObject::OnInspectorGUI()
         ImGui::Separator();
     }
     ProcessRemovals();
+#endif
 }
 
 void GameObject::Serialize(std::ostream& file) const
@@ -509,6 +539,9 @@ glm::mat4 TransformComponent::GetWorldModel() const
 
 void TransformComponent::OnInspectorGUI()
 {
+#ifdef DITTO_HEADLESS_TESTS
+    UpdateTransform();
+#else
     DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine();
@@ -537,6 +570,7 @@ void TransformComponent::OnInspectorGUI()
         // Mark scene as modified
         if (g_currentScene) g_currentScene->MarkDirty();
     }
+#endif
 }
 
 void TransformComponent::Serialize(std::ostream& file) const
@@ -563,6 +597,9 @@ LightComponent::LightComponent() : color(1.0f), intensity(1.0f) { index = CI::Li
 LightComponent::LightComponent(LightComponent* other) : color(other->color), intensity(other->intensity) { index = CI::Light; }
 void LightComponent::OnInspectorGUI()
 {
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
     DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Light");
@@ -579,6 +616,7 @@ void LightComponent::OnInspectorGUI()
     TrackUndoableEdit();
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
+#endif
 }
 void LightComponent::Serialize(std::ostream& file) const
 {
@@ -598,7 +636,8 @@ RendererComponent::RendererComponent(Type _type)
 }
 RendererComponent::RendererComponent(RendererComponent* other)
     : type(other->type), meshSource(other->meshSource), color(other->color),
-    shaderName(other->shaderName), mainTexturePath(other->mainTexturePath), meshPath(other->meshPath)
+    materialPath(other->materialPath), shaderName(other->shaderName),
+    mainTexturePath(other->mainTexturePath), meshPath(other->meshPath)
 {
     index = CI::Renderer;
 }
@@ -610,6 +649,9 @@ bool RendererComponent::UsesFileMesh() const
 
 void RendererComponent::OnInspectorGUI()
 {
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
     DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Renderer");
@@ -674,53 +716,121 @@ void RendererComponent::OnInspectorGUI()
         ImGui::EndPopup();
     }
 
-    std::string shaderDisplay = shaderName.empty() ? DefaultShaderName : shaderName;
-    std::string droppedShaderPath;
-    DrawObjectFieldButton("Shader", nullptr, shaderDisplay, "RendererShaderObjectPopup", &droppedShaderPath);
-    if (!droppedShaderPath.empty())
+    std::string materialDisplay = materialPath.empty() ? "None (Material)" : FileNameFromPath(materialPath);
+    std::string droppedMaterialPath;
+    DrawObjectFieldButton("Material", nullptr, materialDisplay, "RendererMaterialObjectPopup", &droppedMaterialPath);
+    if (!droppedMaterialPath.empty())
     {
-        std::string ext = LowerExtension(droppedShaderPath);
-        if (ext == ".hlsl" || ext == ".shader" || ext == ".glsl" || ext == ".vert" || ext == ".frag")
+        std::string ext = LowerExtension(droppedMaterialPath);
+        if (ext == ".mat")
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            shaderName = ToAssetRelativePath(droppedShaderPath);
+            materialPath = ToAssetRelativePath(droppedMaterialPath);
         }
     }
-    if (ImGui::BeginPopup("RendererShaderObjectPopup"))
+    if (ImGui::BeginPopup("RendererMaterialObjectPopup"))
     {
-        if (ImGui::MenuItem(DefaultShaderName, nullptr, shaderDisplay == DefaultShaderName))
+        if (ImGui::MenuItem("None", nullptr, materialPath.empty()))
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            shaderName = DefaultShaderName;
+            materialPath.clear();
         }
         ImGui::Separator();
-        char shaderBuf[128];
-        strcpy_s(shaderBuf, sizeof(shaderBuf), shaderName.c_str());
-        ImGui::TextUnformatted("Shader Name");
-        if (ImGui::InputText("##RendererShaderName", shaderBuf, sizeof(shaderBuf)))
-            shaderName = shaderBuf;
+        char materialBuf[256];
+        strcpy_s(materialBuf, sizeof(materialBuf), materialPath.c_str());
+        ImGui::TextUnformatted("Material Path");
+        if (ImGui::InputText("##RendererMaterialPath", materialBuf, sizeof(materialBuf)))
+            materialPath = materialBuf;
         TrackUndoableEdit();
         ImGui::EndPopup();
     }
 
-    Ditto::ShaderAsset shaderAsset = LoadRendererShaderAsset(shaderName);
+    Ditto::MaterialAsset material = materialPath.empty() ? Ditto::MakeDefaultMaterial("Inline Material") : Ditto::LoadMaterialAsset(materialPath);
+    if (materialPath.empty())
+    {
+        material.shaderName = shaderName.empty() ? DefaultShaderName : shaderName;
+        material.color = color;
+        material.mainTexturePath = mainTexturePath;
+    }
+    std::string activeShaderName = material.shaderName.empty() ? DefaultShaderName : material.shaderName;
+
+    Ditto::ShaderAsset shaderAsset = LoadRendererShaderAsset(activeShaderName);
     if (shaderAsset.ok && !shaderAsset.properties.empty())
     {
         ImGui::TextUnformatted("Properties");
         ImGui::Indent(12.0f);
+
+        std::string droppedShaderPath;
+        DrawObjectFieldButton("Shader", nullptr, activeShaderName, "RendererMaterialShaderObjectPopup", &droppedShaderPath);
+        if (!droppedShaderPath.empty())
+        {
+            std::string ext = LowerExtension(droppedShaderPath);
+            if (ext == ".hlsl" || ext == ".shader" || ext == ".glsl" || ext == ".vert" || ext == ".frag")
+            {
+                if (g_editor) g_editor->PushUndoSnapshot();
+                activeShaderName = ToAssetRelativePath(droppedShaderPath);
+                if (materialPath.empty()) shaderName = activeShaderName;
+                else
+                {
+                    material.shaderName = activeShaderName;
+                    Ditto::SaveMaterialAsset(material, ResolveAssetFilePath(materialPath));
+                }
+            }
+        }
+        if (ImGui::BeginPopup("RendererMaterialShaderObjectPopup"))
+        {
+            if (ImGui::MenuItem(DefaultShaderName, nullptr, activeShaderName == DefaultShaderName))
+            {
+                if (g_editor) g_editor->PushUndoSnapshot();
+                activeShaderName = DefaultShaderName;
+                if (materialPath.empty()) shaderName = activeShaderName;
+                else
+                {
+                    material.shaderName = activeShaderName;
+                    Ditto::SaveMaterialAsset(material, ResolveAssetFilePath(materialPath));
+                }
+            }
+            ImGui::Separator();
+            char shaderBuf[128];
+            strcpy_s(shaderBuf, sizeof(shaderBuf), activeShaderName.c_str());
+            ImGui::TextUnformatted("Shader Name");
+            if (ImGui::InputText("##RendererMaterialShaderName", shaderBuf, sizeof(shaderBuf)))
+            {
+                activeShaderName = shaderBuf;
+                if (materialPath.empty()) shaderName = activeShaderName;
+                else
+                {
+                    material.shaderName = activeShaderName;
+                    Ditto::SaveMaterialAsset(material, ResolveAssetFilePath(materialPath));
+                }
+            }
+            TrackUndoableEdit();
+            ImGui::EndPopup();
+        }
+
         for (const Ditto::ShaderProperty& property : shaderAsset.properties)
         {
             const std::string label = property.displayName.empty() ? property.name : property.displayName;
             if (property.type == Ditto::ShaderPropertyType::Color)
             {
                 ImGui::TextUnformatted(label.c_str()); ImGui::SameLine();
-                ImGui::ColorEdit4(("##Material" + property.name).c_str(), &color.x, ImGuiColorEditFlags_AlphaBar);
+                glm::vec4 editColor = material.color;
+                if (ImGui::ColorEdit4(("##Material" + property.name).c_str(), &editColor.x, ImGuiColorEditFlags_AlphaBar))
+                {
+                    if (materialPath.empty()) color = editColor;
+                    else
+                    {
+                        material.color = editColor;
+                        Ditto::SaveMaterialAsset(material, ResolveAssetFilePath(materialPath));
+                    }
+                }
                 TrackUndoableEdit();
             }
             else if (property.type == Ditto::ShaderPropertyType::Texture2D)
             {
                 std::string droppedTexturePath;
-                std::string textureDisplay = mainTexturePath.empty() ? property.textureDefault : FileNameFromPath(mainTexturePath);
+                std::string activeTexturePath = material.mainTexturePath;
+                std::string textureDisplay = activeTexturePath.empty() ? property.textureDefault : FileNameFromPath(activeTexturePath);
                 DrawObjectFieldButton(label.c_str(), nullptr, textureDisplay, ("RendererTextureObjectPopup" + property.name).c_str(), &droppedTexturePath);
                 if (!droppedTexturePath.empty())
                 {
@@ -728,21 +838,41 @@ void RendererComponent::OnInspectorGUI()
                     if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr")
                     {
                         if (g_editor) g_editor->PushUndoSnapshot();
-                        mainTexturePath = ToAssetRelativePath(droppedTexturePath);
+                        activeTexturePath = ToAssetRelativePath(droppedTexturePath);
+                        if (materialPath.empty()) mainTexturePath = activeTexturePath;
+                        else
+                        {
+                            material.mainTexturePath = activeTexturePath;
+                            Ditto::SaveMaterialAsset(material, ResolveAssetFilePath(materialPath));
+                        }
                     }
                 }
                 if (ImGui::BeginPopup(("RendererTextureObjectPopup" + property.name).c_str()))
                 {
                     char texBuf[256];
-                    strcpy_s(texBuf, sizeof(texBuf), mainTexturePath.c_str());
+                    strcpy_s(texBuf, sizeof(texBuf), activeTexturePath.c_str());
                     ImGui::TextUnformatted("Path");
                     if (ImGui::InputText(("##RendererTexturePath" + property.name).c_str(), texBuf, sizeof(texBuf)))
-                        mainTexturePath = texBuf;
+                    {
+                        activeTexturePath = texBuf;
+                        if (materialPath.empty()) mainTexturePath = activeTexturePath;
+                        else
+                        {
+                            material.mainTexturePath = activeTexturePath;
+                            Ditto::SaveMaterialAsset(material, ResolveAssetFilePath(materialPath));
+                        }
+                    }
                     TrackUndoableEdit();
                     if (ImGui::SmallButton(("Clear##Texture" + property.name).c_str()))
                     {
                         if (g_editor) g_editor->PushUndoSnapshot();
-                        mainTexturePath.clear();
+                        activeTexturePath.clear();
+                        if (materialPath.empty()) mainTexturePath.clear();
+                        else
+                        {
+                            material.mainTexturePath.clear();
+                            Ditto::SaveMaterialAsset(material, ResolveAssetFilePath(materialPath));
+                        }
                     }
                     ImGui::EndPopup();
                 }
@@ -753,6 +883,7 @@ void RendererComponent::OnInspectorGUI()
 
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
+#endif
 }
 void RendererComponent::Serialize(std::ostream& file) const
 {
@@ -764,6 +895,7 @@ void RendererComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&meshSourceInt), sizeof(meshSourceInt));
     WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
     WriteString(file, mainTexturePath);
+    WriteString(file, materialPath);
 }
 void RendererComponent::Deserialize(std::istream& file)
 {
@@ -787,12 +919,17 @@ void RendererComponent::Deserialize(std::istream& file)
             mainTexturePath = ReadString(file);
         else
             mainTexturePath.clear();
+        if (g_sceneLoadingVersion >= 8)
+            materialPath = ReadString(file);
+        else
+            materialPath.clear();
     }
     else
     {
         meshSource = meshPath.empty() ? BuiltIn : File;
         shaderName = DefaultShaderName;
         mainTexturePath.clear();
+        materialPath.clear();
     }
 }
 
@@ -808,6 +945,9 @@ RigidbodyComponent::RigidbodyComponent(RigidbodyComponent* other)
 }
 void RigidbodyComponent::OnInspectorGUI()
 {
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
     DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Rigidbody");
@@ -845,6 +985,7 @@ void RigidbodyComponent::OnInspectorGUI()
     }
     ImGui::Unindent(20.0f);
     if (!enabled) ImGui::PopStyleVar();
+#endif
 }
 
 void RigidbodyComponent::CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale)
@@ -920,6 +1061,9 @@ glm::mat4 ColliderComponent::GetBiasMatrix() const
 
 void ColliderComponent::OnInspectorGUI()
 {
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
     DrawComponentSelectionBackground(this);
     ImGui::Checkbox("##Enabled", &enabled);
     ImGui::SameLine(); ImGui::TextUnformatted("Collider");
@@ -965,6 +1109,7 @@ void ColliderComponent::OnInspectorGUI()
     ImGui::Unindent(20.0f);
 
     if (!enabled) ImGui::PopStyleVar();
+#endif
 }
 
 void ColliderComponent::Serialize(std::ostream& file) const

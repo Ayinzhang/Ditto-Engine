@@ -42,6 +42,13 @@ static void CopyDefaultAsset(const std::string& assetRelativePath, const fs::pat
     }
 }
 
+static void EnsureDefaultAsset(const std::string& assetRelativePath, const fs::path& projectAssetsPath)
+{
+    fs::path dst = projectAssetsPath / fs::path(assetRelativePath);
+    if (fs::exists(dst)) return;
+    CopyDefaultAsset(assetRelativePath, projectAssetsPath);
+}
+
 std::vector<Project> ProjectManager::GetAllProjects()
 {
     std::vector<Project> projects;
@@ -118,6 +125,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     CopyDefaultAsset("Models/Cube.obj", projectAssetsPath);
     CopyDefaultAsset("Models/Sphere.obj", projectAssetsPath);
     CopyDefaultAsset("Shaders/Lit_Toon.shader", projectAssetsPath);
+    CopyDefaultAsset("Materials/Lit_Toon.mat", projectAssetsPath);
     
     // Create default scene file
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";
@@ -185,6 +193,10 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
     }
     
     DITTO_LOG_INFO_STREAM("Project opened: " << currentProject->name );
+
+    fs::path projectAssetsPath = fs::path(projectPath) / "Assets";
+    EnsureDefaultAsset("Shaders/Lit_Toon.shader", projectAssetsPath);
+    EnsureDefaultAsset("Materials/Lit_Toon.mat", projectAssetsPath);
     return true;
 }
 

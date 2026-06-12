@@ -1,10 +1,13 @@
 #include "Scene.h"
+#ifndef DITTO_HEADLESS_SCENE
 #include "../../Engine/Resources/Resource.h"
-#include "PathUtils.h"
-#include "Logger.h"
 #include "ProjectManager.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
+#include "../Graphics/Materials/MaterialAsset.h"
 #include "../../3rdParty/stb_image.h"
+#endif
+#include "PathUtils.h"
+#include "Logger.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -27,6 +30,7 @@ static std::string ReadString(std::istream& file)
     return std::string(buffer.data());
 }
 
+#ifndef DITTO_HEADLESS_SCENE
 static unsigned char* LoadImageRGBA(const std::filesystem::path& path, int* width, int* height, int* channels)
 {
 #ifdef _WIN32
@@ -40,6 +44,7 @@ static unsigned char* LoadImageRGBA(const std::filesystem::path& path, int* widt
     return stbi_load(path.string().c_str(), width, height, channels, 4);
 #endif
 }
+#endif
 
 Scene::Scene()
 {
@@ -123,6 +128,7 @@ void Scene::UnregisterSubtree(GameObject* obj)
     visit(obj);
 }
 
+#ifndef DITTO_HEADLESS_SCENE
 void Scene::CollectRenderData()
 {
     for (auto& pair : renderBatches)
@@ -163,10 +169,20 @@ void Scene::CollectRenderData()
                     meshKey = std::string("builtin:") + (renderer->type == RendererComponent::Sphere ? "sphere" : "cube");
                 }
 
-                std::string shaderName = renderer->shaderName.empty() ? RendererComponent::DefaultShaderName : renderer->shaderName;
-                std::string texturePath = renderer->mainTexturePath;
-                std::string colorKey = std::to_string(renderer->color.r) + "," + std::to_string(renderer->color.g) + "," +
-                    std::to_string(renderer->color.b) + "," + std::to_string(renderer->color.a);
+                Ditto::MaterialAsset material = renderer->materialPath.empty()
+                    ? Ditto::MakeDefaultMaterial("Inline Material")
+                    : Ditto::LoadMaterialAsset(renderer->materialPath);
+                if (renderer->materialPath.empty() || !material.ok)
+                {
+                    material.shaderName = renderer->shaderName.empty() ? RendererComponent::DefaultShaderName : renderer->shaderName;
+                    material.color = renderer->color;
+                    material.mainTexturePath = renderer->mainTexturePath;
+                }
+
+                std::string shaderName = material.shaderName.empty() ? RendererComponent::DefaultShaderName : material.shaderName;
+                std::string texturePath = material.mainTexturePath;
+                std::string colorKey = std::to_string(material.color.r) + "," + std::to_string(material.color.g) + "," +
+                    std::to_string(material.color.b) + "," + std::to_string(material.color.a);
                 std::string batchKey = shaderName + "|" + meshKey + "|" + texturePath + "|" + colorKey;
                 GeometryInstances* batch = nullptr;
                 auto batchIt = renderBatches.find(batchKey);
@@ -186,7 +202,7 @@ void Scene::CollectRenderData()
                 if (batch)
                 {
                     batch->modelMatrices.push_back(transform->GetWorldModel());
-                    batch->instanceColors.push_back(glm::vec4(renderer->color));
+                    batch->instanceColors.push_back(glm::vec4(material.color));
                     batch->instanceCount++;
                 }
             }
@@ -594,6 +610,21 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
 
     return closest;
 }
+#else
+void Scene::CollectRenderData() {}
+void Scene::UpdateSSBOs() {}
+void Scene::Render(Ditto::PipelineHandle, const glm::mat4&, const glm::mat4&, const glm::vec3&, int, int) {}
+void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
+{
+    resource = _resource;
+    renderer = rhi;
+}
+void Scene::EnsureCustomGeometry(const std::string&) {}
+GameObject* Scene::RaycastGameObjects(const glm::vec2&, const glm::mat4&, const glm::mat4&, int, int)
+{
+    return nullptr;
+}
+#endif
 
 struct SceneHeader
 {
@@ -602,8 +633,11 @@ struct SceneHeader
     uint32_t gameObjectCount;
     uint64_t fileSize;
 };
-// v1: original format. v2: RendererComponent::meshPath. v3: ColliderComponent. v4: ColliderComponent::isTrigger. v5: ColliderComponent bias TRS. v6: Renderer mesh source + shader name. v7: Renderer main texture path.
-const uint32_t SCENE_VERSION = 7;
+// v1: original format. v2: RendererComponent::meshPath. v3: ColliderComponent.
+// v4: ColliderComponent::isTrigger. v5: ColliderComponent bias TRS.
+// v6: Renderer mesh source + shader name. v7: Renderer main texture path.
+// v8: Renderer material path.
+const uint32_t SCENE_VERSION = 8;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
 void Scene::WriteToStream(std::ostream& file)

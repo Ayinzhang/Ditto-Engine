@@ -39,6 +39,9 @@ private:
     // 创建脚本弹窗
     bool m_showCreateScriptPopup = false;
     char m_newScriptNameBuffer[64] = "NewScript";
+
+    bool m_showCreateMaterialPopup = false;
+    char m_newMaterialNameBuffer[64] = "New Material";
     
     // 创建文件夹弹窗
     bool m_showCreateFolderPopup = false;
@@ -101,6 +104,7 @@ private:
 
     // 创建新脚本文件
     void CreateNewScript(const std::string& name);
+    void CreateNewMaterial(const std::string& name);
     // 创建新文件夹
     void CreateNewFolder(const std::string& name);
     // 创建新场景
