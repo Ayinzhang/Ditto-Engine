@@ -201,6 +201,8 @@ GameObject::GameObject(GameObject* other)
             AddComponent<TransformComponent>(t);
         else if (auto l = dynamic_cast<LightComponent*>(comp))
             AddComponent<LightComponent>(l);
+        else if (auto c = dynamic_cast<CameraComponent*>(comp))
+            AddComponent<CameraComponent>(c);
         else if (auto r = dynamic_cast<RendererComponent*>(comp))
             AddComponent<RendererComponent>(r);
         else if (auto rb = dynamic_cast<RigidbodyComponent*>(comp))
@@ -405,6 +407,7 @@ void GameObject::Deserialize(std::istream& file)
         {
         case CI::Transform:    newComp = std::make_unique<TransformComponent>(); break;
         case CI::Light:        newComp = std::make_unique<LightComponent>(); break;
+        case CI::Camera:       newComp = std::make_unique<CameraComponent>(); break;
         case CI::Renderer:     newComp = std::make_unique<RendererComponent>(); break;
         case CI::Rigidbody:    newComp = std::make_unique<RigidbodyComponent>(); break;
         case CI::Collider:     newComp = std::make_unique<ColliderComponent>(); break;
@@ -634,6 +637,132 @@ void LightComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&intensity), sizeof(intensity));
 }
 
+CameraComponent::CameraComponent()
+{
+    index = CI::Camera;
+}
+
+CameraComponent::CameraComponent(CameraComponent* other)
+    : mainCamera(other->mainCamera), projectionType(other->projectionType),
+    fieldOfView(other->fieldOfView), orthographicSize(other->orthographicSize),
+    nearClipPlane(other->nearClipPlane), farClipPlane(other->farClipPlane),
+    backgroundColor(other->backgroundColor)
+{
+    index = CI::Camera;
+}
+
+Camera CameraComponent::ToCamera(const TransformComponent* transform) const
+{
+    glm::vec3 position(0.0f);
+    glm::vec3 forward(0.0f, 0.0f, -1.0f);
+    glm::vec3 cameraUp(0.0f, 1.0f, 0.0f);
+
+    if (transform)
+    {
+        glm::mat4 world = transform->GetWorldModel();
+        position = glm::vec3(world[3]);
+        glm::vec3 worldForward = glm::vec3(world * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f));
+        glm::vec3 worldUp = glm::vec3(world * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+        if (glm::length(worldForward) > 0.0001f)
+            forward = glm::normalize(worldForward);
+        if (glm::length(worldUp) > 0.0001f)
+            cameraUp = glm::normalize(worldUp);
+    }
+
+    Camera camera(position, position + forward, cameraUp);
+    camera.projectionType = projectionType;
+    camera.fieldOfView = fieldOfView;
+    camera.orthographicSize = orthographicSize;
+    camera.nearClipPlane = nearClipPlane;
+    camera.farClipPlane = farClipPlane;
+    camera.backgroundColor = backgroundColor;
+    return camera;
+}
+
+void CameraComponent::OnInspectorGUI()
+{
+#ifdef DITTO_HEADLESS_TESTS
+    return;
+#else
+    DrawComponentSelectionBackground(this);
+    ImGui::Checkbox("##Enabled", &enabled);
+    ImGui::SameLine(); ImGui::TextUnformatted("Camera");
+    SelectComponentOnLastItem(this);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
+    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+
+    ImGui::Indent(20.0f);
+    ImGui::Text("Main Camera"); ImGui::SameLine();
+    ImGui::Checkbox("##CameraMain", &mainCamera);
+    TrackUndoableEdit();
+
+    const char* projectionNames[] = { "Perspective", "Orthographic" };
+    int projection = projectionType == Camera::ProjectionType::Orthographic ? 1 : 0;
+    ImGui::Text("Projection "); ImGui::SameLine();
+    if (ImGui::Combo("##CameraProjection", &projection, projectionNames, 2))
+        projectionType = projection == 1 ? Camera::ProjectionType::Orthographic : Camera::ProjectionType::Perspective;
+    TrackUndoableEdit();
+
+    if (projectionType == Camera::ProjectionType::Perspective)
+    {
+        ImGui::Text("FOV        "); ImGui::SameLine();
+        if (ImGui::DragFloat("##CameraFOV", &fieldOfView, 0.1f, 1.0f, 179.0f))
+            fieldOfView = std::clamp(fieldOfView, 1.0f, 179.0f);
+        TrackUndoableEdit();
+    }
+    else
+    {
+        ImGui::Text("Size       "); ImGui::SameLine();
+        if (ImGui::DragFloat("##CameraOrthoSize", &orthographicSize, 0.1f, 0.0001f, 10000.0f))
+            orthographicSize = std::max(0.0001f, orthographicSize);
+        TrackUndoableEdit();
+    }
+
+    ImGui::Text("Near       "); ImGui::SameLine();
+    if (ImGui::DragFloat("##CameraNear", &nearClipPlane, 0.01f, 0.0001f, farClipPlane - 0.0001f))
+        nearClipPlane = std::max(0.0001f, nearClipPlane);
+    TrackUndoableEdit();
+
+    ImGui::Text("Far        "); ImGui::SameLine();
+    if (ImGui::DragFloat("##CameraFar", &farClipPlane, 0.1f, nearClipPlane + 0.0001f, 100000.0f))
+        farClipPlane = std::max(nearClipPlane + 0.0001f, farClipPlane);
+    TrackUndoableEdit();
+
+    ImGui::Text("Background "); ImGui::SameLine();
+    ImGui::ColorEdit4("##CameraBackground", &backgroundColor.x, ImGuiColorEditFlags_AlphaBar);
+    TrackUndoableEdit();
+
+    ImGui::Unindent(20.0f);
+    if (!enabled) ImGui::PopStyleVar();
+#endif
+}
+
+void CameraComponent::Serialize(std::ostream& file) const
+{
+    file.write(reinterpret_cast<const char*>(&mainCamera), sizeof(mainCamera));
+    int32_t projection = static_cast<int32_t>(projectionType);
+    file.write(reinterpret_cast<const char*>(&projection), sizeof(projection));
+    file.write(reinterpret_cast<const char*>(&fieldOfView), sizeof(fieldOfView));
+    file.write(reinterpret_cast<const char*>(&orthographicSize), sizeof(orthographicSize));
+    file.write(reinterpret_cast<const char*>(&nearClipPlane), sizeof(nearClipPlane));
+    file.write(reinterpret_cast<const char*>(&farClipPlane), sizeof(farClipPlane));
+    file.write(reinterpret_cast<const char*>(&backgroundColor), sizeof(glm::vec4));
+}
+
+void CameraComponent::Deserialize(std::istream& file)
+{
+    file.read(reinterpret_cast<char*>(&mainCamera), sizeof(mainCamera));
+    int32_t projection = 0;
+    file.read(reinterpret_cast<char*>(&projection), sizeof(projection));
+    projectionType = projection == 1 ? Camera::ProjectionType::Orthographic : Camera::ProjectionType::Perspective;
+    file.read(reinterpret_cast<char*>(&fieldOfView), sizeof(fieldOfView));
+    file.read(reinterpret_cast<char*>(&orthographicSize), sizeof(orthographicSize));
+    file.read(reinterpret_cast<char*>(&nearClipPlane), sizeof(nearClipPlane));
+    file.read(reinterpret_cast<char*>(&farClipPlane), sizeof(farClipPlane));
+    file.read(reinterpret_cast<char*>(&backgroundColor), sizeof(glm::vec4));
+}
+
 RendererComponent::RendererComponent(Type _type)
     : type(_type), meshSource(BuiltIn), color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
 {
@@ -645,6 +774,17 @@ RendererComponent::RendererComponent(RendererComponent* other)
     mainTexturePath(other->mainTexturePath), meshPath(other->meshPath)
 {
     index = CI::Renderer;
+}
+
+static const char* RendererTypeName(RendererComponent::Type type)
+{
+    switch (type)
+    {
+    case RendererComponent::Cube: return "Cube";
+    case RendererComponent::Sphere: return "Sphere";
+    case RendererComponent::Quad: return "Quad";
+    default: return "Unknown";
+    }
 }
 
 bool RendererComponent::UsesFileMesh() const
@@ -668,7 +808,7 @@ void RendererComponent::OnInspectorGUI()
 
     std::string meshDisplay;
     if (meshSource == BuiltIn)
-        meshDisplay = (type == Sphere) ? "Sphere" : "Cube";
+        meshDisplay = RendererTypeName(type);
     else
         meshDisplay = meshPath.empty() ? "None (Mesh)" : FileNameFromPath(meshPath);
 
@@ -697,6 +837,12 @@ void RendererComponent::OnInspectorGUI()
             if (g_editor) g_editor->PushUndoSnapshot();
             meshSource = BuiltIn;
             type = Sphere;
+        }
+        if (ImGui::MenuItem("Quad", nullptr, meshSource == BuiltIn && type == Quad))
+        {
+            if (g_editor) g_editor->PushUndoSnapshot();
+            meshSource = BuiltIn;
+            type = Quad;
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Use File Mesh", nullptr, meshSource == File))

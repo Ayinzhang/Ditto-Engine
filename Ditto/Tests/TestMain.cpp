@@ -219,6 +219,15 @@ namespace
         DumpObjectJson(std::cout, scene.rootGameObject.get(), 2);
         std::cout << "\n}\n";
     }
+
+    GameObject* FindDirectChild(GameObject* parent, const std::string& name)
+    {
+        if (!parent) return nullptr;
+        for (const auto& child : parent->children)
+            if (child && child->name == name)
+                return child.get();
+        return nullptr;
+    }
 }
 
 #define TEST_CASE(stage, name) static void name(); static RegisterTest reg_##name(stage, #name, &name); static void name()
@@ -305,9 +314,12 @@ TEST_CASE("file", SceneSnapshotRoundTrip)
     Scene loaded;
     REQUIRE(loaded.RestoreSnapshot(snapshot));
     REQUIRE(loaded.name == "RoundTrip");
-    REQUIRE(loaded.rootGameObject->children.size() == 1);
+    REQUIRE(loaded.rootGameObject->children.size() >= 2);
+    REQUIRE(FindDirectChild(loaded.rootGameObject.get(), "Main Camera") != nullptr);
+    REQUIRE(FindDirectChild(loaded.rootGameObject.get(), "Main Camera")->GetComponent<CameraComponent>() != nullptr);
 
-    GameObject* loadedActor = loaded.rootGameObject->children[0].get();
+    GameObject* loadedActor = FindDirectChild(loaded.rootGameObject.get(), "Actor");
+    REQUIRE(loadedActor != nullptr);
     REQUIRE(loadedActor->name == "Actor");
 
     auto* loadedTransform = loadedActor->GetComponent<TransformComponent>();
@@ -402,9 +414,12 @@ TEST_CASE("file", SceneSaveLoadAndCorruptFileHandling)
     Scene loaded;
     REQUIRE(loaded.LoadScene(scenePath.string()));
     REQUIRE(loaded.name == "FileRoundTrip");
-    REQUIRE(loaded.rootGameObject->children.size() == 1);
-    REQUIRE(loaded.rootGameObject->children[0]->name == "DiskActor");
-    REQUIRE(loaded.rootGameObject->children[0]->GetComponent<RendererComponent>() != nullptr);
+    REQUIRE(loaded.rootGameObject->children.size() >= 2);
+    REQUIRE(FindDirectChild(loaded.rootGameObject.get(), "Main Camera") != nullptr);
+    REQUIRE(FindDirectChild(loaded.rootGameObject.get(), "Main Camera")->GetComponent<CameraComponent>() != nullptr);
+    GameObject* diskActor = FindDirectChild(loaded.rootGameObject.get(), "DiskActor");
+    REQUIRE(diskActor != nullptr);
+    REQUIRE(diskActor->GetComponent<RendererComponent>() != nullptr);
 
     {
         std::ofstream corrupt(corruptPath, std::ios::binary | std::ios::trunc);

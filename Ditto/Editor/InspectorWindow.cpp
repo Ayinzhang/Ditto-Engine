@@ -323,7 +323,7 @@ void InspectorWindow::Draw()
                         float distance = glm::length(camOffset);
 
                         m_previewCamera->yaw -= mouseDelta.x * rotSpeed;
-                        m_previewCamera->pitch += mouseDelta.y * rotSpeed;
+                        m_previewCamera->pitch = std::clamp(m_previewCamera->pitch + mouseDelta.y * rotSpeed, -89.0f, 89.0f);
 
                         float yawRad = glm::radians(m_previewCamera->yaw);
                         float pitchRad = glm::radians(m_previewCamera->pitch);
@@ -334,10 +334,7 @@ void InspectorWindow::Draw()
                             distance * cos(pitchRad) * cos(yawRad)
                         );
 
-                        glm::vec3 forward = glm::normalize(m_currentPreviewModel.center - m_previewCamera->position);
-                        m_previewCamera->forward = forward;
-                        m_previewCamera->right = glm::normalize(glm::cross(forward, m_previewCamera->worldUp));
-                        m_previewCamera->up = -glm::normalize(glm::cross(forward, m_previewCamera->right));
+                        m_previewCamera->LookAt(m_currentPreviewModel.center);
                     }
                 }
             }
@@ -390,23 +387,39 @@ void InspectorWindow::Draw()
             ImGui::TextUnformatted("Components");
             ImGui::Separator();
             
-            // Built-in components
-            if (!(m_currentObject->compMask >> 1 & 1) && ImGui::MenuItem("Light"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<LightComponent>(); }
-            if (!(m_currentObject->compMask >> 2 & 1) && ImGui::MenuItem("Renderer"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RendererComponent>(); }
-            if (!(m_currentObject->compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RigidbodyComponent>(); }
-            if (ImGui::MenuItem("Collider"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(); }
+            if (ImGui::BeginMenu("Rendering"))
+            {
+                if (!(m_currentObject->compMask >> 1 & 1) && ImGui::MenuItem("Light"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<LightComponent>(); }
+                if (!(m_currentObject->compMask & ComponentIndex::Camera) && ImGui::MenuItem("Camera"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<CameraComponent>(); }
+                if (!(m_currentObject->compMask >> 2 & 1) && ImGui::MenuItem("Renderer"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RendererComponent>(); }
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("Physics"))
+            {
+                if (!(m_currentObject->compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RigidbodyComponent>(); }
+                if (ImGui::MenuItem("Collider"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(); }
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("UI"))
+            {
+                if (!(m_currentObject->compMask >> 6 & 1) && ImGui::MenuItem("Image"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIImageComponent>(); }
+                if (!(m_currentObject->compMask >> 7 & 1) && ImGui::MenuItem("Text"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UITextComponent>(); }
+                if (!(m_currentObject->compMask >> 8 & 1) && ImGui::MenuItem("Button"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIButtonComponent>(); }
+                ImGui::EndMenu();
+            }
+
             if (!(m_currentObject->compMask >> 5 & 1) && ImGui::MenuItem("Audio Source"))
                 { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<AudioSourceComponent>(); }
-            if (!(m_currentObject->compMask >> 6 & 1) && ImGui::MenuItem("UI Image"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIImageComponent>(); }
-            if (!(m_currentObject->compMask >> 7 & 1) && ImGui::MenuItem("UI Text"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UITextComponent>(); }
-            if (!(m_currentObject->compMask >> 8 & 1) && ImGui::MenuItem("UI Button"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIButtonComponent>(); }
             
             ImGui::Separator();
             ImGui::TextUnformatted("Scripts");
@@ -473,6 +486,7 @@ void InspectorWindow::InitModelPreview()
 
     m_previewRT = r->CreateRenderTarget(m_previewWidth, m_previewHeight);
     m_previewCamera = std::make_unique<Camera>(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    m_previewCamera->SetPerspective(45.0f, 0.1f, 100.0f);
 
     // Solid-white wireframe preview shader (HLSL). The model transform is folded
     // into `view` on the CPU, so the shared FrameUniforms block drives it. The
@@ -603,9 +617,7 @@ void InspectorWindow::LoadPreviewModel(const std::string& modelPath)
     if (m_previewCamera) {
         float distance = m_currentPreviewModel.radius * 2.5f;
         m_previewCamera->position = m_currentPreviewModel.center + glm::vec3(0, distance * 0.3f, distance);
-        m_previewCamera->yaw = -90.0f;
-        m_previewCamera->pitch = -15.0f;
-        m_previewCamera->UpdateCameraVectors();
+        m_previewCamera->LookAt(m_currentPreviewModel.center);
     }
 
     m_modelInitialized = false;
@@ -633,8 +645,7 @@ void InspectorWindow::RenderModelPreview()
     r->SetWireframe(true);
 
     glm::mat4 view = m_previewCamera->GetViewMatrix();
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f),
-        (float)m_previewWidth / (float)m_previewHeight, 0.1f, 100.0f);
+    glm::mat4 projection = m_previewCamera->GetProjectionMatrix((float)m_previewWidth / (float)m_previewHeight);
     glm::mat4 model = glm::translate(glm::mat4(1.0f), -m_currentPreviewModel.center);
 
     r->BindPipeline(m_previewPipeline);

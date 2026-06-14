@@ -44,6 +44,84 @@ static void EditorFileDropCallback(GLFWwindow* window, int count, const char** p
     engine->editor->ImportExternalFilesToProject(dropped);
 }
 
+static GameObject* CreateCameraObject(GameObject* parent, const std::string& name = "Camera")
+{
+    GameObject* cameraObj = parent->AddChild(std::make_unique<GameObject>(name));
+    if (TransformComponent* transform = cameraObj->GetComponent<TransformComponent>())
+    {
+        transform->position = glm::vec3(0.0f, 2.0f, 5.0f);
+        transform->rotation = glm::vec3(-21.8f, 0.0f, 0.0f);
+        transform->localDirty = true;
+        transform->UpdateTransform();
+    }
+    cameraObj->AddComponent<CameraComponent>();
+    return cameraObj;
+}
+
+static GameObject* CreateSpriteObject(GameObject* parent)
+{
+    GameObject* sprite = parent->AddChild(std::make_unique<GameObject>("Sprite"));
+    RendererComponent* renderer = sprite->AddComponent<RendererComponent>(RendererComponent::Quad);
+    renderer->shaderName = RendererComponent::DefaultShaderName;
+    renderer->color = glm::vec4(1.0f);
+    if (TransformComponent* transform = sprite->GetComponent<TransformComponent>())
+    {
+        transform->scale = glm::vec3(1.0f);
+        transform->localDirty = true;
+        transform->UpdateTransform();
+    }
+    return sprite;
+}
+
+static GameObject* CreateCanvasObject(GameObject* parent)
+{
+    return parent->AddChild(std::make_unique<GameObject>("Canvas"));
+}
+
+static bool IsCanvasObject(GameObject* obj)
+{
+    return obj && obj->name == "Canvas";
+}
+
+static GameObject* FindCanvasInChildren(GameObject* parent)
+{
+    if (!parent) return nullptr;
+    if (IsCanvasObject(parent)) return parent;
+    for (const auto& child : parent->children)
+        if (GameObject* canvas = FindCanvasInChildren(child.get()))
+            return canvas;
+    return nullptr;
+}
+
+static GameObject* FindOrCreateCanvas(GameObject* root, GameObject* preferredParent)
+{
+    if (IsCanvasObject(preferredParent)) return preferredParent;
+    if (GameObject* canvas = FindCanvasInChildren(root))
+        return canvas;
+    return CreateCanvasObject(root ? root : preferredParent);
+}
+
+static GameObject* CreateUIImageObject(GameObject* parent)
+{
+    GameObject* image = parent->AddChild(std::make_unique<GameObject>("Image"));
+    image->AddComponent<UIImageComponent>();
+    return image;
+}
+
+static GameObject* CreateUITextObject(GameObject* parent)
+{
+    GameObject* text = parent->AddChild(std::make_unique<GameObject>("Text"));
+    text->AddComponent<UITextComponent>();
+    return text;
+}
+
+static GameObject* CreateUIButtonObject(GameObject* parent)
+{
+    GameObject* button = parent->AddChild(std::make_unique<GameObject>("Button"));
+    button->AddComponent<UIButtonComponent>();
+    return button;
+}
+
 // Helper function to find editor assets directory
 static std::string FindEditorAssetsPath()
 {
@@ -691,7 +769,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
 
     bool hasChildren = !obj->children.empty();
     
-    void* icon = isRoot ? GetDittoIcon() : GetGameObjectIcon();
+    void* icon = isRoot ? GetDittoIcon() : GetGameObjectIconForObject(obj);
     
     // Calculate indent: 18px per level
     float indent = depth * 18.0f;
@@ -847,8 +925,71 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             PushUndoSnapshot();
             GameObject* newObj = obj->AddChild(std::make_unique<GameObject>("New GameObject"));
             selectedObject = newObj;
+            activeSelection = newObj;
             selectedFile.Clear();
             engine->scene->MarkDirty();
+        }
+        if (ImGui::MenuItem("Camera"))
+        {
+            PushUndoSnapshot();
+            GameObject* cameraObj = CreateCameraObject(obj);
+            selectedObject = cameraObj;
+            activeSelection = cameraObj;
+            selectedFile.Clear();
+            engine->scene->MarkDirty();
+        }
+        if (ImGui::BeginMenu("2D Object"))
+        {
+            if (ImGui::MenuItem("Sprite"))
+            {
+                PushUndoSnapshot();
+                GameObject* sprite = CreateSpriteObject(obj);
+                selectedObject = sprite;
+                activeSelection = sprite;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("UI"))
+        {
+            if (ImGui::MenuItem("Canvas"))
+            {
+                PushUndoSnapshot();
+                GameObject* canvas = CreateCanvasObject(obj);
+                selectedObject = canvas;
+                activeSelection = canvas;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            if (ImGui::MenuItem("Image"))
+            {
+                PushUndoSnapshot();
+                GameObject* image = CreateUIImageObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj));
+                selectedObject = image;
+                activeSelection = image;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            if (ImGui::MenuItem("Text"))
+            {
+                PushUndoSnapshot();
+                GameObject* text = CreateUITextObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj));
+                selectedObject = text;
+                activeSelection = text;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            if (ImGui::MenuItem("Button"))
+            {
+                PushUndoSnapshot();
+                GameObject* button = CreateUIButtonObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj));
+                selectedObject = button;
+                activeSelection = button;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            ImGui::EndMenu();
         }
         // Deferred: both mutate an ancestor's children vector mid-draw.
         if (ImGui::MenuItem("Copy")) m_pendingCopy = true;
@@ -878,8 +1019,74 @@ void Editor::DrawHierarchy()
             lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
             lightObj->GetComponent<TransformComponent>()->UpdateTransform();
             selectedObject = lightObj;
+            activeSelection = lightObj;
             selectedFile.Clear();
             engine->scene->MarkDirty();
+        }
+
+        if (ImGui::MenuItem("Create Camera"))
+        {
+            PushUndoSnapshot();
+            GameObject* cameraObj = CreateCameraObject(engine->scene->rootGameObject.get());
+            selectedObject = cameraObj;
+            activeSelection = cameraObj;
+            selectedFile.Clear();
+            engine->scene->MarkDirty();
+        }
+
+        if (ImGui::BeginMenu("2D Object"))
+        {
+            if (ImGui::MenuItem("Sprite"))
+            {
+                PushUndoSnapshot();
+                GameObject* sprite = CreateSpriteObject(engine->scene->rootGameObject.get());
+                selectedObject = sprite;
+                activeSelection = sprite;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("UI"))
+        {
+            if (ImGui::MenuItem("Canvas"))
+            {
+                PushUndoSnapshot();
+                GameObject* canvas = CreateCanvasObject(engine->scene->rootGameObject.get());
+                selectedObject = canvas;
+                activeSelection = canvas;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            if (ImGui::MenuItem("Image"))
+            {
+                PushUndoSnapshot();
+                GameObject* image = CreateUIImageObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), engine->scene->rootGameObject.get()));
+                selectedObject = image;
+                activeSelection = image;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            if (ImGui::MenuItem("Text"))
+            {
+                PushUndoSnapshot();
+                GameObject* text = CreateUITextObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), engine->scene->rootGameObject.get()));
+                selectedObject = text;
+                activeSelection = text;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            if (ImGui::MenuItem("Button"))
+            {
+                PushUndoSnapshot();
+                GameObject* button = CreateUIButtonObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), engine->scene->rootGameObject.get()));
+                selectedObject = button;
+                activeSelection = button;
+                selectedFile.Clear();
+                engine->scene->MarkDirty();
+            }
+            ImGui::EndMenu();
         }
         
         if (ImGui::BeginMenu("Create Geometry"))
@@ -892,6 +1099,7 @@ void Editor::DrawHierarchy()
                     std::make_unique<GameObject>("Cube"));
                 cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
                 selectedObject = cube;
+                activeSelection = cube;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
             }
@@ -903,6 +1111,7 @@ void Editor::DrawHierarchy()
                     std::make_unique<GameObject>("Sphere"));
                 sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
                 selectedObject = sphere;
+                activeSelection = sphere;
                 selectedFile.Clear();
                 engine->scene->MarkDirty();
             }
@@ -2211,6 +2420,9 @@ void Editor::InitFileIcons()
     // Load special icons
     m_dittoIcon = LoadIcon(m_assetsPath + "/Scene.png");
     m_gameObjectIcon = LoadIcon(m_assetsPath + "/GameObject.png");
+    m_cameraIcon = LoadIcon(m_assetsPath + "/Camera.png");
+    m_spriteIcon = LoadIcon(m_assetsPath + "/Sprite.png");
+    m_rectTransformIcon = LoadIcon(m_assetsPath + "/RectTransform.png");
     
     // Load lock icons
     m_lockIcon = LoadIcon(m_assetsPath + "/Lock.png");
@@ -2282,6 +2494,21 @@ void* Editor::GetFolderEmptyIcon()  { return IconTexID(m_folderEmptyIcon); }
 void* Editor::GetFolderOpenedIcon() { return IconTexID(m_folderOpenedIcon); }
 void* Editor::GetDittoIcon()        { return IconTexID(m_dittoIcon); }
 void* Editor::GetGameObjectIcon()   { return IconTexID(m_gameObjectIcon); }
+void* Editor::GetCameraIcon()       { return IconTexID(m_cameraIcon); }
+void* Editor::GetSpriteIcon()       { return IconTexID(m_spriteIcon); }
+void* Editor::GetRectTransformIcon(){ return IconTexID(m_rectTransformIcon); }
+void* Editor::GetGameObjectIconForObject(GameObject* obj)
+{
+    if (!obj) return GetGameObjectIcon();
+    if (obj->GetComponent<CameraComponent>()) return GetCameraIcon();
+    if (obj->GetComponent<UIImageComponent>() || obj->GetComponent<UITextComponent>() ||
+        obj->GetComponent<UIButtonComponent>() || obj->name == "Canvas")
+        return GetRectTransformIcon();
+    if (RendererComponent* renderer = obj->GetComponent<RendererComponent>())
+        if (renderer->meshSource == RendererComponent::BuiltIn && renderer->type == RendererComponent::Quad)
+            return GetSpriteIcon();
+    return GetGameObjectIcon();
+}
 void* Editor::GetLockIcon()         { return IconTexID(m_lockIcon); }
 void* Editor::GetUnlockIcon()       { return IconTexID(m_unlockIcon); }
 void* Editor::GetPlayIcon()         { return IconTexID(m_playIcon); }
@@ -2301,6 +2528,9 @@ void Editor::CleanupFileIcons()
         r->DestroyTexture(m_folderOpenedIcon);
         r->DestroyTexture(m_dittoIcon);
         r->DestroyTexture(m_gameObjectIcon);
+        r->DestroyTexture(m_cameraIcon);
+        r->DestroyTexture(m_spriteIcon);
+        r->DestroyTexture(m_rectTransformIcon);
         r->DestroyTexture(m_lockIcon);
         r->DestroyTexture(m_unlockIcon);
         r->DestroyTexture(m_playIcon);
@@ -2311,6 +2541,7 @@ void Editor::CleanupFileIcons()
     for (auto& h : m_icons) h = {};
     m_folderIcon = m_folderEmptyIcon = m_folderOpenedIcon = {};
     m_dittoIcon = m_gameObjectIcon = m_lockIcon = m_unlockIcon = {};
+    m_cameraIcon = m_spriteIcon = m_rectTransformIcon = {};
     m_playIcon = m_pauseIcon = m_stopIcon = {};
 
     m_fileIconsInitialized = false;

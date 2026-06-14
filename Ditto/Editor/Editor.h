@@ -166,6 +166,10 @@ struct Editor
     void* GetFolderOpenedIcon();
     void* GetDittoIcon();
     void* GetGameObjectIcon();
+    void* GetGameObjectIconForObject(GameObject* obj);
+    void* GetCameraIcon();
+    void* GetSpriteIcon();
+    void* GetRectTransformIcon();
     void* GetLockIcon();
     void* GetUnlockIcon();
     void* GetPlayIcon();
@@ -181,6 +185,9 @@ private:
     Ditto::TextureHandle m_folderOpenedIcon;
     Ditto::TextureHandle m_dittoIcon;
     Ditto::TextureHandle m_gameObjectIcon;
+    Ditto::TextureHandle m_cameraIcon;
+    Ditto::TextureHandle m_spriteIcon;
+    Ditto::TextureHandle m_rectTransformIcon;
     Ditto::TextureHandle m_lockIcon;
     Ditto::TextureHandle m_unlockIcon;
     Ditto::TextureHandle m_playIcon;

@@ -383,22 +383,24 @@ void Engine::Run()
 
         renderer->BeginFrame();
         renderer->SetViewport(0, 0, window_width, window_height);
-        renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
 
         if (gameMode)
         {
+            Camera activeCamera = scene ? scene->GetMainCamera(*gameCamera) : *gameCamera;
+            renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, activeCamera.backgroundColor);
             renderer->SetDepthState(true);
 
-            mat4 view = gameCamera->GetViewMatrix();
-            mat4 projection = perspective(radians(45.0f), (float)window_width / (float)window_height, 0.1f, 100.0f);
+            mat4 view = activeCamera.GetViewMatrix();
+            mat4 projection = activeCamera.GetProjectionMatrix((float)window_width / (float)window_height);
             
             if (scene && shaderPipeline)
             {
-                scene->Render(shaderPipeline, view, projection, gameCamera->position, window_width, window_height);
+                scene->Render(shaderPipeline, view, projection, activeCamera.position, window_width, window_height);
             }
         }
         else
         {
+            renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, sceneCamera->backgroundColor);
             if (editor)
             {
                 editor->Draw();
@@ -432,15 +434,17 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
 
     renderer->BeginRenderTarget(rt);
     renderer->SetScissor(false);
-    renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
+    Camera fallbackCamera = isGameView ? *gameCamera : *sceneCamera;
+    Camera activeCamera = (isGameView && scene) ? scene->GetMainCamera(fallbackCamera) : fallbackCamera;
+    renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth,
+        activeCamera.backgroundColor);
     renderer->SetBlendState(false);
     renderer->SetDepthState(true);
 
-    Camera* cam = isGameView ? gameCamera.get() : sceneCamera.get();
-    mat4 view = cam->GetViewMatrix();
-    mat4 projection = perspective(radians(45.0f), (float)w / (float)h, 0.1f, 100.0f);
+    mat4 view = activeCamera.GetViewMatrix();
+    mat4 projection = activeCamera.GetProjectionMatrix((float)w / (float)h);
 
-    scene->Render(shaderPipeline, view, projection, cam->position, w, h);
+    scene->Render(shaderPipeline, view, projection, activeCamera.position, w, h);
 
     renderer->EndRenderTarget();
 

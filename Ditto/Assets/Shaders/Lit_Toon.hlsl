@@ -5,7 +5,7 @@
 //
 // Resource layout (explicit [[vk::binding(binding, set)]]):
 //   set 0: frame-global uniform block (view/projection/lighting)
-//   set 1: per-instance storage buffers (model matrices, colors)
+//   set 1: per-instance storage buffers (model matrices, colors) + material texture
 // On OpenGL, SPIRV-Cross flattens sets; the UBO lands at uniform binding 0 and the
 // two storage buffers at SSBO bindings 0/1 (separate GL binding namespaces, no clash).
 
@@ -20,16 +20,19 @@
 
 [[vk::binding(0, 1)]] StructuredBuffer<float4x4> ModelMatrices  : register(t0, space1);
 [[vk::binding(1, 1)]] StructuredBuffer<float4>   InstanceColors : register(t1, space1);
+[[vk::binding(2, 1)]] Texture2D MainTex : register(t2, space1);
+[[vk::binding(3, 1)]] SamplerState MainTexSampler : register(s3, space1);
 
 struct VSOutput
 {
     float4 position : SV_Position;
     float3 worldPos : TEXCOORD0;
     float3 normal   : NORMAL;
+    float2 uv       : TEXCOORD1;
     float4 color    : COLOR;
 };
 
-VSOutput VSMain(float3 aPos : POSITION, float3 aNormal : NORMAL, uint instanceID : SV_InstanceID)
+VSOutput VSMain(float3 aPos : POSITION, float3 aNormal : NORMAL, float2 aUv : TEXCOORD0, uint instanceID : SV_InstanceID)
 {
     float4x4 model = ModelMatrices[instanceID];
 
@@ -38,6 +41,7 @@ VSOutput VSMain(float3 aPos : POSITION, float3 aNormal : NORMAL, uint instanceID
     o.position = mul(projection, mul(view, world));
     o.worldPos = world.xyz;
     o.normal   = normalize(mul((float3x3)model, aNormal));
+    o.uv        = aUv;
     o.color    = InstanceColors[instanceID];
     return o;
 }
@@ -58,5 +62,6 @@ float4 PSMain(VSOutput i) : SV_Target
     float3 specular   = specularStrength * spec * lightColor;
 
     float3 lighting = (ambient + diffuse + specular) * lightIntensity;
-    return float4(lighting * i.color.rgb, i.color.a);
+    float4 albedo = MainTex.Sample(MainTexSampler, i.uv) * i.color;
+    return float4(lighting * albedo.rgb, albedo.a);
 }

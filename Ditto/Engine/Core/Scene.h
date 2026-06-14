@@ -7,6 +7,7 @@
 #include "GameObject.h"
 #include "../Physics/Physics.h"
 #include "../Graphics/RHI/IRenderer.h"
+#include "../Graphics/Camera.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 
@@ -66,6 +67,7 @@ struct Scene
     // In-game UI pass (owned; lazily created by Render, absent in headless
     // builds). Raw pointer so this header doesn't need the UIRenderer type.
     UIRenderer* uiRenderer = nullptr;
+    GameObject* mainCamera = nullptr;
 
     std::function<void()> onModified;
 
@@ -73,6 +75,8 @@ struct Scene
     ~Scene();
 
     void ClearScene();
+    void EnsureDefaultCamera();
+    Camera GetMainCamera(const Camera& fallback);
     bool SaveScene(const std::string& filepath);
     bool LoadScene(const std::string& filepath);
 
@@ -98,6 +102,7 @@ struct Scene
     void EnsureCustomGeometry(const std::string& meshPath);
 
     GameObject* RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4& view, const glm::mat4& projection, int viewportWidth, int viewportHeight);
+    GameObject* RaycastGameObjects(const glm::vec2& mousePos, const Camera& camera, int viewportWidth, int viewportHeight);
 
     glm::vec3 GetLightColor() const;
     glm::vec3 GetLightDirection() const;

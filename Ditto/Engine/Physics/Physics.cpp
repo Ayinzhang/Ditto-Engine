@@ -161,6 +161,8 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique
         {
             colliderType = (renderer->type == RendererComponent::Sphere)
                 ? ColliderComponent::Sphere : ColliderComponent::Box;
+            if (renderer->type == RendererComponent::Quad)
+                colliderScale.z = std::max(colliderScale.z, 0.01f);
         }
 
         switch (colliderType)

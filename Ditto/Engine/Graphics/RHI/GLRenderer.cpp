@@ -300,7 +300,7 @@ namespace Ditto
             glSamplerParameteri(m_defaultSampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         }
         glBindTextureUnit(static_cast<GLuint>(binding), t ? t->tex : 0);
-        glBindSampler(static_cast<GLuint>(binding + 1), m_defaultSampler);
+        glBindSampler(static_cast<GLuint>(binding), m_defaultSampler);
     }
 
     RenderTargetHandle GLRenderer::CreateRenderTarget(int w, int h)

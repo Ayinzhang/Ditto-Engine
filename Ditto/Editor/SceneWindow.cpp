@@ -56,7 +56,7 @@ ImVec2D SceneWindow::WorldToScreen(const glm::vec3& worldPos)
     if (!camera) return ImVec2D(0, 0);
 
     glm::mat4 view = camera->GetViewMatrix();
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), viewportSize.x / viewportSize.y, 0.1f, 100.0f);
+    glm::mat4 proj = camera->GetProjectionMatrix(viewportSize.x / viewportSize.y);
 
     glm::vec4 clipPos = proj * view * glm::vec4(worldPos, 1.0f);
     if (clipPos.w <= 0) return ImVec2D(-1000, -1000);
@@ -247,6 +247,8 @@ void SceneWindow::DrawPhysicsMeshGizmos()
             ColliderComponent implicitCollider(
                 renderer->type == RendererComponent::Sphere ? ColliderComponent::Sphere : ColliderComponent::Box);
             implicitCollider.gameObject = selectedObject;
+            if (renderer->type == RendererComponent::Quad)
+                implicitCollider.biasScale.z = 0.01f;
             DrawColliderMeshGizmo(&implicitCollider, worldMat);
         }
     }
@@ -301,11 +303,12 @@ void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
 
     // MUST match RenderSceneToTexture's projection exactly or the gizmo drifts.
     glm::mat4 view = camera->GetViewMatrix();
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), w / h, 0.1f, 100.0f);
+    glm::mat4 proj = camera->GetProjectionMatrix(w / h);
 
-    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetOrthographic(camera->projectionType == Camera::ProjectionType::Orthographic);
     ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
     ImGuizmo::SetRect(viewMin.x, viewMin.y, w, h);
+    ImGuizmo::SetGizmoSizeClipSpace(0.14f);
 
     ImGuizmo::OPERATION op =
         m_toolMode == ToolMode::Rotate ? ImGuizmo::ROTATE :
@@ -438,7 +441,7 @@ void SceneWindow::DrawAxisGizmo()
     ImVec2 windowSize = ImGui::GetWindowSize();
     
     // Position in top-right corner with some padding
-    float gizmoSize = 80.0f;
+    float gizmoSize = 110.0f;
     float padding = 20.0f;
     ImVec2 center(windowPos.x + windowSize.x - gizmoSize * 0.5f - padding, windowPos.y + gizmoSize * 0.5f + padding);
     
@@ -475,7 +478,7 @@ void SceneWindow::DrawAxisGizmo()
     
     // Axis length
     float axisLength = gizmoSize * 0.35f;
-    float lineThickness = 3.0f;
+    float lineThickness = 4.0f;
     
     // Store axis info for proper depth sorting
     struct AxisInfo {
@@ -515,6 +518,7 @@ void SceneWindow::DrawAxisGizmo()
         
         // Draw line from center to end
         drawList->AddLine(center, endPoint, axis.color, lineThickness);
+        drawList->AddCircleFilled(endPoint, 8.0f, axis.color, 16);
         
         // Draw label at end of axis
         ImVec2 textSize = ImGui::CalcTextSize(axis.label);
@@ -578,10 +582,7 @@ void SceneWindow::HandleCameraRotation()
         // Apply rotations to forward vector
         glm::vec3 newForward = glm::normalize(yawRotation * pitchRotation * camera->forward);
         
-        // Update camera
-        camera->forward = newForward;
-        camera->right = glm::normalize(glm::cross(camera->forward, glm::vec3(0, 1, 0)));
-        camera->up = glm::normalize(glm::cross(camera->right, camera->forward));
+        camera->LookAt(camera->position + newForward);
         
         m_lastMousePos = currentMousePos;
     }
@@ -604,13 +605,9 @@ void SceneWindow::HandleObjectSelection()
     // Calculate mouse position in viewport coordinates
     glm::vec2 mouseViewportPos(mousePos.x - windowPos.x, mousePos.y - windowPos.y);
 
-    // Get view and projection matrices
-    glm::mat4 view = camera->GetViewMatrix();
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), windowSize.x / windowSize.y, 0.1f, 100.0f);
-
     // Perform raycast
     GameObject* hitObject = m_editor->engine->scene->RaycastGameObjects(
-        mouseViewportPos, view, projection, (int)windowSize.x, (int)windowSize.y);
+        mouseViewportPos, *camera, (int)windowSize.x, (int)windowSize.y);
 
     if (hitObject)
     {

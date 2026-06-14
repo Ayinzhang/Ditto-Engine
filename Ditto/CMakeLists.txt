@@ -112,6 +112,7 @@ add_executable(DittoTests
     Engine/Core/ProjectManager.cpp
     Engine/Core/CSharpScript.cpp
     Engine/Core/MonoRuntime.cpp
+    Engine/Graphics/Camera.cpp
     Engine/Physics/Physics.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp
@@ -146,6 +147,7 @@ add_executable(DittoRenderSmoke
     Engine/Core/ProjectManager.cpp
     Engine/Core/CSharpScript.cpp
     Engine/Core/MonoRuntime.cpp
+    Engine/Graphics/Camera.cpp
     Engine/Physics/Physics.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp

@@ -47,6 +47,28 @@ static unsigned char* LoadImageRGBA(const std::filesystem::path& path, int* widt
 }
 #endif
 
+static const char* RendererTypeName(RendererComponent::Type type)
+{
+    switch (type)
+    {
+    case RendererComponent::Cube: return "Cube";
+    case RendererComponent::Sphere: return "Sphere";
+    case RendererComponent::Quad: return "Quad";
+    default: return "Unknown";
+    }
+}
+
+static const char* RendererTypeKey(RendererComponent::Type type)
+{
+    switch (type)
+    {
+    case RendererComponent::Cube: return "cube";
+    case RendererComponent::Sphere: return "sphere";
+    case RendererComponent::Quad: return "quad";
+    default: return "unknown";
+    }
+}
+
 Scene::Scene()
 {
     name = "Default";
@@ -54,9 +76,11 @@ Scene::Scene()
 
     rootGameObject = std::make_unique<GameObject>(name);
     rootGameObject->name = name;
+    EnsureDefaultCamera();
 
     geometryBatches[RendererComponent::Cube] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
     geometryBatches[RendererComponent::Sphere] = std::make_unique<GeometryInstances>(RendererComponent::Sphere);
+    geometryBatches[RendererComponent::Quad] = std::make_unique<GeometryInstances>(RendererComponent::Quad);
 }
 
 Scene::~Scene()
@@ -116,11 +140,77 @@ void Scene::DestroyAllObjects()
 
     gameObjects.clear();
     mainLight = nullptr;
+    mainCamera = nullptr;
 }
 
 void Scene::ClearScene()
 {
     DestroyAllObjects();
+    EnsureDefaultCamera();
+}
+
+void Scene::EnsureDefaultCamera()
+{
+    if (!rootGameObject) return;
+
+    bool hasCamera = false;
+    std::function<void(GameObject*)> findCamera = [&](GameObject* obj)
+    {
+        if (!obj || hasCamera) return;
+        CameraComponent* camera = obj->GetComponent<CameraComponent>();
+        if (camera && camera->enabled && camera->mainCamera)
+        {
+            mainCamera = obj;
+            hasCamera = true;
+            return;
+        }
+        for (const auto& child : obj->children)
+            findCamera(child.get());
+    };
+    findCamera(rootGameObject.get());
+    if (hasCamera) return;
+
+    auto cameraObject = std::make_unique<GameObject>("Main Camera");
+    if (TransformComponent* transform = cameraObject->GetComponent<TransformComponent>())
+    {
+        transform->position = glm::vec3(0.0f, 2.0f, 5.0f);
+        transform->rotation = glm::vec3(-21.8f, 0.0f, 0.0f);
+        transform->localDirty = true;
+        transform->UpdateTransform();
+    }
+    CameraComponent* camera = cameraObject->AddComponent<CameraComponent>();
+    camera->mainCamera = true;
+    mainCamera = cameraObject.get();
+    gameObjects.push_back(cameraObject.get());
+    rootGameObject->AddChild(std::move(cameraObject));
+}
+
+Camera Scene::GetMainCamera(const Camera& fallback)
+{
+    mainCamera = nullptr;
+    CameraComponent* mainCameraComponent = nullptr;
+    TransformComponent* mainCameraTransform = nullptr;
+
+    std::function<void(GameObject*)> findCamera = [&](GameObject* obj)
+    {
+        if (!obj || mainCameraComponent || !obj->enabled) return;
+        CameraComponent* camera = obj->GetComponent<CameraComponent>();
+        TransformComponent* transform = obj->GetComponent<TransformComponent>();
+        if (camera && camera->enabled && camera->mainCamera)
+        {
+            mainCamera = obj;
+            mainCameraComponent = camera;
+            mainCameraTransform = transform;
+            return;
+        }
+        for (const auto& child : obj->children)
+            findCamera(child.get());
+    };
+    findCamera(rootGameObject.get());
+
+    if (!mainCameraComponent)
+        return fallback;
+    return mainCameraComponent->ToCamera(mainCameraTransform);
 }
 
 void Scene::UnregisterSubtree(GameObject* obj)
@@ -176,7 +266,7 @@ void Scene::CollectRenderData()
                 }
                 else
                 {
-                    meshKey = std::string("builtin:") + (renderer->type == RendererComponent::Sphere ? "sphere" : "cube");
+                    meshKey = std::string("builtin:") + RendererTypeKey(renderer->type);
                 }
 
                 Ditto::MaterialAsset material = renderer->materialPath.empty()
@@ -435,6 +525,21 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
             BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 8, attribs,
                                                m.indices.data(), m.indices.size()) };
     }
+
+    if (renderer)
+    {
+        // Unity-style 2D sprite plane: centered pivot, unit size, XY plane,
+        // normal toward +Z so it faces the default camera at z=5.
+        const float quadVerts[] = {
+            -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
+             0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f,
+             0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 1.0f,
+            -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f,
+        };
+        const unsigned int quadIndices[] = { 0, 1, 2, 0, 2, 3 };
+        baseGeometries[RendererComponent::Quad] =
+            BaseGeometry{ renderer->CreateMesh(quadVerts, 32, 8, attribs, quadIndices, 6) };
+    }
 }
 
 void Scene::EnsureCustomGeometry(const std::string& meshPath)
@@ -505,6 +610,34 @@ float Scene::GetLightIntensity() const
     return 1.0f;
 }
 
+static void GetBuiltinRaycastMesh(RendererComponent::Type type, Resource* resource,
+    const std::vector<glm::vec3>*& vertices, const std::vector<unsigned int>*& indices)
+{
+    static const std::vector<glm::vec3> quadVertices = {
+        {-0.5f, -0.5f, 0.0f}, {0.5f, -0.5f, 0.0f},
+        {0.5f, 0.5f, 0.0f}, {-0.5f, 0.5f, 0.0f}
+    };
+    static const std::vector<unsigned int> quadIndices = { 0, 1, 2, 0, 2, 3 };
+
+    vertices = nullptr;
+    indices = nullptr;
+    if (type == RendererComponent::Quad)
+    {
+        vertices = &quadVertices;
+        indices = &quadIndices;
+        return;
+    }
+    if (!resource) return;
+
+    MeshData* mesh = nullptr;
+    if (type == RendererComponent::Cube) mesh = resource->cubeMesh.get();
+    else if (type == RendererComponent::Sphere) mesh = resource->sphereMesh.get();
+
+    if (!mesh) return;
+    vertices = &mesh->vertices;
+    indices = &mesh->indices;
+}
+
 GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4& view, const glm::mat4& projection, int viewportWidth, int viewportHeight)
 {
     float ndcX = (2.0f * mousePos.x / viewportWidth) - 1.0f;
@@ -524,13 +657,6 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
     GameObject* closest = nullptr;
     float closestDist = FLT_MAX;
     int checkedCount = 0;
-
-    auto getMeshData = [&](RendererComponent::Type type) -> MeshData* {
-        if (!resource) return nullptr;
-        if (type == RendererComponent::Cube) return resource->cubeMesh.get();
-        if (type == RendererComponent::Sphere) return resource->sphereMesh.get();
-        return nullptr;
-    };
 
     auto rayTriangleIntersect = [&](const glm::vec3& orig, const glm::vec3& dir,
                                     const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
@@ -561,33 +687,36 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
 
         checkedCount++;
         glm::mat4 worldMat = transform->GetWorldModel();
-        MeshData* mesh = getMeshData(renderer->type);
-        
-        if (!mesh)
+        const std::vector<glm::vec3>* vertices = nullptr;
+        const std::vector<unsigned int>* indices = nullptr;
+        GetBuiltinRaycastMesh(renderer->type, resource, vertices, indices);
+
+        if (!vertices || !indices)
         {
             DITTO_LOG_INFO_STREAM("[Raycast] Object '" << obj->name << "' has no mesh data");
             return;
         }
 
-        DITTO_LOG_INFO_STREAM("[Raycast] Checking object: " << obj->name << " (mesh vertices: " << mesh->vertices.size() << ", indices: " << mesh->indices.size() << ")");
+        DITTO_LOG_INFO_STREAM("[Raycast] Checking object: " << obj->name << " (type=" << RendererTypeName(renderer->type)
+            << ", vertices: " << vertices->size() << ", indices: " << indices->size() << ")");
 
         float tMin = FLT_MAX;
         bool hit = false;
 
-        for (size_t i = 0; i < mesh->indices.size(); i += 3)
+        for (size_t i = 0; i < indices->size(); i += 3)
         {
-            if (i + 2 >= mesh->indices.size()) break;
+            if (i + 2 >= indices->size()) break;
 
-            unsigned int idx0 = mesh->indices[i];
-            unsigned int idx1 = mesh->indices[i + 1];
-            unsigned int idx2 = mesh->indices[i + 2];
+            unsigned int idx0 = (*indices)[i];
+            unsigned int idx1 = (*indices)[i + 1];
+            unsigned int idx2 = (*indices)[i + 2];
 
-            if (idx0 >= mesh->vertices.size() || idx1 >= mesh->vertices.size() || idx2 >= mesh->vertices.size())
+            if (idx0 >= vertices->size() || idx1 >= vertices->size() || idx2 >= vertices->size())
                 continue;
 
-            glm::vec3 v0 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx0], 1.0f));
-            glm::vec3 v1 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx1], 1.0f));
-            glm::vec3 v2 = glm::vec3(worldMat * glm::vec4(mesh->vertices[idx2], 1.0f));
+            glm::vec3 v0 = glm::vec3(worldMat * glm::vec4((*vertices)[idx0], 1.0f));
+            glm::vec3 v1 = glm::vec3(worldMat * glm::vec4((*vertices)[idx1], 1.0f));
+            glm::vec3 v2 = glm::vec3(worldMat * glm::vec4((*vertices)[idx2], 1.0f));
 
             float t;
             if (rayTriangleIntersect(rayOrigin, rayDir, v0, v1, v2, t))
@@ -626,6 +755,94 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
 
     return closest;
 }
+
+GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const Camera& camera, int viewportWidth, int viewportHeight)
+{
+    const Camera::Ray ray = camera.ScreenPointToRayFull(mousePos, viewportWidth, viewportHeight);
+
+    GameObject* closest = nullptr;
+    float closestDist = FLT_MAX;
+    int checkedCount = 0;
+
+    auto rayTriangleIntersect = [&](const glm::vec3& orig, const glm::vec3& dir,
+                                    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
+                                    float& t) -> bool {
+        const float EPSILON = 0.000001f;
+        glm::vec3 edge1 = v1 - v0;
+        glm::vec3 edge2 = v2 - v0;
+        glm::vec3 h = glm::cross(dir, edge2);
+        float a = glm::dot(edge1, h);
+        if (a > -EPSILON && a < EPSILON) return false;
+        float f = 1.0f / a;
+        glm::vec3 s = orig - v0;
+        float u = f * glm::dot(s, h);
+        if (u < 0.0f || u > 1.0f) return false;
+        glm::vec3 q = glm::cross(s, edge1);
+        float v = f * glm::dot(dir, q);
+        if (v < 0.0f || u + v > 1.0f) return false;
+        t = f * glm::dot(edge2, q);
+        return t > EPSILON;
+    };
+
+    std::function<void(GameObject*)> checkObject = [&](GameObject* obj)
+    {
+        if (!obj->enabled) return;
+        RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+        TransformComponent* transform = obj->GetComponent<TransformComponent>();
+        if (!renderer || !transform || !renderer->enabled || !transform->enabled) return;
+
+        checkedCount++;
+        glm::mat4 worldMat = transform->GetWorldModel();
+        const std::vector<glm::vec3>* vertices = nullptr;
+        const std::vector<unsigned int>* indices = nullptr;
+        GetBuiltinRaycastMesh(renderer->type, resource, vertices, indices);
+        if (!vertices || !indices) return;
+
+        float tMin = FLT_MAX;
+        bool hit = false;
+
+        for (size_t i = 0; i < indices->size(); i += 3)
+        {
+            if (i + 2 >= indices->size()) break;
+
+            unsigned int idx0 = (*indices)[i];
+            unsigned int idx1 = (*indices)[i + 1];
+            unsigned int idx2 = (*indices)[i + 2];
+            if (idx0 >= vertices->size() || idx1 >= vertices->size() || idx2 >= vertices->size())
+                continue;
+
+            glm::vec3 v0 = glm::vec3(worldMat * glm::vec4((*vertices)[idx0], 1.0f));
+            glm::vec3 v1 = glm::vec3(worldMat * glm::vec4((*vertices)[idx1], 1.0f));
+            glm::vec3 v2 = glm::vec3(worldMat * glm::vec4((*vertices)[idx2], 1.0f));
+
+            float t;
+            if (rayTriangleIntersect(ray.origin, ray.direction, v0, v1, v2, t))
+            {
+                if (t < tMin)
+                {
+                    tMin = t;
+                    hit = true;
+                }
+            }
+        }
+
+        if (hit && tMin < closestDist)
+        {
+            closestDist = tMin;
+            closest = obj;
+        }
+    };
+
+    std::function<void(GameObject*)> traverseHierarchy = [&](GameObject* obj)
+    {
+        if (!obj) return;
+        checkObject(obj);
+        for (const auto& child : obj->children)
+            traverseHierarchy(child.get());
+    };
+    traverseHierarchy(rootGameObject.get());
+    return closest;
+}
 #else
 void Scene::CollectRenderData() {}
 void Scene::UpdateSSBOs() {}
@@ -637,6 +854,10 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
 }
 void Scene::EnsureCustomGeometry(const std::string&) {}
 GameObject* Scene::RaycastGameObjects(const glm::vec2&, const glm::mat4&, const glm::mat4&, int, int)
+{
+    return nullptr;
+}
+GameObject* Scene::RaycastGameObjects(const glm::vec2&, const Camera&, int, int)
 {
     return nullptr;
 }
@@ -655,7 +876,8 @@ struct SceneHeader
 // v8: Renderer material path. v9: AudioSource + UIImage/UIText/UIButton
 // components (new component types -- old files never contain them, so no
 // field gating is needed; old engines reject v9 files via the version check).
-const uint32_t SCENE_VERSION = 9;
+// v10: CameraComponent + default Main Camera scene object.
+const uint32_t SCENE_VERSION = 10;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
 void Scene::WriteToStream(std::ostream& file)
@@ -719,7 +941,7 @@ bool Scene::RestoreSnapshot(const std::string& data)
 {
     if (data.empty()) return false;
     std::istringstream iss(data, std::ios::binary);
-    return ReadFromStream(iss);   // ReadFromStream calls ClearScene() internally
+    return ReadFromStream(iss);   // ReadFromStream rebuilds the root internally
 }
 
 bool Scene::LoadScene(const std::string& filepath)
@@ -767,7 +989,7 @@ bool Scene::ReadFromStream(std::istream& file)
         name = std::string(nameBuffer.data());
         DITTO_LOG_INFO_STREAM("[Scene::LoadScene] Scene name: " << name);
 
-        ClearScene();
+        DestroyAllObjects();
 
         DITTO_LOG_INFO("[Scene::LoadScene] Deserializing rootGameObject...");
         rootGameObject->Deserialize(file);
@@ -804,6 +1026,9 @@ bool Scene::ReadFromStream(std::istream& file)
         };
         findLight(rootGameObject.get());
 
+        mainCamera = nullptr;
+        EnsureDefaultCamera();
+
         // Report raycast-capable objects
         DITTO_LOG_INFO("[Scene::LoadScene] === Raycast-capable objects ===");
         int raycastObjCount = 0;
@@ -817,7 +1042,7 @@ bool Scene::ReadFromStream(std::istream& file)
                     << " (enabled=" << obj->enabled
                     << ", renderer=" << (renderer->enabled ? "enabled" : "disabled")
                     << ", transform=" << (transform->enabled ? "enabled" : "disabled")
-                    << ", type=" << (renderer->type == RendererComponent::Cube ? "Cube" : "Sphere")
+                    << ", type=" << RendererTypeName(renderer->type)
                     << ", pos=[" << transform->position.x << ", " << transform->position.y << ", " << transform->position.z << "])");
                 raycastObjCount++;
             }

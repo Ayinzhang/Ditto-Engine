@@ -7,6 +7,7 @@
 #include <cstdint>
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/quaternion.hpp"
+#include "../Graphics/Camera.h"
 
 struct GameObject;
 struct Scene;
@@ -32,6 +33,7 @@ namespace ComponentIndex
     constexpr int UIImage      = 1 << 6;
     constexpr int UIText       = 1 << 7;
     constexpr int UIButton     = 1 << 8;
+    constexpr int Camera       = 1 << 9;
     constexpr int CSharpScript = 1 << 10;
 }
 
@@ -192,10 +194,29 @@ struct LightComponent : Component
     void Deserialize(std::istream& file) override;
 };
 
+struct CameraComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::Camera;
+    bool mainCamera = true;
+    Camera::ProjectionType projectionType = Camera::ProjectionType::Perspective;
+    float fieldOfView = 45.0f;
+    float orthographicSize = 5.0f;
+    float nearClipPlane = 0.1f;
+    float farClipPlane = 100.0f;
+    glm::vec4 backgroundColor{ 0.1f, 0.1f, 0.1f, 1.0f };
+
+    CameraComponent();
+    CameraComponent(CameraComponent* other);
+    Camera ToCamera(const TransformComponent* transform) const;
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
 struct RendererComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::Renderer;
-    enum Type { Cube, Sphere };
+    enum Type { Cube, Sphere, Quad };
     enum MeshSource { BuiltIn, File };
     static constexpr const char* DefaultShaderName = "Lit_Toon";
     Type type;
