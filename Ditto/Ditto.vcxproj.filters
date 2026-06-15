@@ -1029,6 +1029,9 @@
     <ClInclude Include="Engine\Physics\Physics.h">
       <Filter>头文件\Engine\Physics</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Physics\Physics2D.h">
+      <Filter>头文件\Engine\Physics</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Physics\CollisionShape.h">
       <Filter>头文件\Engine\Physics</Filter>
     </ClInclude>
@@ -1522,7 +1525,13 @@
     <None Include="Assets\Materials\Lit_Toon.mat">
       <Filter>资源文件</Filter>
     </None>
+    <None Include="Assets\Materials\Lit_Sprite.mat">
+      <Filter>资源文件</Filter>
+    </None>
     <None Include="Assets\Shaders\Fragment.glsl">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="Assets\Shaders\Lit_Sprite.shader">
       <Filter>资源文件</Filter>
     </None>
     <None Include="Assets\Shaders\Lit_Toon.shader">
@@ -1615,6 +1624,9 @@
       <Filter>源文件\Engine\Resources</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Physics\Physics.cpp">
+      <Filter>源文件\Engine\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Physics\Physics2D.cpp">
       <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Physics\CollisionShape.cpp">

@@ -69,6 +69,8 @@ namespace
                 *droppedPath = static_cast<const char*>(payload->Data);
             ImGui::EndDragDropTarget();
         }
+        if (opened)
+            ImGui::OpenPopup(id);
         return opened;
     }
 
@@ -87,18 +89,8 @@ namespace
         ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Material");
         ImGui::Separator();
 
-        char shaderBuf[256];
-        strcpy_s(shaderBuf, sizeof(shaderBuf), material.shaderName.c_str());
-        ImGui::TextUnformatted("Shader");
-        ImGui::SameLine();
-        if (ImGui::InputText("##MaterialShader", shaderBuf, sizeof(shaderBuf)))
-        {
-            material.shaderName = shaderBuf;
-            changed = true;
-        }
-
         std::string droppedShader;
-        DrawFileObjectField("Shader Asset", material.shaderName, "MaterialShaderAsset", &droppedShader);
+        DrawFileObjectField("Shader", material.shaderName, "MaterialShaderAsset", &droppedShader);
         if (!droppedShader.empty())
         {
             std::string ext = LowerExtension(droppedShader);
@@ -107,6 +99,18 @@ namespace
                 material.shaderName = ToAssetRelativePath(droppedShader);
                 changed = true;
             }
+        }
+        if (ImGui::BeginPopup("MaterialShaderAsset"))
+        {
+            char shaderBuf[256];
+            strcpy_s(shaderBuf, sizeof(shaderBuf), material.shaderName.c_str());
+            ImGui::TextUnformatted("Shader Name");
+            if (ImGui::InputText("##MaterialShaderName", shaderBuf, sizeof(shaderBuf)))
+            {
+                material.shaderName = shaderBuf;
+                changed = true;
+            }
+            ImGui::EndPopup();
         }
 
         Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(material.shaderName);
@@ -165,6 +169,66 @@ namespace
 
         if (changed)
             Ditto::SaveMaterialAsset(material, materialPath);
+    }
+
+    const char* ShaderPropertyTypeName(Ditto::ShaderPropertyType type)
+    {
+        switch (type)
+        {
+        case Ditto::ShaderPropertyType::Color: return "Color";
+        case Ditto::ShaderPropertyType::Float: return "Float";
+        case Ditto::ShaderPropertyType::Range: return "Range";
+        case Ditto::ShaderPropertyType::Texture2D: return "Texture2D";
+        default: return "Unknown";
+        }
+    }
+
+    void DrawShaderFileInspector(const std::string& shaderPath)
+    {
+        Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(shaderPath);
+
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Shader");
+        ImGui::Separator();
+
+        if (!shader.ok)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Shader load failed");
+            ImGui::TextWrapped("%s", shader.error.c_str());
+            return;
+        }
+
+        ImGui::Text("Render Queue"); ImGui::SameLine();
+        ImGui::Text("%d", shader.pipelineState.renderQueue);
+        ImGui::Text("Render Type "); ImGui::SameLine();
+        ImGui::TextUnformatted(shader.pipelineState.renderType.empty() ? "Opaque" : shader.pipelineState.renderType.c_str());
+        ImGui::Text("ZWrite     "); ImGui::SameLine();
+        ImGui::TextUnformatted(shader.pipelineState.depthWrite ? "On" : "Off");
+        ImGui::Text("Blend      "); ImGui::SameLine();
+        ImGui::TextUnformatted(shader.pipelineState.blend ? "On" : "Off");
+
+        ImGui::Separator();
+        ImGui::TextUnformatted("Properties");
+        if (shader.properties.empty())
+        {
+            ImGui::TextDisabled("No Properties block entries found");
+        }
+        else
+        {
+            ImGui::Indent(12.0f);
+            for (const Ditto::ShaderProperty& property : shader.properties)
+            {
+                ImGui::TextUnformatted(property.displayName.empty() ? property.name.c_str() : property.displayName.c_str());
+                ImGui::SameLine(160.0f);
+                ImGui::TextDisabled("%s", ShaderPropertyTypeName(property.type));
+            }
+            ImGui::Unindent(12.0f);
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Generated HLSL"); ImGui::SameLine();
+        ImGui::Text("%zu bytes", shader.engineHLSL.size());
+        ImGui::TextDisabled("Double-click the shader asset in Project to edit the source externally.");
     }
 }
 
@@ -270,6 +334,15 @@ void InspectorWindow::Draw()
             return;
         }
 
+        if (m_editor->selectedFile.extension == ".shader" || m_editor->selectedFile.extension == ".hlsl" ||
+            m_editor->selectedFile.extension == ".glsl" || m_editor->selectedFile.extension == ".vert" ||
+            m_editor->selectedFile.extension == ".frag")
+        {
+            DrawShaderFileInspector(m_editor->selectedFile.path);
+            ImGui::End();
+            return;
+        }
+
         // If it's a model file, show model info
         if (m_editor->selectedFile.extension == ".obj" || m_editor->selectedFile.extension == ".fbx")
         {
@@ -363,7 +436,7 @@ void InspectorWindow::Draw()
         ImGui::Separator();
         ImVec4 prevColor = ImGui::GetStyle().Colors[ImGuiCol_Button];
         ImGui::GetStyle().Colors[ImGuiCol_Button] = ImVec4(0.2f, 0.2f, 0.2f, 0.5f);
-        if (ImGui::Button("+ Add Component (drag .cpp here)", ImVec2(ImGui::GetContentRegionAvail().x, 30)))
+        if (ImGui::Button("Add Component", ImVec2(ImGui::GetContentRegionAvail().x, 30)))
         {
             ImGui::OpenPopup("AddComponentPopup");
         }
@@ -389,37 +462,57 @@ void InspectorWindow::Draw()
             
             if (ImGui::BeginMenu("Rendering"))
             {
-                if (!(m_currentObject->compMask >> 1 & 1) && ImGui::MenuItem("Light"))
+                if (!(m_currentObject->compMask & ComponentIndex::Light) && ImGui::MenuItem("Light"))
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<LightComponent>(); }
                 if (!(m_currentObject->compMask & ComponentIndex::Camera) && ImGui::MenuItem("Camera"))
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<CameraComponent>(); }
-                if (!(m_currentObject->compMask >> 2 & 1) && ImGui::MenuItem("Renderer"))
+                if (!(m_currentObject->compMask & ComponentIndex::Renderer) && ImGui::MenuItem("Mesh Renderer"))
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RendererComponent>(); }
+                if (!(m_currentObject->compMask & ComponentIndex::SpriteRenderer) && ImGui::MenuItem("Sprite Renderer"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<SpriteRendererComponent>(); }
                 ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu("Physics"))
             {
-                if (!(m_currentObject->compMask >> 3 & 1) && ImGui::MenuItem("Rigidbody"))
+                if (!(m_currentObject->compMask & ComponentIndex::Rigidbody) && ImGui::MenuItem("Rigidbody"))
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RigidbodyComponent>(); }
-                if (ImGui::MenuItem("Collider"))
-                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(); }
+                if (ImGui::MenuItem("Box Collider"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(ColliderComponent::Box); }
+                if (ImGui::MenuItem("Sphere Collider"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(ColliderComponent::Sphere); }
+                if (ImGui::MenuItem("Mesh Collider"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ColliderComponent>(ColliderComponent::MeshConvex); }
+                if (!(m_currentObject->compMask & ComponentIndex::Rigidbody2D) && ImGui::MenuItem("Rigidbody 2D"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<Rigidbody2DComponent>(); }
+                if (ImGui::MenuItem("Box Collider 2D"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<Collider2DComponent>(Collider2DComponent::Box); }
+                if (ImGui::MenuItem("Circle Collider 2D"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<Collider2DComponent>(Collider2DComponent::Circle); }
                 ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu("UI"))
             {
-                if (!(m_currentObject->compMask >> 6 & 1) && ImGui::MenuItem("Image"))
+                if (!(m_currentObject->compMask & ComponentIndex::Canvas) && ImGui::MenuItem("Canvas"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<CanvasComponent>(); }
+                if (!(m_currentObject->compMask & ComponentIndex::RectTransform) && ImGui::MenuItem("Rect Transform"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<RectTransformComponent>(); }
+                if (!(m_currentObject->compMask & ComponentIndex::UIImage) && ImGui::MenuItem("Image"))
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIImageComponent>(); }
-                if (!(m_currentObject->compMask >> 7 & 1) && ImGui::MenuItem("Text"))
+                if (!(m_currentObject->compMask & ComponentIndex::UIText) && ImGui::MenuItem("Text"))
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UITextComponent>(); }
-                if (!(m_currentObject->compMask >> 8 & 1) && ImGui::MenuItem("Button"))
+                if (!(m_currentObject->compMask & ComponentIndex::UIButton) && ImGui::MenuItem("Button"))
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<UIButtonComponent>(); }
                 ImGui::EndMenu();
             }
 
-            if (!(m_currentObject->compMask >> 5 & 1) && ImGui::MenuItem("Audio Source"))
-                { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<AudioSourceComponent>(); }
+            if (ImGui::BeginMenu("Audio"))
+            {
+                if (!(m_currentObject->compMask & ComponentIndex::AudioSource) && ImGui::MenuItem("Audio Source"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<AudioSourceComponent>(); }
+                ImGui::EndMenu();
+            }
             
             ImGui::Separator();
             ImGui::TextUnformatted("Scripts");

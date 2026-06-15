@@ -36,7 +36,7 @@ glm::mat4 Camera::GetProjectionMatrix(float aspect) const
     aspect = SafeAspect(aspect);
     if (projectionType == ProjectionType::Orthographic)
     {
-        const float halfHeight = std::max(0.0001f, orthographicSize) * 0.5f;
+        const float halfHeight = std::max(0.0001f, orthographicSize);
         const float halfWidth = halfHeight * aspect;
         return glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, nearClipPlane, farClipPlane);
     }
@@ -61,7 +61,7 @@ Camera::Ray Camera::ScreenPointToRayFull(const glm::vec2& screenPoint, int viewp
 
     if (projectionType == ProjectionType::Orthographic)
     {
-        const float halfHeight = std::max(0.0001f, orthographicSize) * 0.5f;
+        const float halfHeight = std::max(0.0001f, orthographicSize);
         const float halfWidth = halfHeight * SafeAspect(w / h);
         glm::vec3 localPoint(ndcX * halfWidth, ndcY * halfHeight, 0.0f);
         glm::vec3 worldPoint = glm::vec3(invView * glm::vec4(localPoint, 1.0f));

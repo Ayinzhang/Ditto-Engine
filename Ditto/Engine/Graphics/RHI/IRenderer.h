@@ -64,6 +64,8 @@ namespace Ditto
         DepthFunc depthFunc = DepthFunc::Less;
         bool blend = false;
         CullMode cull = CullMode::Off;
+        int vertexStrideFloats = 8;
+        std::vector<VertexAttrib> vertexAttributes{ { 0, 3, 0 }, { 1, 3, 3 }, { 2, 2, 6 } };
     };
 
     class IRenderer

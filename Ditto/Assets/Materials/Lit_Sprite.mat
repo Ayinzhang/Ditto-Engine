@@ -1,0 +1,4 @@
+DittoMaterial 1
+shader = "Shaders/Lit_Sprite.shader"
+color = 1, 1, 1, 1
+mainTexture = ""

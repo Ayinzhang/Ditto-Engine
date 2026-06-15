@@ -496,6 +496,11 @@ void ProjectWindow::Draw()
                 m_showCreateMaterialPopup = true;
                 strcpy_s(m_newMaterialNameBuffer, "New Material");
             }
+            if (ImGui::MenuItem("Create Shader..."))
+            {
+                m_showCreateShaderPopup = true;
+                strcpy_s(m_newShaderNameBuffer, "New Shader");
+            }
         }
         ImGui::EndPopup();
     }
@@ -632,6 +637,10 @@ void ProjectWindow::Draw()
                         else if (ext == ".cs")
                         {
                             OpenCSharpFile(filePath);
+                        }
+                        else if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag")
+                        {
+                            ShellExecuteA(NULL, "open", filePath.c_str(), NULL, NULL, SW_SHOW);
                         }
                     }
                     else if (ImGui::IsItemClicked(0))
@@ -814,6 +823,73 @@ void ProjectWindow::CreateNewMaterial(const std::string& name)
     }
 }
 
+void ProjectWindow::CreateNewShader(const std::string& name)
+{
+    auto& pm = ProjectManager::GetInstance();
+    std::string assetsPath = pm.GetProjectAssetsPath();
+
+    std::string targetFolder = assetsPath + "/Shaders";
+    if (!m_currentFolder.empty() && m_currentFolder != "Assets") {
+        targetFolder = assetsPath + "/" + m_currentFolder.substr(7);
+    }
+
+    fs::create_directories(targetFolder);
+    fs::path filePath = MakeUniquePath(fs::path(targetFolder) / (name + ".shader"));
+
+    std::ofstream file(filePath, std::ios::trunc);
+    if (!file.is_open())
+    {
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to create shader: " << filePath.string());
+        return;
+    }
+
+    file << "Shader \"" << filePath.stem().string() << "\"\n";
+    file << "{\n";
+    file << "    Properties\n";
+    file << "    {\n";
+    file << "        _Color (\"Color\", Color) = (1,1,1,1)\n";
+    file << "        _MainTex (\"Main Texture\", 2D) = \"white\" {}\n";
+    file << "    }\n";
+    file << "    SubShader\n";
+    file << "    {\n";
+    file << "        Tags { \"RenderType\"=\"Opaque\" \"Queue\"=\"Geometry\" }\n";
+    file << "        Pass\n";
+    file << "        {\n";
+    file << "            HLSLPROGRAM\n";
+    file << "            #pragma vertex vert\n";
+    file << "            #pragma fragment frag\n\n";
+    file << "            struct appdata\n";
+    file << "            {\n";
+    file << "                float4 vertex : POSITION;\n";
+    file << "                float3 normal : NORMAL;\n";
+    file << "                float4 texcoord : TEXCOORD0;\n";
+    file << "            };\n\n";
+    file << "            struct v2f\n";
+    file << "            {\n";
+    file << "                float4 position : SV_Position;\n";
+    file << "                float2 uv : TEXCOORD0;\n";
+    file << "                float4 color : COLOR;\n";
+    file << "            };\n\n";
+    file << "            v2f vert(appdata v)\n";
+    file << "            {\n";
+    file << "                v2f o;\n";
+    file << "                o.position = ObjectToClipPos(v.vertex);\n";
+    file << "                o.uv = v.texcoord.xy;\n";
+    file << "                o.color = _Color;\n";
+    file << "                return o;\n";
+    file << "            }\n\n";
+    file << "            float4 frag(v2f i) : SV_Target\n";
+    file << "            {\n";
+    file << "                return tex2D(_MainTex, i.uv) * i.color;\n";
+    file << "            }\n";
+    file << "            ENDHLSL\n";
+    file << "        }\n";
+    file << "    }\n";
+    file << "}\n";
+    file.close();
+    DITTO_LOG_INFO_STREAM("[ProjectWindow] Created shader: " << filePath.string());
+}
+
 void ProjectWindow::CreateNewFolder(const std::string& name)
 {
     auto& pm = ProjectManager::GetInstance();
@@ -967,6 +1043,12 @@ void ProjectWindow::DrawPopups()
         m_showCreateMaterialPopup = false;
     }
 
+    if (m_showCreateShaderPopup)
+    {
+        ImGui::OpenPopup("Create Shader");
+        m_showCreateShaderPopup = false;
+    }
+
     if (ImGui::BeginPopupModal("Create Material", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         ImGui::Text("Material Name:"); ImGui::SameLine();
@@ -977,6 +1059,27 @@ void ProjectWindow::DrawPopups()
             if (strlen(m_newMaterialNameBuffer) > 0)
             {
                 CreateNewMaterial(m_newMaterialNameBuffer);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopupModal("Create Shader", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Shader Name:"); ImGui::SameLine();
+        ImGui::InputText("##ShaderName", m_newShaderNameBuffer, sizeof(m_newShaderNameBuffer));
+
+        if (ImGui::Button("Create", ImVec2(120, 0)))
+        {
+            if (strlen(m_newShaderNameBuffer) > 0)
+            {
+                CreateNewShader(m_newShaderNameBuffer);
                 ImGui::CloseCurrentPopup();
             }
         }

@@ -25,6 +25,7 @@ struct GeometryInstances
     std::string meshPath;
     std::string shaderName;
     std::string texturePath;
+    int sortingOrder = 0;
     std::vector<glm::mat4> modelMatrices;
     std::vector<glm::vec4> instanceColors;
     Ditto::StorageBufferHandle modelSBO, colorSBO;   // owned by the renderer
@@ -93,7 +94,7 @@ struct Scene
     void CollectRenderData();
     void UpdateSSBOs();
     void Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
-        const glm::vec3& viewPos, int viewportWidth, int viewportHeight);
+        const glm::vec3& viewPos, int viewportWidth, int viewportHeight, bool renderUI = false);
 
     void InitializeBaseGeometries(Resource* resource, Ditto::IRenderer* rhi);
 

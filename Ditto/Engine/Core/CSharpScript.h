@@ -59,6 +59,7 @@ public:
 
     void Start();
     void Update();
+    void FixedUpdate();
     void OnDestroy();
 
     bool ShouldReload();
@@ -146,6 +147,10 @@ extern "C" {
     void Internal_Renderer_SetColor(void* renderer, float r, float g, float b, float a);
     int Internal_Renderer_GetShapeType(void* renderer);
     void Internal_Renderer_SetShapeType(void* renderer, int type);
+    void Internal_SpriteRenderer_GetColor(void* spriteRenderer, float* outColor);
+    void Internal_SpriteRenderer_SetColor(void* spriteRenderer, float r, float g, float b, float a);
+    void* Internal_SpriteRenderer_GetSprite(void* spriteRenderer);
+    void Internal_SpriteRenderer_SetSprite(void* spriteRenderer, void* spritePath);
     void Internal_Light_GetColor(void* light, float* outColor);
     void Internal_Light_SetColor(void* light, float r, float g, float b);
     float Internal_Light_GetIntensity(void* light);
@@ -164,6 +169,20 @@ extern "C" {
     void Internal_Rigidbody_SetVelocity(void* rigidbody, float x, float y, float z);
     void Internal_Rigidbody_GetAngularVelocity(void* rigidbody, float* outVel);
     void Internal_Rigidbody_SetAngularVelocity(void* rigidbody, float x, float y, float z);
+    int Internal_Rigidbody2D_GetBodyType(void* rigidbody);
+    void Internal_Rigidbody2D_SetBodyType(void* rigidbody, int type);
+    float Internal_Rigidbody2D_GetMass(void* rigidbody);
+    void Internal_Rigidbody2D_SetMass(void* rigidbody, float mass);
+    int Internal_Rigidbody2D_GetUseGravity(void* rigidbody);
+    void Internal_Rigidbody2D_SetUseGravity(void* rigidbody, int useGravity);
+    float Internal_Rigidbody2D_GetGravityScale(void* rigidbody);
+    void Internal_Rigidbody2D_SetGravityScale(void* rigidbody, float gravityScale);
+    void Internal_Rigidbody2D_GetVelocity(void* rigidbody, float* outVel);
+    void Internal_Rigidbody2D_SetVelocity(void* rigidbody, float x, float y);
+    float Internal_Rigidbody2D_GetAngularVelocity(void* rigidbody);
+    void Internal_Rigidbody2D_SetAngularVelocity(void* rigidbody, float v);
+    void Internal_Rigidbody2D_AddForce(void* rigidbody, float x, float y, int mode);
+    void Internal_Rigidbody2D_AddTorque(void* rigidbody, float torque, int mode);
     float Internal_Time_GetDeltaTime();
     float Internal_Time_GetTime();
     void Internal_Debug_Log(void* msg);
@@ -193,4 +212,6 @@ extern "C" {
     int Internal_UIButton_ConsumeClick(void* uiButton);
     int Internal_UIButton_IsHovered(void* uiButton);
     void Internal_UIButton_SetLabel(void* uiButton, void* label);
+    void* Internal_Object_Instantiate(void* gameObject);
+    void Internal_Object_Destroy(void* gameObject);
 }

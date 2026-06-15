@@ -42,6 +42,9 @@ private:
 
     bool m_showCreateMaterialPopup = false;
     char m_newMaterialNameBuffer[64] = "New Material";
+
+    bool m_showCreateShaderPopup = false;
+    char m_newShaderNameBuffer[64] = "New Shader";
     
     // 创建文件夹弹窗
     bool m_showCreateFolderPopup = false;
@@ -105,6 +108,7 @@ private:
     // 创建新脚本文件
     void CreateNewScript(const std::string& name);
     void CreateNewMaterial(const std::string& name);
+    void CreateNewShader(const std::string& name);
     // 创建新文件夹
     void CreateNewFolder(const std::string& name);
     // 创建新场景

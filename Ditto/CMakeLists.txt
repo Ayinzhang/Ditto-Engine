@@ -114,6 +114,7 @@ add_executable(DittoTests
     Engine/Core/MonoRuntime.cpp
     Engine/Graphics/Camera.cpp
     Engine/Physics/Physics.cpp
+    Engine/Physics/Physics2D.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp
     Engine/Resources/Resource.cpp
@@ -149,6 +150,7 @@ add_executable(DittoRenderSmoke
     Engine/Core/MonoRuntime.cpp
     Engine/Graphics/Camera.cpp
     Engine/Physics/Physics.cpp
+    Engine/Physics/Physics2D.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp
     Engine/Resources/Resource.cpp

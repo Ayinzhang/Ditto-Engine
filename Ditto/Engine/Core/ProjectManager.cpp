@@ -125,7 +125,9 @@ bool ProjectManager::CreateProject(const std::string& name)
     CopyDefaultAsset("Models/Cube.obj", projectAssetsPath);
     CopyDefaultAsset("Models/Sphere.obj", projectAssetsPath);
     CopyDefaultAsset("Shaders/Lit_Toon.shader", projectAssetsPath);
+    CopyDefaultAsset("Shaders/Lit_Sprite.shader", projectAssetsPath);
     CopyDefaultAsset("Materials/Lit_Toon.mat", projectAssetsPath);
+    CopyDefaultAsset("Materials/Lit_Sprite.mat", projectAssetsPath);
     
     // Create default scene file
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";
@@ -196,7 +198,9 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
 
     fs::path projectAssetsPath = fs::path(projectPath) / "Assets";
     EnsureDefaultAsset("Shaders/Lit_Toon.shader", projectAssetsPath);
+    EnsureDefaultAsset("Shaders/Lit_Sprite.shader", projectAssetsPath);
     EnsureDefaultAsset("Materials/Lit_Toon.mat", projectAssetsPath);
+    EnsureDefaultAsset("Materials/Lit_Sprite.mat", projectAssetsPath);
     return true;
 }
 

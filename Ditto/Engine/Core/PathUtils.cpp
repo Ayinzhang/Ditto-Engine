@@ -92,8 +92,11 @@ namespace PathUtils
             candidates.push_back(preferredRoot / relativeToAssets); // root already an Assets dir
         }
 
-        const fs::path exeAssets = exeDir / "Assets" / relativeToAssets;
-        candidates.push_back(exeAssets);
+        // Project layout: exe in <root>/x64/Debug, engine assets in <root>/Ditto/Assets.
+        // Anchored to the exe so it resolves regardless of the working directory.
+        fs::path dittoRoot = FindAncestorContaining(exeDir, "Ditto");
+        if (!dittoRoot.empty())
+            candidates.push_back(dittoRoot / "Ditto" / "Assets" / relativeToAssets);
 
         // Development layout: binary sits in a build subdir while Assets lives
         // higher up in the source tree. Anchor the walk to the exe, not cwd.
@@ -101,11 +104,8 @@ namespace PathUtils
         if (!assetRoot.empty())
             candidates.push_back(assetRoot / "Assets" / relativeToAssets);
 
-        // Project layout: exe in <root>/x64/Debug, engine assets in <root>/Ditto/Assets.
-        // Anchored to the exe so it resolves regardless of the working directory.
-        fs::path dittoRoot = FindAncestorContaining(exeDir, "Ditto");
-        if (!dittoRoot.empty())
-            candidates.push_back(dittoRoot / "Ditto" / "Assets" / relativeToAssets);
+        const fs::path exeAssets = exeDir / "Assets" / relativeToAssets;
+        candidates.push_back(exeAssets);
 
         fs::path cwd = fs::current_path(ec);
         if (!ec)
@@ -122,4 +122,3 @@ namespace PathUtils
         return exeAssets;
     }
 }
-

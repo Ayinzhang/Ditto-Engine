@@ -358,6 +358,7 @@
     <ClInclude Include="Engine\Physics\ParallelPhysics.h" />
     <ClInclude Include="Engine\Physics\ParallelPhysicsBarrier.h" />
     <ClInclude Include="Engine\Physics\Physics.h" />
+    <ClInclude Include="Engine\Physics\Physics2D.h" />
     <ClInclude Include="Engine\Physics\ThreadPool.h" />
     <ClInclude Include="Engine\Resources\Resource.h" />
     <ClInclude Include="resource.h" />
@@ -510,8 +511,10 @@
     <None Include="3rdParty\GLM\gtx\vector_query.inl" />
     <None Include="3rdParty\GLM\gtx\wrap.inl" />
     <None Include="3rdParty\Mono\DittoEngine.cs" />
+    <None Include="Assets\Materials\Lit_Sprite.mat" />
     <None Include="Assets\Materials\Lit_Toon.mat" />
     <None Include="Assets\Shaders\Fragment.glsl" />
+    <None Include="Assets\Shaders\Lit_Sprite.shader" />
     <None Include="Assets\Shaders\Lit_Toon.shader" />
     <None Include="Assets\Shaders\Lit_Toon.hlsl" />
     <None Include="Assets\Shaders\Vertex.glsl" />
@@ -562,6 +565,7 @@
     <ClCompile Include="Engine\Physics\ParallelPhysics.cpp" />
     <ClCompile Include="Engine\Physics\ParallelPhysicsBarrier.cpp" />
     <ClCompile Include="Engine\Physics\Physics.cpp" />
+    <ClCompile Include="Engine\Physics\Physics2D.cpp" />
     <ClCompile Include="Engine\Physics\ThreadPool.cpp" />
     <ClCompile Include="Engine\Resources\Resource.cpp" />
   </ItemGroup>

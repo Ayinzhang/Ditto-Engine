@@ -6,6 +6,7 @@
 #include "CSharpScript.h"
 #include "MonoRuntime.h"
 #include "GameObject.h"
+#include "Scene.h"
 #include "Logger.h"
 #ifndef DITTO_HEADLESS_TESTS
 #include "../../Editor/Editor.h"
@@ -543,6 +544,14 @@ void CSharpScriptComponent::Update()
     if (enabled && gameObject && scriptInstance)
     {
         MonoRuntime::CallUpdate(scriptInstance);
+    }
+}
+
+void CSharpScriptComponent::FixedUpdate()
+{
+    if (enabled && gameObject && scriptInstance)
+    {
+        MonoRuntime::CallFixedUpdate(scriptInstance);
     }
 }
 
@@ -1260,6 +1269,11 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::GetShapeType", (void*)Internal_Renderer_GetShapeType);
     ::MonoRuntime::AddInternalCall("DittoEngine.Renderer::SetShapeType", (void*)Internal_Renderer_SetShapeType);
 
+    ::MonoRuntime::AddInternalCall("DittoEngine.SpriteRenderer::GetColor", (void*)Internal_SpriteRenderer_GetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.SpriteRenderer::SetColor", (void*)Internal_SpriteRenderer_SetColor);
+    ::MonoRuntime::AddInternalCall("DittoEngine.SpriteRenderer::GetSprite", (void*)Internal_SpriteRenderer_GetSprite);
+    ::MonoRuntime::AddInternalCall("DittoEngine.SpriteRenderer::SetSprite", (void*)Internal_SpriteRenderer_SetSprite);
+
     ::MonoRuntime::AddInternalCall("DittoEngine.Light::GetLightColor", (void*)Internal_Light_GetColor);
     ::MonoRuntime::AddInternalCall("DittoEngine.Light::SetLightColor", (void*)Internal_Light_SetColor);
     ::MonoRuntime::AddInternalCall("DittoEngine.Light::GetIntensity", (void*)Internal_Light_GetIntensity);
@@ -1279,6 +1293,21 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetVelocity", (void*)Internal_Rigidbody_SetVelocity);
     ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::GetAngularVelocity", (void*)Internal_Rigidbody_GetAngularVelocity);
     ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody::SetAngularVelocity", (void*)Internal_Rigidbody_SetAngularVelocity);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::GetBodyType", (void*)Internal_Rigidbody2D_GetBodyType);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::SetBodyType", (void*)Internal_Rigidbody2D_SetBodyType);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::GetMass", (void*)Internal_Rigidbody2D_GetMass);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::SetMass", (void*)Internal_Rigidbody2D_SetMass);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::GetUseGravity", (void*)Internal_Rigidbody2D_GetUseGravity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::SetUseGravity", (void*)Internal_Rigidbody2D_SetUseGravity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::GetGravityScale", (void*)Internal_Rigidbody2D_GetGravityScale);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::SetGravityScale", (void*)Internal_Rigidbody2D_SetGravityScale);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::GetVelocity", (void*)Internal_Rigidbody2D_GetVelocity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::SetVelocity", (void*)Internal_Rigidbody2D_SetVelocity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::GetAngularVelocity", (void*)Internal_Rigidbody2D_GetAngularVelocity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::SetAngularVelocity", (void*)Internal_Rigidbody2D_SetAngularVelocity);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::AddForceNative", (void*)Internal_Rigidbody2D_AddForce);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Rigidbody2D::AddTorqueNative", (void*)Internal_Rigidbody2D_AddTorque);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetDeltaTime", (void*)Internal_Time_GetDeltaTime);
     ::MonoRuntime::AddInternalCall("DittoEngine.Time::GetTime", (void*)Internal_Time_GetTime);
@@ -1309,6 +1338,9 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.UIButton::ConsumeClick", (void*)Internal_UIButton_ConsumeClick);
     ::MonoRuntime::AddInternalCall("DittoEngine.UIButton::IsHoveredNative", (void*)Internal_UIButton_IsHovered);
     ::MonoRuntime::AddInternalCall("DittoEngine.UIButton::SetLabelNative", (void*)Internal_UIButton_SetLabel);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.Object::InstantiateNative", (void*)Internal_Object_Instantiate);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Object::DestroyNative", (void*)Internal_Object_Destroy);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Debug::Log", (void*)Internal_Debug_Log);
 }
@@ -1480,12 +1512,27 @@ void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName)
     else if (typeStr == "Renderer")
     {
         for (const auto& comp : go->components)
-            if (comp && comp->index == (1 << 2)) return comp.get();
+            if (comp && comp->index == ComponentIndex::Renderer) return comp.get();
+    }
+    else if (typeStr == "SpriteRenderer")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::SpriteRenderer) return comp.get();
     }
     else if (typeStr == "Rigidbody")
     {
         for (const auto& comp : go->components)
-            if (comp && comp->index == (1 << 3)) return comp.get();
+            if (comp && comp->index == ComponentIndex::Rigidbody) return comp.get();
+    }
+    else if (typeStr == "Rigidbody2D")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::Rigidbody2D) return comp.get();
+    }
+    else if (typeStr == "Collider2D")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::Collider2D) return comp.get();
     }
     else if (typeStr == "AudioSource")
     {
@@ -1563,6 +1610,31 @@ void Internal_UIButton_SetLabel(void* uiButton, void* label)
     if (!uiButton || !label) return;
     static_cast<UIButtonComponent*>(uiButton)->label =
         MonoRuntime::GetStringFromMono((MonoString*)label);
+}
+
+void* Internal_Object_Instantiate(void* gameObject)
+{
+    if (!gameObject || !g_currentScene || !g_currentScene->rootGameObject) return nullptr;
+    GameObject* source = static_cast<GameObject*>(gameObject);
+    auto clone = std::make_unique<GameObject>(source);
+    clone->name = source->name + " (Clone)";
+    GameObject* result = clone.get();
+    g_currentScene->rootGameObject->AddChild(std::move(clone));
+    g_currentScene->gameObjects.push_back(result);
+    g_currentScene->MarkDirty();
+    return result;
+}
+
+void Internal_Object_Destroy(void* gameObject)
+{
+    if (!gameObject || !g_currentScene || !g_currentScene->rootGameObject) return;
+    GameObject* obj = static_cast<GameObject*>(gameObject);
+    if (obj == g_currentScene->rootGameObject.get()) return;
+    GameObject* parent = obj->parent;
+    if (!parent) return;
+    g_currentScene->UnregisterSubtree(obj);
+    parent->DetachChild(obj);
+    g_currentScene->MarkDirty();
 }
 
 void Internal_AudioSource_Play(void* audioSource)
@@ -1651,6 +1723,38 @@ void Internal_Renderer_SetShapeType(void* renderer, int type)
     RendererComponent* rend = static_cast<RendererComponent*>(renderer);
     rend->type = static_cast<RendererComponent::Type>(type);
     rend->meshSource = RendererComponent::BuiltIn;
+}
+
+void Internal_SpriteRenderer_GetColor(void* spriteRenderer, float* outColor)
+{
+    if (!spriteRenderer || !outColor) return;
+
+    SpriteRendererComponent* sr = static_cast<SpriteRendererComponent*>(spriteRenderer);
+    outColor[0] = sr->color.r;
+    outColor[1] = sr->color.g;
+    outColor[2] = sr->color.b;
+    outColor[3] = sr->color.a;
+}
+
+void Internal_SpriteRenderer_SetColor(void* spriteRenderer, float r, float g, float b, float a)
+{
+    if (!spriteRenderer) return;
+
+    SpriteRendererComponent* sr = static_cast<SpriteRendererComponent*>(spriteRenderer);
+    sr->color = glm::vec4(r, g, b, a);
+}
+
+void* Internal_SpriteRenderer_GetSprite(void* spriteRenderer)
+{
+    if (!spriteRenderer) return nullptr;
+    return MonoRuntime::CreateString(static_cast<SpriteRendererComponent*>(spriteRenderer)->spritePath);
+}
+
+void Internal_SpriteRenderer_SetSprite(void* spriteRenderer, void* spritePath)
+{
+    if (!spriteRenderer || !spritePath) return;
+    static_cast<SpriteRendererComponent*>(spriteRenderer)->spritePath =
+        MonoRuntime::GetStringFromMono((MonoString*)spritePath);
 }
 
 void Internal_Light_GetColor(void* light, float* outColor)
@@ -1791,5 +1895,92 @@ void Internal_Rigidbody_SetAngularVelocity(void* rigidbody, float x, float y, fl
     rb->angularVelocity.z = z;
 }
 
+int Internal_Rigidbody2D_GetBodyType(void* rigidbody)
+{
+    if (!rigidbody) return 0;
+    return static_cast<int>(static_cast<Rigidbody2DComponent*>(rigidbody)->type);
 }
 
+void Internal_Rigidbody2D_SetBodyType(void* rigidbody, int type)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->type = static_cast<Rigidbody2DComponent::Type>(type);
+}
+
+float Internal_Rigidbody2D_GetMass(void* rigidbody)
+{
+    if (!rigidbody) return 1.0f;
+    return static_cast<Rigidbody2DComponent*>(rigidbody)->mass;
+}
+
+void Internal_Rigidbody2D_SetMass(void* rigidbody, float mass)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->mass = mass;
+}
+
+int Internal_Rigidbody2D_GetUseGravity(void* rigidbody)
+{
+    if (!rigidbody) return 0;
+    return static_cast<Rigidbody2DComponent*>(rigidbody)->useGravity ? 1 : 0;
+}
+
+void Internal_Rigidbody2D_SetUseGravity(void* rigidbody, int useGravity)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->useGravity = useGravity != 0;
+}
+
+float Internal_Rigidbody2D_GetGravityScale(void* rigidbody)
+{
+    if (!rigidbody) return 1.0f;
+    return static_cast<Rigidbody2DComponent*>(rigidbody)->gravityScale;
+}
+
+void Internal_Rigidbody2D_SetGravityScale(void* rigidbody, float gravityScale)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->gravityScale = gravityScale;
+}
+
+void Internal_Rigidbody2D_GetVelocity(void* rigidbody, float* outVel)
+{
+    if (!rigidbody || !outVel) return;
+    glm::vec2 v = static_cast<Rigidbody2DComponent*>(rigidbody)->velocity;
+    outVel[0] = v.x;
+    outVel[1] = v.y;
+}
+
+void Internal_Rigidbody2D_SetVelocity(void* rigidbody, float x, float y)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->velocity = glm::vec2(x, y);
+}
+
+float Internal_Rigidbody2D_GetAngularVelocity(void* rigidbody)
+{
+    if (!rigidbody) return 0.0f;
+    return static_cast<Rigidbody2DComponent*>(rigidbody)->angularVelocity;
+}
+
+void Internal_Rigidbody2D_SetAngularVelocity(void* rigidbody, float v)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->angularVelocity = v;
+}
+
+void Internal_Rigidbody2D_AddForce(void* rigidbody, float x, float y, int mode)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->AddForce(
+        glm::vec2(x, y), static_cast<Rigidbody2DComponent::ForceMode2D>(mode));
+}
+
+void Internal_Rigidbody2D_AddTorque(void* rigidbody, float torque, int mode)
+{
+    if (!rigidbody) return;
+    static_cast<Rigidbody2DComponent*>(rigidbody)->AddTorque(
+        torque, static_cast<Rigidbody2DComponent::ForceMode2D>(mode));
+}
+
+}

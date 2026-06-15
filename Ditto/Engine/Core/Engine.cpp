@@ -209,6 +209,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     }
 
     physics = std::make_unique<ParallelPhysics>(); physics->engine = this;
+    physics2D = std::make_unique<Physics2DWorld>();
     CSharpScriptSystem::SetPhysics(physics.get());
 
     scene->InitializeBaseGeometries(resource.get(), renderer.get());
@@ -303,6 +304,29 @@ void Engine::Run()
             }
 
             double physStart = glfwGetTime();
+            if (physics2D)
+            {
+                float cappedDelta = static_cast<float>(deltaTime);
+                if (cappedDelta > 0.25f) cappedDelta = 0.25f;
+                physics2DAccumulator += cappedDelta;
+                int steps2D = 0;
+                while (physics2DAccumulator >= physics2D->fixedDeltaTime && steps2D < 5)
+                {
+                    float step2D = physics2D->fixedDeltaTime;
+                    CSharpScriptSystem::SetDeltaTime(step2D);
+                    ForEachGameObject(scene.get(), [](GameObject* obj)
+                    {
+                        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
+                        {
+                            script->FixedUpdate();
+                        });
+                    });
+                    physics2D->StepFixed(scene.get(), step2D);
+                    physics2DAccumulator -= step2D;
+                    steps2D++;
+                }
+                CSharpScriptSystem::SetDeltaTime(deltaTime);
+            }
             physics->UpdatePhysics(deltaTime);
             physicsCnt++;
             physicsTime += glfwGetTime() - physStart;
@@ -342,6 +366,37 @@ void Engine::Run()
                 }
                 physics->enterEvents.clear();
                 physics->exitEvents.clear();
+
+                if (physics2D)
+                {
+                    auto dispatch2D = [&](GameObject* self, GameObject* other,
+                        const ContactEvent2D& ev, bool flipNormal, bool isEnter)
+                    {
+                        if (!self || !other) return;
+                        int kind = (ev.isTrigger ? 2 : 0) + (isEnter ? 0 : 1);
+                        glm::vec2 n = flipNormal ? -ev.normal : ev.normal;
+                        ForEachScriptComponent(self, [&](CSharpScriptComponent* script)
+                        {
+                            if (!script->enabled || !script->scriptInstance) return;
+                            MonoRuntime::CallDispatchCollision(script->scriptInstance, kind,
+                                other, ev.point.x, ev.point.y, 0.0f,
+                                n.x, n.y, 0.0f, ev.depth);
+                        });
+                    };
+
+                    for (const ContactEvent2D& ev : physics2D->enterEvents)
+                    {
+                        dispatch2D(ev.a, ev.b, ev, true, true);
+                        dispatch2D(ev.b, ev.a, ev, false, true);
+                    }
+                    for (const ContactEvent2D& ev : physics2D->exitEvents)
+                    {
+                        dispatch2D(ev.a, ev.b, ev, true, false);
+                        dispatch2D(ev.b, ev.a, ev, false, false);
+                    }
+                    physics2D->enterEvents.clear();
+                    physics2D->exitEvents.clear();
+                }
             }
 
             // UI button interaction (hover/press/click), using the viewport-
@@ -360,9 +415,18 @@ void Engine::Run()
                     {
                         if (!comp || comp->index != ComponentIndex::UIButton || !comp->enabled) continue;
                         auto* btn = static_cast<UIButtonComponent*>(comp.get());
-                        glm::vec4 rect = ComputeUIRect(btn->anchor, btn->offset, btn->size, vp.x, vp.y);
+                        if (!btn->interactable)
+                        {
+                            btn->hovered = false;
+                            btn->pressed = false;
+                            btn->wasClicked = false;
+                            continue;
+                        }
+                        glm::vec4 rect = obj->GetComponent<RectTransformComponent>()
+                            ? obj->GetComponent<RectTransformComponent>()->ComputeRect(vp.x, vp.y)
+                            : ComputeUIRect(btn->anchor, btn->offset, btn->size, vp.x, vp.y);
                         btn->hovered = mouse.x >= rect.x && mouse.x < rect.x + rect.z &&
-                                       mouse.y >= rect.y && mouse.y < rect.y + rect.w;
+                            mouse.y >= rect.y && mouse.y < rect.y + rect.w;
                         btn->pressed = btn->hovered && lmbDown;
                         if (btn->hovered && lmbUp) btn->wasClicked = true;
                     }
@@ -395,7 +459,7 @@ void Engine::Run()
             
             if (scene && shaderPipeline)
             {
-                scene->Render(shaderPipeline, view, projection, activeCamera.position, window_width, window_height);
+                scene->Render(shaderPipeline, view, projection, activeCamera.position, window_width, window_height, true);
             }
         }
         else
@@ -433,6 +497,7 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
     if (!rt) return nullptr;
 
     renderer->BeginRenderTarget(rt);
+    renderer->SetViewport(0, 0, w, h);
     renderer->SetScissor(false);
     Camera fallbackCamera = isGameView ? *gameCamera : *sceneCamera;
     Camera activeCamera = (isGameView && scene) ? scene->GetMainCamera(fallbackCamera) : fallbackCamera;
@@ -444,7 +509,7 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
     mat4 view = activeCamera.GetViewMatrix();
     mat4 projection = activeCamera.GetProjectionMatrix((float)w / (float)h);
 
-    scene->Render(shaderPipeline, view, projection, activeCamera.position, w, h);
+    scene->Render(shaderPipeline, view, projection, activeCamera.position, w, h, isGameView);
 
     renderer->EndRenderTarget();
 
@@ -536,6 +601,8 @@ void Engine::SetEngineState(State newState)
                     std::vector<GameObject*> rootObjects;
                     rootObjects.push_back(scene->rootGameObject.get());
                     physics->GenerateColliders(rootObjects);
+                    if (physics2D) physics2D->Rebuild(scene.get());
+                    physics2DAccumulator = 0.0f;
                 }
 
                 ForEachGameObject(scene.get(), [](GameObject* obj)
@@ -577,6 +644,8 @@ void Engine::SetEngineState(State newState)
             });
 
             physics->ClearColliders();
+            if (physics2D) physics2D->Clear();
+            physics2DAccumulator = 0.0f;
             AudioEngine::StopAll();
             break;
         }
@@ -691,6 +760,8 @@ void Engine::LoadGameScene()
         std::vector<GameObject*> rootObjects;
         rootObjects.push_back(scene->rootGameObject.get());
         physics->GenerateColliders(rootObjects);
+        if (physics2D) physics2D->Rebuild(scene.get());
+        physics2DAccumulator = 0.0f;
     }
 
     ForEachGameObject(scene.get(), [](GameObject* obj)

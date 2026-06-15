@@ -9,6 +9,7 @@ bool Input::s_prevMouse[GLFW_MOUSE_BUTTON_LAST + 1] = {};
 double Input::s_mouseX = 0.0, Input::s_mouseY = 0.0;
 float Input::s_viewX = 0.0f, Input::s_viewY = 0.0f;
 float Input::s_viewW = 1.0f, Input::s_viewH = 1.0f;
+float Input::s_contentW = 1.0f, Input::s_contentH = 1.0f;
 
 void Input::Init(GLFWwindow* window)
 {
@@ -75,17 +76,26 @@ bool Input::GetMouseButtonUp(int button)
 
 glm::vec2 Input::GetMousePosition()
 {
-    return glm::vec2((float)s_mouseX - s_viewX, (float)s_mouseY - s_viewY);
+    float localX = (float)s_mouseX - s_viewX;
+    float localY = (float)s_mouseY - s_viewY;
+    if (s_viewW > 0.0f && s_viewH > 0.0f)
+    {
+        localX *= s_contentW / s_viewW;
+        localY *= s_contentH / s_viewH;
+    }
+    return glm::vec2(localX, localY);
 }
 
 glm::vec2 Input::GetGameViewportSize()
 {
-    return glm::vec2(s_viewW, s_viewH);
+    return glm::vec2(s_contentW, s_contentH);
 }
 
-void Input::SetGameViewport(float x, float y, float w, float h)
+void Input::SetGameViewport(float x, float y, float w, float h, float contentW, float contentH)
 {
     s_viewX = x; s_viewY = y;
     s_viewW = (w > 0.0f) ? w : 1.0f;
     s_viewH = (h > 0.0f) ? h : 1.0f;
+    s_contentW = (contentW > 0.0f) ? contentW : s_viewW;
+    s_contentH = (contentH > 0.0f) ? contentH : s_viewH;
 }

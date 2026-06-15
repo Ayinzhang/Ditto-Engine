@@ -35,6 +35,11 @@ namespace ComponentIndex
     constexpr int UIButton     = 1 << 8;
     constexpr int Camera       = 1 << 9;
     constexpr int CSharpScript = 1 << 10;
+    constexpr int Rigidbody2D  = 1 << 11;
+    constexpr int Collider2D   = 1 << 12;
+    constexpr int SpriteRenderer = 1 << 13;
+    constexpr int Canvas       = 1 << 14;
+    constexpr int RectTransform = 1 << 15;
 }
 
 struct Component
@@ -184,8 +189,14 @@ private:
 struct LightComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::Light;
+    enum Type { Directional, Point, Spot, Area };
+    Type type = Directional;
     glm::vec3 color;
     float intensity;
+    float range = 10.0f;
+    float spotAngle = 30.0f;
+    float indirectMultiplier = 1.0f;
+    bool castShadows = false;
 
     LightComponent();
     LightComponent(LightComponent* other);
@@ -197,13 +208,20 @@ struct LightComponent : Component
 struct CameraComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::Camera;
+    enum ClearFlags { Skybox, SolidColor, DepthOnly, DontClear };
     bool mainCamera = true;
+    ClearFlags clearFlags = SolidColor;
     Camera::ProjectionType projectionType = Camera::ProjectionType::Perspective;
     float fieldOfView = 45.0f;
     float orthographicSize = 5.0f;
     float nearClipPlane = 0.1f;
     float farClipPlane = 100.0f;
     glm::vec4 backgroundColor{ 0.1f, 0.1f, 0.1f, 1.0f };
+    glm::vec4 viewportRect{ 0.0f, 0.0f, 1.0f, 1.0f };
+    float depth = 0.0f;
+    bool occlusionCulling = true;
+    bool allowHDR = true;
+    bool allowMSAA = true;
 
     CameraComponent();
     CameraComponent(CameraComponent* other);
@@ -218,6 +236,7 @@ struct RendererComponent : Component
     static constexpr int TypeBit = ComponentIndex::Renderer;
     enum Type { Cube, Sphere, Quad };
     enum MeshSource { BuiltIn, File };
+    enum ShadowCastingMode { ShadowsOff, ShadowsOn, TwoSided, ShadowsOnly };
     static constexpr const char* DefaultShaderName = "Lit_Toon";
     Type type;
     MeshSource meshSource;
@@ -225,6 +244,15 @@ struct RendererComponent : Component
     std::string materialPath;
     std::string shaderName;
     std::string mainTexturePath;
+    ShadowCastingMode shadowCastingMode = ShadowsOn;
+    bool receiveShadows = true;
+    bool staticShadowCaster = false;
+    bool contributeGI = false;
+    int lightProbeUsage = 1;       // Off, Blend Probes, Use Proxy Volume, Custom Provided
+    int reflectionProbeUsage = 1;  // Off, Blend Probes, Blend Probes And Skybox, Simple
+    int motionVectors = 1;         // Camera Motion Only, Per Object Motion, Force No Motion
+    bool dynamicOcclusion = true;
+    uint32_t renderingLayerMask = 1;
 
     // Optional custom mesh override (project-relative .obj path). Empty => use
     // the built-in `type` geometry. This is a RENDER-only override; physics and
@@ -235,6 +263,36 @@ struct RendererComponent : Component
     RendererComponent(Type _type = Cube);
     RendererComponent(RendererComponent* other);
     bool UsesFileMesh() const;
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
+struct SpriteRendererComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::SpriteRenderer;
+    enum DrawMode { Simple, Sliced, Tiled };
+    enum MaskInteraction { None, VisibleInsideMask, VisibleOutsideMask };
+    enum SpriteSortPoint { Center, Pivot };
+    enum BuiltInSprite { SpriteNone, SpriteSquare, SpriteCircle, SpriteAsset };
+    static constexpr const char* DefaultShaderName = "Lit_Sprite";
+
+    glm::vec4 color{ 1.0f };
+    std::string spritePath;
+    std::string materialPath;
+    std::string shaderName = DefaultShaderName;
+    BuiltInSprite builtInSprite = SpriteSquare;
+    bool flipX = false;
+    bool flipY = false;
+    DrawMode drawMode = Simple;
+    glm::vec2 size{ 1.0f, 1.0f };
+    MaskInteraction maskInteraction = None;
+    int sortingLayer = 0;
+    int sortingOrder = 0;
+    SpriteSortPoint spriteSortPoint = Center;
+
+    SpriteRendererComponent();
+    SpriteRendererComponent(SpriteRendererComponent* other);
     void OnInspectorGUI() override;
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;
@@ -259,6 +317,11 @@ struct RigidbodyComponent : Component
     float mass;
     bool useGravity;
     float damp, angularDamp;
+    bool isKinematic = false;
+    int interpolate = 0;       // None, Interpolate, Extrapolate
+    int collisionDetection = 0; // Discrete, Continuous, Continuous Dynamic, Continuous Speculative
+    bool freezePosition[3] = { false, false, false };
+    bool freezeRotation[3] = { false, false, false };
     glm::vec3 velocity, angularVelocity;
     glm::mat3 inertia, inverseInertia;
 
@@ -276,6 +339,7 @@ struct ColliderComponent : Component
     enum Type { Box, Sphere, MeshConvex };
     Type type;
     bool isTrigger;
+    bool providesContacts = false;
     glm::vec3 biasPosition;
     glm::vec3 biasRotation;
     glm::vec3 biasScale;
@@ -289,13 +353,82 @@ struct ColliderComponent : Component
     void Deserialize(std::istream& file) override;
 };
 
+struct Rigidbody2DComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::Rigidbody2D;
+    enum Type { Static, Dynamic, Kinematic };
+    enum ForceMode2D { Force, Impulse };
+
+    Type type = Dynamic;
+    std::string materialPath;
+    bool simulated = true;
+    bool useAutoMass = false;
+    float mass = 1.0f;
+    bool useGravity = true;
+    float gravityScale = 1.0f;
+    float linearDamping = 0.02f;
+    float angularDamping = 0.02f;
+    int collisionDetection = 0; // Discrete, Continuous
+    int sleepingMode = 0;       // Never Sleep, Start Awake, Start Asleep
+    int interpolate = 0;        // None, Interpolate, Extrapolate
+    bool freezePositionX = false;
+    bool freezePositionY = false;
+    bool freezeRotation = false;
+    glm::vec2 velocity{ 0.0f };
+    float angularVelocity = 0.0f;
+
+    Rigidbody2DComponent();
+    Rigidbody2DComponent(Rigidbody2DComponent* other);
+    void AddForce(const glm::vec2& force, ForceMode2D mode = Force);
+    void AddTorque(float torque, ForceMode2D mode = Force);
+    void ClearAccumulators();
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+
+    glm::vec2 forceAccum{ 0.0f };
+    float torqueAccum = 0.0f;
+};
+
+struct Collider2DComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::Collider2D;
+    enum Type { Box, Circle };
+
+    Type type = Box;
+    bool isTrigger = false;
+    bool usedByEffector = false;
+    bool usedByComposite = false;
+    glm::vec2 offset{ 0.0f };
+    glm::vec2 size{ 1.0f, 1.0f };
+    float radius = 0.5f;
+    float restitution = 0.2f;
+    float friction = 0.6f;
+
+    Collider2DComponent(Type _type = Box);
+    Collider2DComponent(Collider2DComponent* other);
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
 struct AudioSourceComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::AudioSource;
     std::string clipPath;        // project-relative audio file (wav/mp3/ogg/flac)
+    std::string outputPath;
+    bool mute = false;
+    bool bypassEffects = false;
+    bool bypassListenerEffects = false;
+    bool bypassReverbZones = false;
     float volume = 1.0f;
+    float pitch = 1.0f;
     bool loop = false;
     bool playOnAwake = true;
+    int priority = 128;
+    float stereoPan = 0.0f;
+    float spatialBlend = 0.0f;
+    float reverbZoneMix = 1.0f;
 
     // Runtime-only: handle of the currently playing sound (AudioEngine).
     uint32_t soundHandle = 0;
@@ -338,14 +471,51 @@ inline glm::vec4 ComputeUIRect(UIAnchor anchor, const glm::vec2& offset,
     return glm::vec4(pos, size);
 }
 
+struct CanvasComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::Canvas;
+    enum RenderMode { ScreenSpaceOverlay, ScreenSpaceCamera, WorldSpace };
+
+    RenderMode renderMode = ScreenSpaceOverlay;
+    bool pixelPerfect = false;
+    float planeDistance = 100.0f;
+    int sortingOrder = 0;
+
+    CanvasComponent();
+    CanvasComponent(CanvasComponent* other);
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
+struct RectTransformComponent : Component
+{
+    static constexpr int TypeBit = ComponentIndex::RectTransform;
+    UIAnchor anchor = UIAnchor::TopLeft;
+    glm::vec2 anchoredPosition{ 0.0f };
+    glm::vec2 sizeDelta{ 100.0f, 100.0f };
+    glm::vec2 pivot{ 0.5f, 0.5f };
+
+    RectTransformComponent();
+    RectTransformComponent(RectTransformComponent* other);
+    glm::vec4 ComputeRect(float viewW, float viewH) const;
+    void OnInspectorGUI() override;
+    void Serialize(std::ostream& file) const override;
+    void Deserialize(std::istream& file) override;
+};
+
 struct UIImageComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::UIImage;
+    enum Type { Simple, Sliced, Tiled, Filled };
     UIAnchor anchor = UIAnchor::TopLeft;
     glm::vec2 offset{ 0.0f };
     glm::vec2 size{ 100.0f, 100.0f };
     glm::vec4 color{ 1.0f };
     std::string texturePath;   // empty = solid color (white texture)
+    Type type = Simple;
+    bool raycastTarget = true;
+    bool maskable = true;
 
     UIImageComponent();
     UIImageComponent(UIImageComponent* other);
@@ -362,6 +532,11 @@ struct UITextComponent : Component
     float fontSize = 24.0f;
     glm::vec4 color{ 1.0f };
     std::string text = "Text";
+    std::string fontPath;
+    int fontStyle = 0; // Normal, Bold, Italic, Bold And Italic
+    int alignment = 0; // Left, Center, Right
+    bool raycastTarget = true;
+    bool maskable = true;
 
     UITextComponent();
     UITextComponent(UITextComponent* other);
@@ -382,6 +557,11 @@ struct UIButtonComponent : Component
     std::string label = "Button";
     float fontSize = 20.0f;
     glm::vec4 labelColor{ 1.0f };
+    bool interactable = true;
+    int transition = 1; // None, Color Tint
+    glm::vec4 disabledColor{ 0.5f, 0.5f, 0.5f, 0.5f };
+    float colorMultiplier = 1.0f;
+    float fadeDuration = 0.1f;
 
     // Runtime-only interaction state (driven by Engine in Play mode).
     bool hovered = false;

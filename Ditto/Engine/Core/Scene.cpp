@@ -252,21 +252,55 @@ void Scene::CollectRenderData()
         {
             if (!obj->enabled) return;
 
-            RendererComponent* renderer = obj->GetComponent<RendererComponent>();
             TransformComponent* transform = obj->GetComponent<TransformComponent>();
+            auto addBatchInstance = [&](RendererComponent::Type type, const std::string& meshPath,
+                const std::string& shaderName, const std::string& texturePath,
+                const glm::vec4& color, int sortingOrder)
+                {
+                    if (!transform || !transform->enabled) return;
 
-            if (renderer && renderer->enabled && transform && transform->enabled)
+                    std::string meshKey = meshPath.empty()
+                        ? std::string("builtin:") + RendererTypeKey(type)
+                        : "file:" + meshPath;
+                    std::string colorKey = std::to_string(color.r) + "," + std::to_string(color.g) + "," +
+                        std::to_string(color.b) + "," + std::to_string(color.a);
+                    std::string batchKey = shaderName + "|" + meshKey + "|" + texturePath + "|" + colorKey + "|" + std::to_string(sortingOrder);
+
+                    GeometryInstances* batch = nullptr;
+                    auto batchIt = renderBatches.find(batchKey);
+                    if (batchIt == renderBatches.end())
+                    {
+                        auto newBatch = std::make_unique<GeometryInstances>(type);
+                        newBatch->meshPath = meshPath;
+                        newBatch->shaderName = shaderName;
+                        newBatch->texturePath = texturePath;
+                        newBatch->sortingOrder = sortingOrder;
+                        batch = newBatch.get();
+                        renderBatches[batchKey] = std::move(newBatch);
+                    }
+                    else
+                    {
+                        batch = batchIt->second.get();
+                    }
+
+                    if (batch)
+                    {
+                        batch->modelMatrices.push_back(transform->GetWorldModel());
+                        batch->instanceColors.push_back(color);
+                        batch->instanceCount++;
+                    }
+                };
+
+            RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+            if (renderer && renderer->enabled && transform && transform->enabled &&
+                !(renderer->meshSource == RendererComponent::File && renderer->meshPath.empty()))
             {
-                std::string meshKey;
+                std::string meshPath;
                 if (renderer->UsesFileMesh())
                 {
                     // Custom mesh: lazily build its geometry/batch, then route to it.
                     EnsureCustomGeometry(renderer->meshPath);
-                    meshKey = "file:" + renderer->meshPath;
-                }
-                else
-                {
-                    meshKey = std::string("builtin:") + RendererTypeKey(renderer->type);
+                    meshPath = renderer->meshPath;
                 }
 
                 Ditto::MaterialAsset material = renderer->materialPath.empty()
@@ -281,30 +315,41 @@ void Scene::CollectRenderData()
 
                 std::string shaderName = material.shaderName.empty() ? RendererComponent::DefaultShaderName : material.shaderName;
                 std::string texturePath = material.mainTexturePath;
-                std::string colorKey = std::to_string(material.color.r) + "," + std::to_string(material.color.g) + "," +
-                    std::to_string(material.color.b) + "," + std::to_string(material.color.a);
-                std::string batchKey = shaderName + "|" + meshKey + "|" + texturePath + "|" + colorKey;
-                GeometryInstances* batch = nullptr;
-                auto batchIt = renderBatches.find(batchKey);
-                if (batchIt == renderBatches.end())
+                addBatchInstance(renderer->type, meshPath, shaderName, texturePath, glm::vec4(material.color), 0);
+            }
+
+            SpriteRendererComponent* sprite = obj->GetComponent<SpriteRendererComponent>();
+            if (sprite && sprite->enabled && transform && transform->enabled &&
+                sprite->builtInSprite != SpriteRendererComponent::SpriteNone)
+            {
+                const bool hasMaterial = !sprite->materialPath.empty();
+                Ditto::MaterialAsset material = sprite->materialPath.empty()
+                    ? Ditto::MakeDefaultMaterial("Inline Sprite Material")
+                    : Ditto::LoadMaterialAsset(sprite->materialPath);
+                if (sprite->materialPath.empty() || !material.ok)
                 {
-                    auto newBatch = std::make_unique<GeometryInstances>(renderer->type);
-                    newBatch->meshPath = renderer->UsesFileMesh() ? renderer->meshPath : "";
-                    newBatch->shaderName = shaderName;
-                    newBatch->texturePath = texturePath;
-                    batch = newBatch.get();
-                    renderBatches[batchKey] = std::move(newBatch);
+                    material.shaderName = sprite->shaderName.empty() ? SpriteRendererComponent::DefaultShaderName : sprite->shaderName;
+                    material.color = sprite->color;
+                    if (sprite->builtInSprite == SpriteRendererComponent::SpriteCircle)
+                        material.mainTexturePath = "builtin:circle-sprite";
+                    else if (sprite->builtInSprite == SpriteRendererComponent::SpriteAsset)
+                        material.mainTexturePath = sprite->spritePath;
+                    else
+                        material.mainTexturePath.clear();
                 }
-                else
+                if (sprite->builtInSprite == SpriteRendererComponent::SpriteCircle)
                 {
-                    batch = batchIt->second.get();
+                    material.mainTexturePath = "builtin:circle-sprite";
                 }
-                if (batch)
+                else if (sprite->builtInSprite == SpriteRendererComponent::SpriteAsset && !sprite->spritePath.empty())
                 {
-                    batch->modelMatrices.push_back(transform->GetWorldModel());
-                    batch->instanceColors.push_back(glm::vec4(material.color));
-                    batch->instanceCount++;
+                    material.mainTexturePath = sprite->spritePath;
                 }
+
+                std::string shaderName = material.shaderName.empty() ? SpriteRendererComponent::DefaultShaderName : material.shaderName;
+                glm::vec4 finalColor = hasMaterial && material.ok ? glm::vec4(material.color) * sprite->color : sprite->color;
+                addBatchInstance(RendererComponent::Quad, "", shaderName, material.mainTexturePath,
+                    finalColor, sprite->sortingOrder);
             }
 
             for (const auto& child : obj->children) collect(child.get());
@@ -343,7 +388,7 @@ void Scene::UpdateSSBOs()
 }
 
 void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
-    const glm::vec3& viewPos, int viewportWidth, int viewportHeight)
+    const glm::vec3& viewPos, int viewportWidth, int viewportHeight, bool renderUI)
 {
     if (!renderer) return;
 
@@ -384,7 +429,10 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     std::stable_sort(drawBatches.begin(), drawBatches.end(),
         [&](GeometryInstances* a, GeometryInstances* b)
         {
-            return GetShaderPipelineState(a->shaderName).renderQueue < GetShaderPipelineState(b->shaderName).renderQueue;
+            int queueA = GetShaderPipelineState(a->shaderName).renderQueue;
+            int queueB = GetShaderPipelineState(b->shaderName).renderQueue;
+            if (queueA != queueB) return queueA < queueB;
+            return a->sortingOrder < b->sortingOrder;
         });
 
     for (GeometryInstances* batch : drawBatches)
@@ -408,11 +456,11 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
         }
     }
 
-    // Screen-space UI overlay (UIImage/UIText/UIButton), drawn last on top of
-    // the 3D scene. Works for the editor's offscreen viewports and the
-    // standalone game-mode backbuffer alike.
-    if (!uiRenderer) uiRenderer = new UIRenderer();
-    uiRenderer->Render(this, viewportWidth, viewportHeight);
+    if (renderUI)
+    {
+        if (!uiRenderer) uiRenderer = new UIRenderer();
+        uiRenderer->Render(this, viewportWidth, viewportHeight);
+    }
 }
 
 Ditto::PipelineHandle Scene::GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback)
@@ -471,6 +519,35 @@ Ditto::TextureHandle Scene::GetOrCreateMaterialTexture(const std::string& textur
             whiteTexture = renderer->CreateTexture(white, 1, 1, 4);
         }
         return whiteTexture;
+    }
+    if (texturePath == "builtin:circle-sprite")
+    {
+        auto it = materialTextures.find(texturePath);
+        if (it != materialTextures.end())
+            return it->second ? it->second : GetOrCreateMaterialTexture("");
+
+        constexpr int size = 64;
+        std::vector<unsigned char> pixels(size * size * 4, 0);
+        const float center = (size - 1) * 0.5f;
+        const float radius = center - 1.0f;
+        for (int y = 0; y < size; ++y)
+        {
+            for (int x = 0; x < size; ++x)
+            {
+                float dx = static_cast<float>(x) - center;
+                float dy = static_cast<float>(y) - center;
+                float dist = sqrtf(dx * dx + dy * dy);
+                float edge = glm::clamp(radius + 1.0f - dist, 0.0f, 1.0f);
+                int i = (y * size + x) * 4;
+                pixels[i + 0] = 255;
+                pixels[i + 1] = 255;
+                pixels[i + 2] = 255;
+                pixels[i + 3] = static_cast<unsigned char>(edge * 255.0f);
+            }
+        }
+        Ditto::TextureHandle texture = renderer->CreateTexture(pixels.data(), size, size, 4);
+        materialTextures[texturePath] = texture;
+        return texture ? texture : GetOrCreateMaterialTexture("");
     }
 
     auto it = materialTextures.find(texturePath);
@@ -682,14 +759,26 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
     {
         if (!obj->enabled) return;
         RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+        SpriteRendererComponent* spriteRenderer = obj->GetComponent<SpriteRendererComponent>();
         TransformComponent* transform = obj->GetComponent<TransformComponent>();
-        if (!renderer || !transform || !renderer->enabled || !transform->enabled) return;
+        RendererComponent::Type renderType = RendererComponent::Cube;
+        if (renderer && renderer->enabled)
+        {
+            if (renderer->meshSource == RendererComponent::File && renderer->meshPath.empty())
+                return;
+            renderType = renderer->type;
+        }
+        else if (spriteRenderer && spriteRenderer->enabled && spriteRenderer->builtInSprite != SpriteRendererComponent::SpriteNone)
+            renderType = RendererComponent::Quad;
+        else
+            return;
+        if (!transform || !transform->enabled) return;
 
         checkedCount++;
         glm::mat4 worldMat = transform->GetWorldModel();
         const std::vector<glm::vec3>* vertices = nullptr;
         const std::vector<unsigned int>* indices = nullptr;
-        GetBuiltinRaycastMesh(renderer->type, resource, vertices, indices);
+        GetBuiltinRaycastMesh(renderType, resource, vertices, indices);
 
         if (!vertices || !indices)
         {
@@ -697,7 +786,7 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
             return;
         }
 
-        DITTO_LOG_INFO_STREAM("[Raycast] Checking object: " << obj->name << " (type=" << RendererTypeName(renderer->type)
+        DITTO_LOG_INFO_STREAM("[Raycast] Checking object: " << obj->name << " (type=" << RendererTypeName(renderType)
             << ", vertices: " << vertices->size() << ", indices: " << indices->size() << ")");
 
         float tMin = FLT_MAX;
@@ -788,14 +877,26 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const Camera& c
     {
         if (!obj->enabled) return;
         RendererComponent* renderer = obj->GetComponent<RendererComponent>();
+        SpriteRendererComponent* spriteRenderer = obj->GetComponent<SpriteRendererComponent>();
         TransformComponent* transform = obj->GetComponent<TransformComponent>();
-        if (!renderer || !transform || !renderer->enabled || !transform->enabled) return;
+        RendererComponent::Type renderType = RendererComponent::Cube;
+        if (renderer && renderer->enabled)
+        {
+            if (renderer->meshSource == RendererComponent::File && renderer->meshPath.empty())
+                return;
+            renderType = renderer->type;
+        }
+        else if (spriteRenderer && spriteRenderer->enabled && spriteRenderer->builtInSprite != SpriteRendererComponent::SpriteNone)
+            renderType = RendererComponent::Quad;
+        else
+            return;
+        if (!transform || !transform->enabled) return;
 
         checkedCount++;
         glm::mat4 worldMat = transform->GetWorldModel();
         const std::vector<glm::vec3>* vertices = nullptr;
         const std::vector<unsigned int>* indices = nullptr;
-        GetBuiltinRaycastMesh(renderer->type, resource, vertices, indices);
+        GetBuiltinRaycastMesh(renderType, resource, vertices, indices);
         if (!vertices || !indices) return;
 
         float tMin = FLT_MAX;
@@ -846,7 +947,7 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const Camera& c
 #else
 void Scene::CollectRenderData() {}
 void Scene::UpdateSSBOs() {}
-void Scene::Render(Ditto::PipelineHandle, const glm::mat4&, const glm::mat4&, const glm::vec3&, int, int) {}
+void Scene::Render(Ditto::PipelineHandle, const glm::mat4&, const glm::mat4&, const glm::vec3&, int, int, bool) {}
 void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
 {
     resource = _resource;
@@ -877,7 +978,12 @@ struct SceneHeader
 // components (new component types -- old files never contain them, so no
 // field gating is needed; old engines reject v9 files via the version check).
 // v10: CameraComponent + default Main Camera scene object.
-const uint32_t SCENE_VERSION = 10;
+// v11: Rigidbody2D + Collider2D components.
+// v12: SpriteRendererComponent.
+// v13: Unity-style inspector/runtime fields on renderers, physics, audio, UI.
+// v14: SpriteRenderer built-in Sprite selection (None/Square/Circle/Asset).
+// v15: CanvasComponent + RectTransformComponent for Unity-style UI layout.
+const uint32_t SCENE_VERSION = 15;
 const char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
 
 void Scene::WriteToStream(std::ostream& file)

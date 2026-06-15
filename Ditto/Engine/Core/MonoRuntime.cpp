@@ -488,6 +488,7 @@ namespace MonoRuntime
 
         script->startMethod = GetMethod(klass, "Start", 0);
         script->updateMethod = GetMethod(klass, "Update", 0);
+        script->fixedUpdateMethod = GetMethod(klass, "FixedUpdate", 0);
         script->onDestroyMethod = GetMethod(klass, "OnDestroy", 0);
         // The dispatch bridge lives on the MonoBehaviour base class; walk the
         // parent chain to find it (GetMethod alone won't search base classes).
@@ -496,7 +497,8 @@ namespace MonoRuntime
         DITTO_LOG_INFO_STREAM("[Mono] LoadScript: klass=" << klass
             << " instance=" << script->instance
             << " start=" << script->startMethod
-            << " update=" << script->updateMethod);
+            << " update=" << script->updateMethod
+            << " fixedUpdate=" << script->fixedUpdateMethod);
 
         if (p_mono_gchandle_new && script->instance)
         {
@@ -547,6 +549,18 @@ namespace MonoRuntime
         }
 
         InvokeMethod(script->instance, script->updateMethod, nullptr);
+    }
+
+    void CallFixedUpdate(std::shared_ptr<ScriptInstance> script)
+    {
+        if (!script || !script->instance || !script->fixedUpdateMethod) return;
+
+        if (!script->started)
+        {
+            CallStart(script);
+        }
+
+        InvokeMethod(script->instance, script->fixedUpdateMethod, nullptr);
     }
 
     void CallOnDestroy(std::shared_ptr<ScriptInstance> script)

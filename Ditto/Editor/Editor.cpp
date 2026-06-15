@@ -58,11 +58,22 @@ static GameObject* CreateCameraObject(GameObject* parent, const std::string& nam
     return cameraObj;
 }
 
-static GameObject* CreateSpriteObject(GameObject* parent)
+static RendererComponent* AddDefaultRenderer(GameObject* obj, RendererComponent::Type type)
 {
-    GameObject* sprite = parent->AddChild(std::make_unique<GameObject>("Sprite"));
-    RendererComponent* renderer = sprite->AddComponent<RendererComponent>(RendererComponent::Quad);
+    RendererComponent* renderer = obj->AddComponent<RendererComponent>(type);
+    renderer->materialPath = "Materials/Lit_Toon.mat";
     renderer->shaderName = RendererComponent::DefaultShaderName;
+    return renderer;
+}
+
+static GameObject* CreateSpriteObject(GameObject* parent, SpriteRendererComponent::BuiltInSprite spriteType = SpriteRendererComponent::SpriteSquare)
+{
+    const char* name = spriteType == SpriteRendererComponent::SpriteCircle ? "Circle" : "Square";
+    GameObject* sprite = parent->AddChild(std::make_unique<GameObject>(name));
+    SpriteRendererComponent* renderer = sprite->AddComponent<SpriteRendererComponent>();
+    renderer->shaderName = SpriteRendererComponent::DefaultShaderName;
+    renderer->materialPath = "Materials/Lit_Sprite.mat";
+    renderer->builtInSprite = spriteType;
     renderer->color = glm::vec4(1.0f);
     if (TransformComponent* transform = sprite->GetComponent<TransformComponent>())
     {
@@ -75,12 +86,18 @@ static GameObject* CreateSpriteObject(GameObject* parent)
 
 static GameObject* CreateCanvasObject(GameObject* parent)
 {
-    return parent->AddChild(std::make_unique<GameObject>("Canvas"));
+    GameObject* canvas = parent->AddChild(std::make_unique<GameObject>("Canvas"));
+    canvas->AddComponent<CanvasComponent>();
+    RectTransformComponent* rect = canvas->AddComponent<RectTransformComponent>();
+    rect->anchor = UIAnchor::Center;
+    rect->anchoredPosition = glm::vec2(0.0f);
+    rect->sizeDelta = glm::vec2(800.0f, 600.0f);
+    return canvas;
 }
 
 static bool IsCanvasObject(GameObject* obj)
 {
-    return obj && obj->name == "Canvas";
+    return obj && (obj->GetComponent<CanvasComponent>() || obj->name == "Canvas");
 }
 
 static GameObject* FindCanvasInChildren(GameObject* parent)
@@ -104,6 +121,10 @@ static GameObject* FindOrCreateCanvas(GameObject* root, GameObject* preferredPar
 static GameObject* CreateUIImageObject(GameObject* parent)
 {
     GameObject* image = parent->AddChild(std::make_unique<GameObject>("Image"));
+    RectTransformComponent* rect = image->AddComponent<RectTransformComponent>();
+    rect->anchor = UIAnchor::Center;
+    rect->anchoredPosition = glm::vec2(0.0f);
+    rect->sizeDelta = glm::vec2(100.0f, 100.0f);
     image->AddComponent<UIImageComponent>();
     return image;
 }
@@ -111,6 +132,10 @@ static GameObject* CreateUIImageObject(GameObject* parent)
 static GameObject* CreateUITextObject(GameObject* parent)
 {
     GameObject* text = parent->AddChild(std::make_unique<GameObject>("Text"));
+    RectTransformComponent* rect = text->AddComponent<RectTransformComponent>();
+    rect->anchor = UIAnchor::Center;
+    rect->anchoredPosition = glm::vec2(0.0f);
+    rect->sizeDelta = glm::vec2(160.0f, 30.0f);
     text->AddComponent<UITextComponent>();
     return text;
 }
@@ -118,8 +143,69 @@ static GameObject* CreateUITextObject(GameObject* parent)
 static GameObject* CreateUIButtonObject(GameObject* parent)
 {
     GameObject* button = parent->AddChild(std::make_unique<GameObject>("Button"));
+    RectTransformComponent* rect = button->AddComponent<RectTransformComponent>();
+    rect->anchor = UIAnchor::Center;
+    rect->anchoredPosition = glm::vec2(0.0f);
+    rect->sizeDelta = glm::vec2(160.0f, 40.0f);
     button->AddComponent<UIButtonComponent>();
     return button;
+}
+
+static GameObject* CreateUIPanelObject(GameObject* parent)
+{
+    GameObject* panel = parent->AddChild(std::make_unique<GameObject>("Panel"));
+    RectTransformComponent* rect = panel->AddComponent<RectTransformComponent>();
+    rect->anchor = UIAnchor::Center;
+    rect->anchoredPosition = glm::vec2(0.0f);
+    rect->sizeDelta = glm::vec2(400.0f, 300.0f);
+    UIImageComponent* image = panel->AddComponent<UIImageComponent>();
+    image->color = glm::vec4(0.18f, 0.18f, 0.18f, 0.85f);
+    return panel;
+}
+
+static void SelectCreatedObject(Editor* editor, GameObject* obj)
+{
+    if (!editor || !obj) return;
+    editor->selectedObject = obj;
+    editor->activeSelection = obj;
+    editor->selectedComponent = nullptr;
+    editor->selectedFile.Clear();
+    if (editor->engine && editor->engine->scene)
+        editor->engine->scene->MarkDirty();
+}
+
+static GameObject* CreateCubeObject(GameObject* parent)
+{
+    GameObject* obj = parent->AddChild(std::make_unique<GameObject>("Cube"));
+    AddDefaultRenderer(obj, RendererComponent::Cube);
+    return obj;
+}
+
+static GameObject* CreateSphereObject(GameObject* parent)
+{
+    GameObject* obj = parent->AddChild(std::make_unique<GameObject>("Sphere"));
+    AddDefaultRenderer(obj, RendererComponent::Sphere);
+    return obj;
+}
+
+static GameObject* CreateQuadObject(GameObject* parent)
+{
+    GameObject* obj = parent->AddChild(std::make_unique<GameObject>("Quad"));
+    AddDefaultRenderer(obj, RendererComponent::Quad);
+    return obj;
+}
+
+static GameObject* CreateDirectionalLightObject(GameObject* parent)
+{
+    GameObject* lightObj = parent->AddChild(std::make_unique<GameObject>("Directional Light"));
+    lightObj->AddComponent<LightComponent>();
+    if (TransformComponent* transform = lightObj->GetComponent<TransformComponent>())
+    {
+        transform->rotation[0] = -30.0f;
+        transform->localDirty = true;
+        transform->UpdateTransform();
+    }
+    return lightObj;
 }
 
 // Helper function to find editor assets directory
@@ -568,17 +654,88 @@ void Editor::DrawToolbar()
 
         if (ImGui::BeginMenu("GameObject"))
         {
-            if (ImGui::MenuItem("Create Empty")) {}
-            if (ImGui::BeginMenu("Create Geometry"))
+            GameObject* parent = engine && engine->scene ? engine->scene->rootGameObject.get() : nullptr;
+            if (ImGui::MenuItem("Create Empty") && parent)
             {
-                if (ImGui::MenuItem("Cube")) {}
-                if (ImGui::MenuItem("Sphere")) {}
-                if (ImGui::MenuItem("Plane")) {}
+                PushUndoSnapshot();
+                GameObject* obj = parent->AddChild(std::make_unique<GameObject>("GameObject"));
+                SelectCreatedObject(this, obj);
+            }
+            if (ImGui::BeginMenu("3D Object"))
+            {
+                if (ImGui::MenuItem("Cube") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateCubeObject(parent));
+                }
+                if (ImGui::MenuItem("Sphere") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateSphereObject(parent));
+                }
+                if (ImGui::MenuItem("Quad") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateQuadObject(parent));
+                }
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Create Light"))
+            if (ImGui::BeginMenu("2D Object"))
             {
-                // TODO: Implement light creation
+                if (ImGui::MenuItem("Square") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteSquare));
+                }
+                if (ImGui::MenuItem("Circle") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteCircle));
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Light"))
+            {
+                if (ImGui::MenuItem("Directional Light") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateDirectionalLightObject(parent));
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("UI"))
+            {
+                if (ImGui::MenuItem("Canvas") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateCanvasObject(parent));
+                }
+                if (ImGui::MenuItem("Panel") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateUIPanelObject(FindOrCreateCanvas(parent, parent)));
+                }
+                if (ImGui::MenuItem("Image") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateUIImageObject(FindOrCreateCanvas(parent, parent)));
+                }
+                if (ImGui::MenuItem("Text") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateUITextObject(FindOrCreateCanvas(parent, parent)));
+                }
+                if (ImGui::MenuItem("Button") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateUIButtonObject(FindOrCreateCanvas(parent, parent)));
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("Camera") && parent)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateCameraObject(parent));
             }
             ImGui::EndMenu();
         }
@@ -813,6 +970,8 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 selectedFile.Clear();
             }
         }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0) && m_sceneWindow)
+            m_sceneWindow->FrameObject(obj);
         
         if (isRoot) {
             ImGui::PopStyleColor();
@@ -876,6 +1035,8 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 selectedFile.Clear();
             }
         }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0) && m_sceneWindow)
+            m_sceneWindow->FrameObject(obj);
         
         if (isRoot) {
             ImGui::PopStyleColor();
@@ -924,30 +1085,47 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         {
             PushUndoSnapshot();
             GameObject* newObj = obj->AddChild(std::make_unique<GameObject>("New GameObject"));
-            selectedObject = newObj;
-            activeSelection = newObj;
-            selectedFile.Clear();
-            engine->scene->MarkDirty();
+            SelectCreatedObject(this, newObj);
         }
-        if (ImGui::MenuItem("Camera"))
+        if (ImGui::BeginMenu("3D Object"))
         {
-            PushUndoSnapshot();
-            GameObject* cameraObj = CreateCameraObject(obj);
-            selectedObject = cameraObj;
-            activeSelection = cameraObj;
-            selectedFile.Clear();
-            engine->scene->MarkDirty();
+            if (ImGui::MenuItem("Cube"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateCubeObject(obj));
+            }
+            if (ImGui::MenuItem("Sphere"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSphereObject(obj));
+            }
+            if (ImGui::MenuItem("Quad"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateQuadObject(obj));
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Light"))
+        {
+            if (ImGui::MenuItem("Directional Light"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateDirectionalLightObject(obj));
+            }
+            ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("2D Object"))
         {
-            if (ImGui::MenuItem("Sprite"))
+            if (ImGui::MenuItem("Square"))
             {
                 PushUndoSnapshot();
-                GameObject* sprite = CreateSpriteObject(obj);
-                selectedObject = sprite;
-                activeSelection = sprite;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteSquare));
+            }
+            if (ImGui::MenuItem("Circle"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteCircle));
             }
             ImGui::EndMenu();
         }
@@ -956,40 +1134,34 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             if (ImGui::MenuItem("Canvas"))
             {
                 PushUndoSnapshot();
-                GameObject* canvas = CreateCanvasObject(obj);
-                selectedObject = canvas;
-                activeSelection = canvas;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateCanvasObject(obj));
+            }
+            if (ImGui::MenuItem("Panel"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateUIPanelObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj)));
             }
             if (ImGui::MenuItem("Image"))
             {
                 PushUndoSnapshot();
-                GameObject* image = CreateUIImageObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj));
-                selectedObject = image;
-                activeSelection = image;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateUIImageObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj)));
             }
             if (ImGui::MenuItem("Text"))
             {
                 PushUndoSnapshot();
-                GameObject* text = CreateUITextObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj));
-                selectedObject = text;
-                activeSelection = text;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateUITextObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj)));
             }
             if (ImGui::MenuItem("Button"))
             {
                 PushUndoSnapshot();
-                GameObject* button = CreateUIButtonObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj));
-                selectedObject = button;
-                activeSelection = button;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateUIButtonObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), obj)));
             }
             ImGui::EndMenu();
+        }
+        if (ImGui::MenuItem("Camera"))
+        {
+            PushUndoSnapshot();
+            SelectCreatedObject(this, CreateCameraObject(obj));
         }
         // Deferred: both mutate an ancestor's children vector mid-draw.
         if (ImGui::MenuItem("Copy")) m_pendingCopy = true;
@@ -1009,113 +1181,91 @@ void Editor::DrawHierarchy()
     // Right-click context menu on empty space - create objects
     if (ImGui::BeginPopupContextWindow("HierarchyContextWindow"))
     {
-        if (ImGui::MenuItem("Create Directional Light"))
+        GameObject* root = engine && engine->scene ? engine->scene->rootGameObject.get() : nullptr;
+        if (ImGui::MenuItem("Create Empty") && root)
         {
             PushUndoSnapshot();
-            // Single-ownership: always attach to rootGameObject.
-            GameObject* lightObj = engine->scene->rootGameObject->AddChild(
-                std::make_unique<GameObject>("DirLight"));
-            lightObj->AddComponent<LightComponent>();
-            lightObj->GetComponent<TransformComponent>()->rotation[0] = -30.0f;
-            lightObj->GetComponent<TransformComponent>()->UpdateTransform();
-            selectedObject = lightObj;
-            activeSelection = lightObj;
-            selectedFile.Clear();
-            engine->scene->MarkDirty();
+            SelectCreatedObject(this, root->AddChild(std::make_unique<GameObject>("GameObject")));
         }
 
-        if (ImGui::MenuItem("Create Camera"))
+        if (ImGui::BeginMenu("3D Object"))
         {
-            PushUndoSnapshot();
-            GameObject* cameraObj = CreateCameraObject(engine->scene->rootGameObject.get());
-            selectedObject = cameraObj;
-            activeSelection = cameraObj;
-            selectedFile.Clear();
-            engine->scene->MarkDirty();
+            if (ImGui::MenuItem("Cube") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateCubeObject(root));
+            }
+            if (ImGui::MenuItem("Sphere") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSphereObject(root));
+            }
+            if (ImGui::MenuItem("Quad") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateQuadObject(root));
+            }
+            ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("2D Object"))
         {
-            if (ImGui::MenuItem("Sprite"))
+            if (ImGui::MenuItem("Square") && root)
             {
                 PushUndoSnapshot();
-                GameObject* sprite = CreateSpriteObject(engine->scene->rootGameObject.get());
-                selectedObject = sprite;
-                activeSelection = sprite;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteSquare));
+            }
+            if (ImGui::MenuItem("Circle") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteCircle));
+            }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Light"))
+        {
+            if (ImGui::MenuItem("Directional Light") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateDirectionalLightObject(root));
             }
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("UI"))
         {
-            if (ImGui::MenuItem("Canvas"))
+            if (ImGui::MenuItem("Canvas") && root)
             {
                 PushUndoSnapshot();
-                GameObject* canvas = CreateCanvasObject(engine->scene->rootGameObject.get());
-                selectedObject = canvas;
-                activeSelection = canvas;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateCanvasObject(root));
             }
-            if (ImGui::MenuItem("Image"))
+            if (ImGui::MenuItem("Panel") && root)
             {
                 PushUndoSnapshot();
-                GameObject* image = CreateUIImageObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), engine->scene->rootGameObject.get()));
-                selectedObject = image;
-                activeSelection = image;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateUIPanelObject(FindOrCreateCanvas(root, root)));
             }
-            if (ImGui::MenuItem("Text"))
+            if (ImGui::MenuItem("Image") && root)
             {
                 PushUndoSnapshot();
-                GameObject* text = CreateUITextObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), engine->scene->rootGameObject.get()));
-                selectedObject = text;
-                activeSelection = text;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateUIImageObject(FindOrCreateCanvas(root, root)));
             }
-            if (ImGui::MenuItem("Button"))
+            if (ImGui::MenuItem("Text") && root)
             {
                 PushUndoSnapshot();
-                GameObject* button = CreateUIButtonObject(FindOrCreateCanvas(engine->scene->rootGameObject.get(), engine->scene->rootGameObject.get()));
-                selectedObject = button;
-                activeSelection = button;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
+                SelectCreatedObject(this, CreateUITextObject(FindOrCreateCanvas(root, root)));
+            }
+            if (ImGui::MenuItem("Button") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateUIButtonObject(FindOrCreateCanvas(root, root)));
             }
             ImGui::EndMenu();
         }
-        
-        if (ImGui::BeginMenu("Create Geometry"))
+        if (ImGui::MenuItem("Camera") && root)
         {
-            if (ImGui::MenuItem("Create Cube"))
-            {
-                PushUndoSnapshot();
-                // Single-ownership: always attach to rootGameObject.
-                GameObject* cube = engine->scene->rootGameObject->AddChild(
-                    std::make_unique<GameObject>("Cube"));
-                cube->AddComponent<RendererComponent>(RendererComponent::Type::Cube);
-                selectedObject = cube;
-                activeSelection = cube;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
-            }
-            if (ImGui::MenuItem("Create Sphere"))
-            {
-                PushUndoSnapshot();
-                // Single-ownership: always attach to rootGameObject.
-                GameObject* sphere = engine->scene->rootGameObject->AddChild(
-                    std::make_unique<GameObject>("Sphere"));
-                sphere->AddComponent<RendererComponent>(RendererComponent::Type::Sphere);
-                selectedObject = sphere;
-                activeSelection = sphere;
-                selectedFile.Clear();
-                engine->scene->MarkDirty();
-            }
-            ImGui::EndMenu();
+            PushUndoSnapshot();
+            SelectCreatedObject(this, CreateCameraObject(root));
         }
         ImGui::EndPopup();
     }
@@ -1189,19 +1339,76 @@ void Editor::DrawGame()
         return;
     }
 
+    static const char* resolutionNames[] = { "Free Aspect", "16:9 1280x720", "16:9 1920x1080", "4:3 1024x768", "Portrait 1080x1920" };
+    static const ImVec2 resolutionSizes[] = {
+        ImVec2(0.0f, 0.0f),
+        ImVec2(1280.0f, 720.0f),
+        ImVec2(1920.0f, 1080.0f),
+        ImVec2(1024.0f, 768.0f),
+        ImVec2(1080.0f, 1920.0f),
+    };
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(5.0f, 2.0f));
+    ImGui::SetNextItemWidth(78.0f);
+    ImGui::Combo("##GameDisplay", &gameResolutionIndex, resolutionNames, IM_ARRAYSIZE(resolutionNames));
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Display 1");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::Combo("##GameAspect", &gameResolutionIndex, resolutionNames, IM_ARRAYSIZE(resolutionNames));
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Scale");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::SliderFloat("##GameScale", &gameViewScale, 0.1f, 1.0f, "%.2fx");
+    ImGui::SameLine();
+    ImGui::Button("Play Focused");
+    ImGui::SameLine();
+    static bool gameStats = false;
+    ImGui::Checkbox("Stats", &gameStats);
+    ImGui::SameLine();
+    static bool gameGizmos = true;
+    ImGui::Checkbox("Gizmos", &gameGizmos);
+    ImGui::PopStyleVar();
+
     // Render the Game view (game camera) into an offscreen target and display
     // it as an ImGui image (flipped V: GL bottom-up memory order on both backends).
-    ImRect gameViewportRect = GetCurrentViewportRect();
-    // Report the Game panel rect so Input::GetMousePosition() is viewport-relative.
+    ImVec2 contentMin = ImGui::GetCursorScreenPos();
+    ImVec2 contentAvail = ImGui::GetContentRegionAvail();
+    ImVec2 renderSize = contentAvail;
+    if (gameResolutionIndex > 0)
+    {
+        ImVec2 target = resolutionSizes[gameResolutionIndex];
+        float fit = glm::min(contentAvail.x / target.x, contentAvail.y / target.y);
+        fit = glm::max(0.01f, fit) * glm::clamp(gameViewScale, 0.1f, 1.0f);
+        renderSize = ImVec2(target.x * fit, target.y * fit);
+    }
+    else
+    {
+        renderSize = ImVec2(glm::max(1.0f, contentAvail.x), glm::max(1.0f, contentAvail.y));
+    }
+    ImVec2 renderMin(contentMin.x + glm::max(0.0f, (contentAvail.x - renderSize.x) * 0.5f),
+        contentMin.y + glm::max(0.0f, (contentAvail.y - renderSize.y) * 0.5f));
+    ImRect gameViewportRect(renderMin, ImVec2(renderMin.x + renderSize.x, renderMin.y + renderSize.y));
+    int renderW = gameResolutionIndex > 0 ? (int)resolutionSizes[gameResolutionIndex].x : (int)renderSize.x;
+    int renderH = gameResolutionIndex > 0 ? (int)resolutionSizes[gameResolutionIndex].y : (int)renderSize.y;
+    // Report the Game panel rect and logical render size so UI input maps back
+    // correctly when the Game view is letterboxed or scaled.
     Input::SetGameViewport(gameViewportRect.Min.x, gameViewportRect.Min.y,
         gameViewportRect.Max.x - gameViewportRect.Min.x,
-        gameViewportRect.Max.y - gameViewportRect.Min.y);
-    void* gameTex = engine->RenderSceneToTexture(
-        (int)(gameViewportRect.Max.x - gameViewportRect.Min.x),
-        (int)(gameViewportRect.Max.y - gameViewportRect.Min.y), true);
+        gameViewportRect.Max.y - gameViewportRect.Min.y,
+        (float)glm::max(1, renderW), (float)glm::max(1, renderH));
+    void* gameTex = engine->RenderSceneToTexture(glm::max(1, renderW), glm::max(1, renderH), true);
     if (gameTex)
         ImGui::GetWindowDrawList()->AddImage((ImTextureID)gameTex,
             gameViewportRect.Min, gameViewportRect.Max, ImVec2(0, 1), ImVec2(1, 0));
+    ImGui::GetWindowDrawList()->AddRect(gameViewportRect.Min, gameViewportRect.Max, IM_COL32(0, 0, 0, 180));
+    if (gameStats)
+    {
+        char stats[128];
+        snprintf(stats, sizeof(stats), "%dx%d  %.1f FPS", renderW, renderH, fps);
+        ImGui::GetWindowDrawList()->AddText(ImVec2(gameViewportRect.Min.x + 8.0f, gameViewportRect.Min.y + 8.0f),
+            IM_COL32(230, 230, 230, 255), stats);
+    }
 
     // Save window state
     {
@@ -2376,7 +2583,25 @@ void Editor::BuildScripts()
 // Model preview has been moved to InspectorWindow.cpp
 // File icon related functions
 static const char* s_iconFiles[] = {
-    "Default.png", "Cs.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Folder.png"
+    "Default.png", "Cs.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Texture2D.png", "Material.png"
+};
+
+static const char* s_sceneToolbarIconFiles[] = {
+    "SceneView2D.png",
+    "SceneViewLighting.png",
+    "SceneViewLightingOff.png",
+    "SceneViewAudio.png",
+    "SceneViewAudioOff.png",
+    "SceneViewFx.png",
+    "SceneViewCamera.png",
+    "SceneViewVisibility.png",
+    "SceneGrid.png",
+    "SceneMoveTool.png",
+    "SceneRotateTool.png",
+    "SceneScaleTool.png",
+    "SceneRectTool.png",
+    "SceneViewTools.png",
+    "ScenePivot.png",
 };
 
 void Editor::StopAndRestoreScene()
@@ -2407,7 +2632,7 @@ void Editor::InitFileIcons()
     DITTO_LOG_INFO_STREAM("[FileIcon] Initializing from: " << m_assetsPath );
     
     // Load file icons
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
         std::string path = m_assetsPath + "/" + s_iconFiles[i];
         m_icons[i] = LoadIcon(path);
     }
@@ -2422,6 +2647,7 @@ void Editor::InitFileIcons()
     m_gameObjectIcon = LoadIcon(m_assetsPath + "/GameObject.png");
     m_cameraIcon = LoadIcon(m_assetsPath + "/Camera.png");
     m_spriteIcon = LoadIcon(m_assetsPath + "/Sprite.png");
+    m_spriteRendererIcon = LoadIcon(m_assetsPath + "/SpriteRenderer.png");
     m_rectTransformIcon = LoadIcon(m_assetsPath + "/RectTransform.png");
     
     // Load lock icons
@@ -2432,6 +2658,8 @@ void Editor::InitFileIcons()
     m_playIcon = LoadIcon(m_assetsPath + "/Play.png");
     m_pauseIcon = LoadIcon(m_assetsPath + "/Pause.png");
     m_stopIcon = LoadIcon(m_assetsPath + "/Scene.png"); // placeholder; swap to "Stop.png" when available
+    for (int i = 0; i < static_cast<int>(SceneToolbarIcon::Count); ++i)
+        m_sceneToolbarIcons[i] = LoadIcon(m_assetsPath + "/" + s_sceneToolbarIconFiles[i]);
 
     m_fileIconsInitialized = true;
     DITTO_LOG_INFO_STREAM("[FileIcon] Initialized successfully" );
@@ -2474,10 +2702,11 @@ int Editor::GetIconIndex(const std::string& ext)
 {
     if (ext == ".cs") return 1;  // Cs.png
     if (ext == ".obj" || ext == ".fbx" || ext == ".mesh") return 2;  // Model.png
-    if (ext == ".prefab") return 3;  // Text.png (material)
+    if (ext == ".prefab") return 3;  // Prefab.png
     if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag") return 4;  // Shader.png
     if (ext == ".bin") return 5;  // Scene.png
-    if (ext == ".tga") return 6;  // Folder.png (texture)
+    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr") return 6;  // Texture2D.png
+    if (ext == ".mat") return 7;  // Material.png
     return 0;  // Default Default.png
 }
 
@@ -2496,14 +2725,18 @@ void* Editor::GetDittoIcon()        { return IconTexID(m_dittoIcon); }
 void* Editor::GetGameObjectIcon()   { return IconTexID(m_gameObjectIcon); }
 void* Editor::GetCameraIcon()       { return IconTexID(m_cameraIcon); }
 void* Editor::GetSpriteIcon()       { return IconTexID(m_spriteIcon); }
+void* Editor::GetSpriteRendererIcon(){ return IconTexID(m_spriteRendererIcon ? m_spriteRendererIcon : m_spriteIcon); }
 void* Editor::GetRectTransformIcon(){ return IconTexID(m_rectTransformIcon); }
 void* Editor::GetGameObjectIconForObject(GameObject* obj)
 {
     if (!obj) return GetGameObjectIcon();
     if (obj->GetComponent<CameraComponent>()) return GetCameraIcon();
-    if (obj->GetComponent<UIImageComponent>() || obj->GetComponent<UITextComponent>() ||
+    if (obj->GetComponent<CanvasComponent>() || obj->GetComponent<RectTransformComponent>() ||
+        obj->GetComponent<UIImageComponent>() || obj->GetComponent<UITextComponent>() ||
         obj->GetComponent<UIButtonComponent>() || obj->name == "Canvas")
         return GetRectTransformIcon();
+    if (obj->GetComponent<SpriteRendererComponent>())
+        return GetSpriteRendererIcon();
     if (RendererComponent* renderer = obj->GetComponent<RendererComponent>())
         if (renderer->meshSource == RendererComponent::BuiltIn && renderer->type == RendererComponent::Quad)
             return GetSpriteIcon();
@@ -2514,6 +2747,12 @@ void* Editor::GetUnlockIcon()       { return IconTexID(m_unlockIcon); }
 void* Editor::GetPlayIcon()         { return IconTexID(m_playIcon); }
 void* Editor::GetPauseIcon()        { return IconTexID(m_pauseIcon); }
 void* Editor::GetStopIcon()         { return IconTexID(m_stopIcon); }
+void* Editor::GetSceneIcon(SceneToolbarIcon icon)
+{
+    int idx = static_cast<int>(icon);
+    if (idx < 0 || idx >= static_cast<int>(SceneToolbarIcon::Count)) return nullptr;
+    return IconTexID(m_sceneToolbarIcons[idx]);
+}
 
 void Editor::CleanupFileIcons()
 {
@@ -2530,19 +2769,22 @@ void Editor::CleanupFileIcons()
         r->DestroyTexture(m_gameObjectIcon);
         r->DestroyTexture(m_cameraIcon);
         r->DestroyTexture(m_spriteIcon);
+        r->DestroyTexture(m_spriteRendererIcon);
         r->DestroyTexture(m_rectTransformIcon);
         r->DestroyTexture(m_lockIcon);
         r->DestroyTexture(m_unlockIcon);
         r->DestroyTexture(m_playIcon);
         r->DestroyTexture(m_pauseIcon);
         r->DestroyTexture(m_stopIcon);
+        for (auto& h : m_sceneToolbarIcons) r->DestroyTexture(h);
     }
 
     for (auto& h : m_icons) h = {};
     m_folderIcon = m_folderEmptyIcon = m_folderOpenedIcon = {};
     m_dittoIcon = m_gameObjectIcon = m_lockIcon = m_unlockIcon = {};
-    m_cameraIcon = m_spriteIcon = m_rectTransformIcon = {};
+    m_cameraIcon = m_spriteIcon = m_spriteRendererIcon = m_rectTransformIcon = {};
     m_playIcon = m_pauseIcon = m_stopIcon = {};
+    for (auto& h : m_sceneToolbarIcons) h = {};
 
     m_fileIconsInitialized = false;
     DITTO_LOG_INFO_STREAM("[FileIcon] Cleaned up" );

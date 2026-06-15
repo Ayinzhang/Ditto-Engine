@@ -6,6 +6,7 @@
 #include "../../Engine/Graphics/RHI/IRenderer.h"
 #include "../../Engine/Graphics/Camera.h"
 #include "../Physics/ParallelPhysics.h"
+#include "../Physics/Physics2D.h"
 #include "../../Engine/Resources/Resource.h"
 #include "../../3rdParty/GLFW/glfw3.h"
 #include "../../3rdParty/ImGui/imgui.h"
@@ -42,6 +43,7 @@ struct Engine
     float keySpeed, mouseSpeed;
     double lastX, lastY;
     std::unique_ptr<Physics> physics;
+    std::unique_ptr<Physics2DWorld> physics2D;
     // RHI: all rendering goes through this. GLRenderer today; a Vulkan backend
     // can replace it without touching engine/editor code.
     std::unique_ptr<Ditto::IRenderer> renderer;
@@ -53,6 +55,7 @@ struct Engine
     std::string gameProjectPath;
     std::string startupSceneName;
     bool gameMode = false;
+    float physics2DAccumulator = 0.0f;
 
     Engine();
     Engine(bool isGameMode, const std::string& projectPath, const std::string& startupScene = "");

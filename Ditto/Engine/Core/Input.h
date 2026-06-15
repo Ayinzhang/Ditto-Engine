@@ -33,7 +33,7 @@ struct Input
     // The screen-space rect of the game viewport in window coordinates.
     // Editor: called every frame by Editor::DrawGame with the Game panel rect.
     // Game mode: Engine::Run sets it to the full window each frame.
-    static void SetGameViewport(float x, float y, float w, float h);
+    static void SetGameViewport(float x, float y, float w, float h, float contentW = 0.0f, float contentH = 0.0f);
 
 private:
     static GLFWwindow* s_window;
@@ -43,4 +43,5 @@ private:
     static bool s_prevMouse[GLFW_MOUSE_BUTTON_LAST + 1];
     static double s_mouseX, s_mouseY;
     static float s_viewX, s_viewY, s_viewW, s_viewH;
+    static float s_contentW, s_contentH;
 };

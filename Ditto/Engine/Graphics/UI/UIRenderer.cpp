@@ -69,6 +69,8 @@ bool UIRenderer::Init(Ditto::IRenderer* rhi)
     state.depthWrite = false;
     state.blend = true;
     state.cull = Ditto::CullMode::Off;
+    state.vertexStrideFloats = 2;
+    state.vertexAttributes = { { 0, 2, 0 } };
     pipeline = renderer->CreatePipeline(hlsl, state);
     if (!pipeline)
     {
@@ -78,8 +80,7 @@ bool UIRenderer::Init(Ditto::IRenderer* rhi)
     }
 
     rectsSSBO = renderer->CreateStorageBuffer(sizeof(glm::vec4) * 256, true);
-    uvsSSBO = renderer->CreateStorageBuffer(sizeof(glm::vec4) * 256, true);
-    colorsSSBO = renderer->CreateStorageBuffer(sizeof(glm::vec4) * 256, true);
+    extrasSSBO = renderer->CreateStorageBuffer(sizeof(glm::vec4) * 2 * 256, true);
 
     std::string fontPath = FindDefaultFontPath();
     if (!fontPath.empty() && font.Load(fontPath))
@@ -102,10 +103,9 @@ void UIRenderer::Shutdown()
     if (quadMesh) renderer->DestroyMesh(quadMesh);
     if (pipeline) renderer->DestroyPipeline(pipeline);
     if (rectsSSBO) renderer->DestroyStorageBuffer(rectsSSBO);
-    if (uvsSSBO) renderer->DestroyStorageBuffer(uvsSSBO);
-    if (colorsSSBO) renderer->DestroyStorageBuffer(colorsSSBO);
+    if (extrasSSBO) renderer->DestroyStorageBuffer(extrasSSBO);
     if (fontTexture) renderer->DestroyTexture(fontTexture);
-    quadMesh = {}; pipeline = {}; rectsSSBO = {}; uvsSSBO = {}; colorsSSBO = {};
+    quadMesh = {}; pipeline = {}; rectsSSBO = {}; extrasSSBO = {};
     fontTexture = {};
     initialized = false;
 }
@@ -127,26 +127,28 @@ void UIRenderer::Flush(const std::vector<Instance>& instances, Ditto::TextureHan
 {
     if (instances.empty() || !texture) return;
 
-    std::vector<glm::vec4> rects, uvs, colors;
+    struct Extra
+    {
+        glm::vec4 uvRect;
+        glm::vec4 color;
+    };
+
+    std::vector<glm::vec4> rects;
+    std::vector<Extra> extras;
     rects.reserve(instances.size());
-    uvs.reserve(instances.size());
-    colors.reserve(instances.size());
+    extras.reserve(instances.size());
     for (const Instance& inst : instances)
     {
         rects.push_back(inst.rect);
-        uvs.push_back(inst.uvRect);
-        colors.push_back(inst.color);
+        extras.push_back({ inst.uvRect, inst.color });
     }
 
-    const size_t bytes = sizeof(glm::vec4) * instances.size();
-    renderer->UpdateStorageBuffer(rectsSSBO, rects.data(), bytes);
-    renderer->UpdateStorageBuffer(uvsSSBO, uvs.data(), bytes);
-    renderer->UpdateStorageBuffer(colorsSSBO, colors.data(), bytes);
+    renderer->UpdateStorageBuffer(rectsSSBO, rects.data(), sizeof(glm::vec4) * rects.size());
+    renderer->UpdateStorageBuffer(extrasSSBO, extras.data(), sizeof(Extra) * extras.size());
 
     renderer->BindTexture(2, texture);
     renderer->BindStorageBuffer(0, rectsSSBO);
-    renderer->BindStorageBuffer(1, uvsSSBO);
-    renderer->BindStorageBuffer(2, colorsSSBO);
+    renderer->BindStorageBuffer(1, extrasSSBO);
     renderer->DrawInstanced(quadMesh, static_cast<int>(instances.size()));
 }
 
@@ -182,7 +184,10 @@ void UIRenderer::Render(Scene* scene, int viewportWidth, int viewportHeight)
             {
                 auto* img = static_cast<UIImageComponent*>(comp.get());
                 Instance inst;
-                inst.rect = ComputeUIRect(img->anchor, img->offset, img->size, w, h);
+                if (RectTransformComponent* rect = obj->GetComponent<RectTransformComponent>())
+                    inst.rect = rect->ComputeRect(w, h);
+                else
+                    inst.rect = ComputeUIRect(img->anchor, img->offset, img->size, w, h);
                 inst.color = img->color;
                 if (img->texturePath.empty())
                 {
@@ -202,10 +207,15 @@ void UIRenderer::Render(Scene* scene, int viewportWidth, int viewportHeight)
             {
                 auto* btn = static_cast<UIButtonComponent*>(comp.get());
                 Instance inst;
-                inst.rect = ComputeUIRect(btn->anchor, btn->offset, btn->size, w, h);
+                if (RectTransformComponent* rect = obj->GetComponent<RectTransformComponent>())
+                    inst.rect = rect->ComputeRect(w, h);
+                else
+                    inst.rect = ComputeUIRect(btn->anchor, btn->offset, btn->size, w, h);
                 inst.uvRect = kWhiteUV;
-                inst.color = btn->pressed ? btn->pressedColor
+                inst.color = !btn->interactable ? btn->disabledColor
+                    : btn->pressed ? btn->pressedColor
                     : btn->hovered ? btn->hoverColor : btn->color;
+                inst.color = glm::clamp(inst.color * btn->colorMultiplier, glm::vec4(0.0f), glm::vec4(1.0f));
                 whiteBatch.push_back(inst);
 
                 if (!btn->label.empty() && font.IsLoaded())
@@ -224,7 +234,10 @@ void UIRenderer::Render(Scene* scene, int viewportWidth, int viewportHeight)
                 if (txt->text.empty() || !font.IsLoaded()) continue;
                 glm::vec2 textSize;
                 font.LayoutText(txt->text, txt->fontSize, &textSize);
-                glm::vec4 rect = ComputeUIRect(txt->anchor, txt->offset, textSize, w, h);
+                RectTransformComponent* rectTransform = obj->GetComponent<RectTransformComponent>();
+                glm::vec4 rect = rectTransform
+                    ? rectTransform->ComputeRect(w, h)
+                    : ComputeUIRect(txt->anchor, txt->offset, textSize, w, h);
                 AppendText(textBatch, txt->text, txt->fontSize, glm::vec2(rect.x, rect.y), txt->color);
             }
         }

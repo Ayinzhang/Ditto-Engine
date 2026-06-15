@@ -24,6 +24,7 @@ namespace MonoRuntime
         MonoObject* instance = nullptr;
         MonoMethod* startMethod = nullptr;
         MonoMethod* updateMethod = nullptr;
+        MonoMethod* fixedUpdateMethod = nullptr;
         MonoMethod* onDestroyMethod = nullptr;
         // Collision/trigger dispatch bridge defined on the MonoBehaviour base
         // class (resolved by walking the parent-class chain at load time).
@@ -62,6 +63,7 @@ namespace MonoRuntime
     void UnloadScript(std::shared_ptr<ScriptInstance> script);
     void CallStart(std::shared_ptr<ScriptInstance> script);
     void CallUpdate(std::shared_ptr<ScriptInstance> script);
+    void CallFixedUpdate(std::shared_ptr<ScriptInstance> script);
     void CallOnDestroy(std::shared_ptr<ScriptInstance> script);
     // Dispatch a collision/trigger event to the script's __DispatchCollision
     // bridge. kind: 0=CollisionEnter 1=CollisionExit 2=TriggerEnter 3=TriggerExit.

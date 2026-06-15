@@ -995,16 +995,31 @@ namespace Ditto
         stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = p.fs; stages[1].pName = "main";
 
-        // Vertex input: interleaved pos(vec3)+normal(vec3)+uv(vec2), stride 32 (matches the
-        // engine's base/custom meshes).
-        VkVertexInputBindingDescription bind{}; bind.binding = 0; bind.stride = 8 * sizeof(float); bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        VkVertexInputAttributeDescription attrs[3]{};
-        attrs[0].location = 0; attrs[0].binding = 0; attrs[0].format = VK_FORMAT_R32G32B32_SFLOAT; attrs[0].offset = 0;
-        attrs[1].location = 1; attrs[1].binding = 0; attrs[1].format = VK_FORMAT_R32G32B32_SFLOAT; attrs[1].offset = 3 * sizeof(float);
-        attrs[2].location = 2; attrs[2].binding = 0; attrs[2].format = VK_FORMAT_R32G32_SFLOAT; attrs[2].offset = 6 * sizeof(float);
+        VkVertexInputBindingDescription bind{};
+        bind.binding = 0;
+        bind.stride = static_cast<uint32_t>(std::max(1, state.vertexStrideFloats) * sizeof(float));
+        bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        std::vector<VkVertexInputAttributeDescription> attrs;
+        attrs.reserve(state.vertexAttributes.size());
+        for (const VertexAttrib& attrib : state.vertexAttributes)
+        {
+            VkVertexInputAttributeDescription vkAttrib{};
+            vkAttrib.location = static_cast<uint32_t>(attrib.location);
+            vkAttrib.binding = 0;
+            vkAttrib.offset = static_cast<uint32_t>(attrib.offsetFloats * sizeof(float));
+            switch (attrib.componentCount)
+            {
+            case 1: vkAttrib.format = VK_FORMAT_R32_SFLOAT; break;
+            case 2: vkAttrib.format = VK_FORMAT_R32G32_SFLOAT; break;
+            case 3: vkAttrib.format = VK_FORMAT_R32G32B32_SFLOAT; break;
+            default: vkAttrib.format = VK_FORMAT_R32G32B32A32_SFLOAT; break;
+            }
+            attrs.push_back(vkAttrib);
+        }
         VkPipelineVertexInputStateCreateInfo vi{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
         vi.vertexBindingDescriptionCount = 1; vi.pVertexBindingDescriptions = &bind;
-        vi.vertexAttributeDescriptionCount = 3; vi.pVertexAttributeDescriptions = attrs;
+        vi.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrs.size());
+        vi.pVertexAttributeDescriptions = attrs.empty() ? nullptr : attrs.data();
 
         VkPipelineInputAssemblyStateCreateInfo ia{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
         ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

@@ -243,6 +243,58 @@ namespace DittoEngine
     }
     
     // Light 组件
+    public class SpriteRenderer
+    {
+        private IntPtr _nativeSpriteRenderer;
+
+        public Vector4 color
+        {
+            get
+            {
+                if (_nativeSpriteRenderer == IntPtr.Zero) return Vector4.one;
+                float[] c = new float[4];
+                GetColor(_nativeSpriteRenderer, c);
+                return new Vector4(c[0], c[1], c[2], c[3]);
+            }
+            set
+            {
+                if (_nativeSpriteRenderer == IntPtr.Zero) return;
+                SetColor(_nativeSpriteRenderer, value.x, value.y, value.z, value.w);
+            }
+        }
+
+        public string sprite
+        {
+            get
+            {
+                if (_nativeSpriteRenderer == IntPtr.Zero) return "";
+                return GetSprite(_nativeSpriteRenderer);
+            }
+            set
+            {
+                if (_nativeSpriteRenderer == IntPtr.Zero) return;
+                SetSprite(_nativeSpriteRenderer, value ?? "");
+            }
+        }
+
+        internal SpriteRenderer(IntPtr native)
+        {
+            _nativeSpriteRenderer = native;
+        }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void GetColor(IntPtr spriteRenderer, float[] outColor);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetColor(IntPtr spriteRenderer, float r, float g, float b, float a);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern string GetSprite(IntPtr spriteRenderer);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetSprite(IntPtr spriteRenderer, string spritePath);
+    }
+
     public class Light
     {
         private IntPtr _nativeLight;
@@ -456,6 +508,114 @@ namespace DittoEngine
     }
     
     // AudioSource 组件
+    public enum ForceMode2D
+    {
+        Force = 0,
+        Impulse = 1,
+    }
+
+    public class Rigidbody2D
+    {
+        public enum BodyType { Static, Dynamic, Kinematic }
+
+        private IntPtr _nativeRigidbody;
+
+        public BodyType bodyType
+        {
+            get => _nativeRigidbody == IntPtr.Zero ? BodyType.Static : (BodyType)GetBodyType(_nativeRigidbody);
+            set { if (_nativeRigidbody != IntPtr.Zero) SetBodyType(_nativeRigidbody, (int)value); }
+        }
+
+        public float mass
+        {
+            get => _nativeRigidbody == IntPtr.Zero ? 1.0f : GetMass(_nativeRigidbody);
+            set { if (_nativeRigidbody != IntPtr.Zero) SetMass(_nativeRigidbody, value); }
+        }
+
+        public bool useGravity
+        {
+            get => _nativeRigidbody != IntPtr.Zero && GetUseGravity(_nativeRigidbody) != 0;
+            set { if (_nativeRigidbody != IntPtr.Zero) SetUseGravity(_nativeRigidbody, value ? 1 : 0); }
+        }
+
+        public float gravityScale
+        {
+            get => _nativeRigidbody == IntPtr.Zero ? 1.0f : GetGravityScale(_nativeRigidbody);
+            set { if (_nativeRigidbody != IntPtr.Zero) SetGravityScale(_nativeRigidbody, value); }
+        }
+
+        public Vector2 velocity
+        {
+            get
+            {
+                if (_nativeRigidbody == IntPtr.Zero) return Vector2.zero;
+                float[] v = new float[2];
+                GetVelocity(_nativeRigidbody, v);
+                return new Vector2(v[0], v[1]);
+            }
+            set { if (_nativeRigidbody != IntPtr.Zero) SetVelocity(_nativeRigidbody, value.x, value.y); }
+        }
+
+        public float angularVelocity
+        {
+            get => _nativeRigidbody == IntPtr.Zero ? 0.0f : GetAngularVelocity(_nativeRigidbody);
+            set { if (_nativeRigidbody != IntPtr.Zero) SetAngularVelocity(_nativeRigidbody, value); }
+        }
+
+        internal Rigidbody2D(IntPtr native)
+        {
+            _nativeRigidbody = native;
+        }
+
+        public void AddForce(Vector2 force, ForceMode2D mode = ForceMode2D.Force)
+        {
+            if (_nativeRigidbody != IntPtr.Zero)
+                AddForceNative(_nativeRigidbody, force.x, force.y, (int)mode);
+        }
+
+        public void AddTorque(float torque, ForceMode2D mode = ForceMode2D.Force)
+        {
+            if (_nativeRigidbody != IntPtr.Zero)
+                AddTorqueNative(_nativeRigidbody, torque, (int)mode);
+        }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetBodyType(IntPtr rigidbody);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetBodyType(IntPtr rigidbody, int type);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetMass(IntPtr rigidbody);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetMass(IntPtr rigidbody, float mass);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetUseGravity(IntPtr rigidbody);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUseGravity(IntPtr rigidbody, int useGravity);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetGravityScale(IntPtr rigidbody);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetGravityScale(IntPtr rigidbody, float gravityScale);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void GetVelocity(IntPtr rigidbody, float[] outVel);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetVelocity(IntPtr rigidbody, float x, float y);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetAngularVelocity(IntPtr rigidbody);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetAngularVelocity(IntPtr rigidbody, float v);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddForceNative(IntPtr rigidbody, float x, float y, int mode);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddTorqueNative(IntPtr rigidbody, float torque, int mode);
+    }
+
+    public class Collider2D
+    {
+        private IntPtr _native;
+        internal Collider2D(IntPtr native) { _native = native; }
+        public bool isValid => _native != IntPtr.Zero;
+    }
+
     public class AudioSource
     {
         private IntPtr _nativeAudioSource;
@@ -628,6 +788,7 @@ namespace DittoEngine
     {
         private IntPtr _nativePtr;
         private Transform _transform;
+        internal IntPtr NativePtr => _nativePtr;
         
         public string name { get; set; }
         
@@ -669,10 +830,16 @@ namespace DittoEngine
                 return new Transform(compPtr) as T;
             if (typeof(T) == typeof(Renderer))
                 return new Renderer(compPtr) as T;
+            if (typeof(T) == typeof(SpriteRenderer))
+                return new SpriteRenderer(compPtr) as T;
             if (typeof(T) == typeof(Light))
                 return new Light(compPtr) as T;
             if (typeof(T) == typeof(Rigidbody))
                 return new Rigidbody(compPtr) as T;
+            if (typeof(T) == typeof(Rigidbody2D))
+                return new Rigidbody2D(compPtr) as T;
+            if (typeof(T) == typeof(Collider2D))
+                return new Collider2D(compPtr) as T;
             if (typeof(T) == typeof(AudioSource))
                 return new AudioSource(compPtr) as T;
             if (typeof(T) == typeof(UIText))
@@ -852,6 +1019,27 @@ namespace DittoEngine
     }
 
     // MonoBehaviour 基类
+    public static class Object
+    {
+        public static GameObject Instantiate(GameObject original)
+        {
+            if (original == null) return null;
+            IntPtr clone = InstantiateNative(original.NativePtr);
+            return clone == IntPtr.Zero ? null : new GameObject(clone);
+        }
+
+        public static void Destroy(GameObject obj)
+        {
+            if (obj != null) DestroyNative(obj.NativePtr);
+        }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern IntPtr InstantiateNative(IntPtr gameObject);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void DestroyNative(IntPtr gameObject);
+    }
+
     public class MonoBehaviour
     {
         private IntPtr _nativeGameObject;
@@ -883,6 +1071,7 @@ namespace DittoEngine
 
         public virtual void Start() { }
         public virtual void Update() { }
+        public virtual void FixedUpdate() { }
         public virtual void OnDestroy() { }
         public virtual void OnEnable() { }
         public virtual void OnDisable() { }

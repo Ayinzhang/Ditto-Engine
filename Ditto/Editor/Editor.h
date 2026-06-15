@@ -13,6 +13,26 @@
 
 struct Engine; struct GameObject; struct Project; struct Camera; struct Shader; struct SceneWindow;
 
+enum class SceneToolbarIcon
+{
+    View2D,
+    Lighting,
+    LightingOff,
+    Audio,
+    AudioOff,
+    Fx,
+    Camera,
+    Visibility,
+    Grid,
+    Move,
+    Rotate,
+    Scale,
+    Rect,
+    Tools,
+    Pivot,
+    Count
+};
+
 struct SelectedFile 
 {
 	std::string path, name, extension, folder; // full path, file name with extension, file extension, parent folder
@@ -57,6 +77,8 @@ struct Editor
     bool projectLoaded = false;
     bool sceneDirty = false;
     bool lockingSelection = false;
+    int gameResolutionIndex = 0;
+    float gameViewScale = 1.0f;
 
     // ---- Undo / Redo (memento: full-scene snapshots) ----
     std::vector<EditorSnapshot> m_undoStack;   // snapshots of pre-change scene + selection states
@@ -169,6 +191,7 @@ struct Editor
     void* GetGameObjectIconForObject(GameObject* obj);
     void* GetCameraIcon();
     void* GetSpriteIcon();
+    void* GetSpriteRendererIcon();
     void* GetRectTransformIcon();
     void* GetLockIcon();
     void* GetUnlockIcon();
@@ -176,10 +199,11 @@ struct Editor
     void* GetPauseIcon();
     // m_stopIcon reserved for a future Stop.png asset; not currently used in the toolbar.
     void* GetStopIcon();
+    void* GetSceneIcon(SceneToolbarIcon icon);
 
 private:
     // File icons (RHI texture handles; GPU textures owned by engine->renderer).
-    Ditto::TextureHandle m_icons[7];  // 0:Default, 1:Cpp, 2:Prefab, 3:Text, 4:Shader, 5:Scene, 6:Folder
+    Ditto::TextureHandle m_icons[8];  // 0:Default, 1:Cs, 2:Model, 3:Prefab, 4:Shader, 5:Scene, 6:Texture2D, 7:Material
     Ditto::TextureHandle m_folderIcon;
     Ditto::TextureHandle m_folderEmptyIcon;
     Ditto::TextureHandle m_folderOpenedIcon;
@@ -187,12 +211,14 @@ private:
     Ditto::TextureHandle m_gameObjectIcon;
     Ditto::TextureHandle m_cameraIcon;
     Ditto::TextureHandle m_spriteIcon;
+    Ditto::TextureHandle m_spriteRendererIcon;
     Ditto::TextureHandle m_rectTransformIcon;
     Ditto::TextureHandle m_lockIcon;
     Ditto::TextureHandle m_unlockIcon;
     Ditto::TextureHandle m_playIcon;
     Ditto::TextureHandle m_pauseIcon;
     Ditto::TextureHandle m_stopIcon;
+    Ditto::TextureHandle m_sceneToolbarIcons[static_cast<int>(SceneToolbarIcon::Count)];
     bool m_fileIconsInitialized = false;
     std::string m_assetsPath;
 

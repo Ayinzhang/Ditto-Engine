@@ -36,7 +36,7 @@ private:
     Ditto::IRenderer* renderer = nullptr;
     Ditto::PipelineHandle pipeline;
     Ditto::MeshHandle quadMesh;
-    Ditto::StorageBufferHandle rectsSSBO, uvsSSBO, colorsSSBO;
+    Ditto::StorageBufferHandle rectsSSBO, extrasSSBO;
     Ditto::TextureHandle fontTexture;
     bool initialized = false;
     bool initFailed = false;
