@@ -10,6 +10,8 @@
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
 #include "../Engine/Graphics/Shaders/ShaderAsset.h"
+#include "../Engine/Animation/AnimatorComponent.h"
+#include "../Engine/Graphics/ParticleSystemComponent.h"
 
 // Defined below; the model preview routes all GPU work through the RHI.
 static Ditto::IRenderer* PreviewRenderer(Editor* editor);
@@ -513,6 +515,8 @@ void InspectorWindow::Draw()
                 { "Text", ComponentIndex::UIText, [&]() { m_currentObject->AddComponent<UITextComponent>(); } },
                 { "Button", ComponentIndex::UIButton, [&]() { m_currentObject->AddComponent<UIButtonComponent>(); } },
                 { "Audio Source", ComponentIndex::AudioSource, [&]() { m_currentObject->AddComponent<AudioSourceComponent>(); } },
+                { "Animator", ComponentIndex::Animator, [&]() { m_currentObject->AddComponent<AnimatorComponent>(); } },
+                { "Particle System", ComponentIndex::ParticleSystem, [&]() { m_currentObject->AddComponent<ParticleSystemComponent>(); } },
             };
 
             auto drawComponentItem = [&](const ComponentMenuItem& item) -> bool
@@ -622,7 +626,21 @@ void InspectorWindow::Draw()
                     { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<AudioSourceComponent>(); }
                 ImGui::EndMenu();
             }
-            
+
+            if (ImGui::BeginMenu("Animation"))
+            {
+                if (!(m_currentObject->compMask & ComponentIndex::Animator) && ImGui::MenuItem("Animator"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<AnimatorComponent>(); }
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("Effects"))
+            {
+                if (!(m_currentObject->compMask & ComponentIndex::ParticleSystem) && ImGui::MenuItem("Particle System"))
+                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ParticleSystemComponent>(); }
+                ImGui::EndMenu();
+            }
+
             ImGui::Separator();
             ImGui::TextUnformatted("Scripts");
             ImGui::Separator();

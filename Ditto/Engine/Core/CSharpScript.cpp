@@ -1319,6 +1319,11 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMouseButtonDownNative", (void*)Internal_Input_GetMouseButtonDown);
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMouseButtonUpNative", (void*)Internal_Input_GetMouseButtonUp);
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMousePositionNative", (void*)Internal_Input_GetMousePosition);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetAxisNative", (void*)Internal_Input_GetAxis);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetAxisRawNative", (void*)Internal_Input_GetAxisRaw);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetButtonNative", (void*)Internal_Input_GetButton);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetButtonDownNative", (void*)Internal_Input_GetButtonDown);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetButtonUpNative", (void*)Internal_Input_GetButtonUp);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Physics::RaycastNative", (void*)Internal_Physics_Raycast);
 
@@ -1458,6 +1463,36 @@ void Internal_Input_GetMousePosition(float* outPos)
     outPos[0] = p.x;
     outPos[1] = p.y;
 }
+float Internal_Input_GetAxis(void* axisName)
+{
+    if (!axisName) return 0.0f;
+    std::string n = MonoRuntime::GetStringFromMono((MonoString*)axisName);
+    return Input::GetAxis(n.c_str());
+}
+float Internal_Input_GetAxisRaw(void* axisName)
+{
+    if (!axisName) return 0.0f;
+    std::string n = MonoRuntime::GetStringFromMono((MonoString*)axisName);
+    return Input::GetAxisRaw(n.c_str());
+}
+int Internal_Input_GetButton(void* buttonName)
+{
+    if (!buttonName) return 0;
+    std::string n = MonoRuntime::GetStringFromMono((MonoString*)buttonName);
+    return Input::GetButton(n.c_str()) ? 1 : 0;
+}
+int Internal_Input_GetButtonDown(void* buttonName)
+{
+    if (!buttonName) return 0;
+    std::string n = MonoRuntime::GetStringFromMono((MonoString*)buttonName);
+    return Input::GetButtonDown(n.c_str()) ? 1 : 0;
+}
+int Internal_Input_GetButtonUp(void* buttonName)
+{
+    if (!buttonName) return 0;
+    std::string n = MonoRuntime::GetStringFromMono((MonoString*)buttonName);
+    return Input::GetButtonUp(n.c_str()) ? 1 : 0;
+}
 #else
 // Headless test builds (DittoTests) compile this file without GLFW/Input.
 int Internal_Input_GetKey(int)            { return 0; }
@@ -1467,6 +1502,11 @@ int Internal_Input_GetMouseButton(int)    { return 0; }
 int Internal_Input_GetMouseButtonDown(int){ return 0; }
 int Internal_Input_GetMouseButtonUp(int)  { return 0; }
 void Internal_Input_GetMousePosition(float* outPos) { if (outPos) { outPos[0] = 0; outPos[1] = 0; } }
+float Internal_Input_GetAxis(void*)       { return 0.0f; }
+float Internal_Input_GetAxisRaw(void*)    { return 0.0f; }
+int Internal_Input_GetButton(void*)       { return 0; }
+int Internal_Input_GetButtonDown(void*)   { return 0; }
+int Internal_Input_GetButtonUp(void*)     { return 0; }
 #endif
 
 int Internal_Physics_Raycast(float ox, float oy, float oz,

@@ -119,6 +119,8 @@ add_executable(DittoTests
     Engine/Physics/GJK.cpp
     Engine/Resources/Resource.cpp
     Engine/Graphics/Materials/MaterialAsset.cpp
+    Engine/Animation/AnimatorComponent.cpp
+    Engine/Graphics/ParticleSystemComponent.cpp
 )
 
 target_compile_definitions(DittoTests PRIVATE DITTO_HEADLESS_TESTS=1 DITTO_HEADLESS_SCENE=1)

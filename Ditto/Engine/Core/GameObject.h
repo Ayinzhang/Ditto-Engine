@@ -40,6 +40,8 @@ namespace ComponentIndex
     constexpr int SpriteRenderer = 1 << 13;
     constexpr int Canvas       = 1 << 14;
     constexpr int RectTransform = 1 << 15;
+    constexpr int Animator     = 1 << 16;
+    constexpr int ParticleSystem = 1 << 17;
 }
 
 struct Component

@@ -70,6 +70,11 @@ struct Scene
     UIRenderer* uiRenderer = nullptr;
     GameObject* mainCamera = nullptr;
 
+    // Camera basis for the current frame, set by Render() before CollectRenderData
+    // so particle systems can build camera-facing billboard quads.
+    glm::vec3 cameraRight{ 1.0f, 0.0f, 0.0f };
+    glm::vec3 cameraUp{ 0.0f, 1.0f, 0.0f };
+
     std::function<void()> onModified;
 
     Scene();

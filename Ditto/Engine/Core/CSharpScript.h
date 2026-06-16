@@ -193,6 +193,11 @@ extern "C" {
     int Internal_Input_GetMouseButtonDown(int button);
     int Internal_Input_GetMouseButtonUp(int button);
     void Internal_Input_GetMousePosition(float* outPos);
+    float Internal_Input_GetAxis(void* axisName);
+    float Internal_Input_GetAxisRaw(void* axisName);
+    int Internal_Input_GetButton(void* buttonName);
+    int Internal_Input_GetButtonDown(void* buttonName);
+    int Internal_Input_GetButtonUp(void* buttonName);
     // out7: point(3) + normal(3) + distance(1); outGo: hit GameObject pointer.
     // Returns 1 on hit, 0 on miss. Only valid in Play mode (colliders exist).
     int Internal_Physics_Raycast(float ox, float oy, float oz,

@@ -661,38 +661,10 @@ void Editor::DrawToolbar()
                 GameObject* obj = parent->AddChild(std::make_unique<GameObject>("GameObject"));
                 SelectCreatedObject(this, obj);
             }
-            if (ImGui::BeginMenu("3D Object"))
+            if (ImGui::MenuItem("Camera") && parent)
             {
-                if (ImGui::MenuItem("Cube") && parent)
-                {
-                    PushUndoSnapshot();
-                    SelectCreatedObject(this, CreateCubeObject(parent));
-                }
-                if (ImGui::MenuItem("Sphere") && parent)
-                {
-                    PushUndoSnapshot();
-                    SelectCreatedObject(this, CreateSphereObject(parent));
-                }
-                if (ImGui::MenuItem("Quad") && parent)
-                {
-                    PushUndoSnapshot();
-                    SelectCreatedObject(this, CreateQuadObject(parent));
-                }
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("2D Object"))
-            {
-                if (ImGui::MenuItem("Square") && parent)
-                {
-                    PushUndoSnapshot();
-                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteSquare));
-                }
-                if (ImGui::MenuItem("Circle") && parent)
-                {
-                    PushUndoSnapshot();
-                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteCircle));
-                }
-                ImGui::EndMenu();
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateCameraObject(parent));
             }
             if (ImGui::BeginMenu("Light"))
             {
@@ -732,10 +704,38 @@ void Editor::DrawToolbar()
                 }
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Camera") && parent)
+            if (ImGui::BeginMenu("2D Object"))
             {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateCameraObject(parent));
+                if (ImGui::MenuItem("Square") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteSquare));
+                }
+                if (ImGui::MenuItem("Circle") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteCircle));
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("3D Object"))
+            {
+                if (ImGui::MenuItem("Cube") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateCubeObject(parent));
+                }
+                if (ImGui::MenuItem("Sphere") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateSphereObject(parent));
+                }
+                if (ImGui::MenuItem("Quad") && parent)
+                {
+                    PushUndoSnapshot();
+                    SelectCreatedObject(this, CreateQuadObject(parent));
+                }
+                ImGui::EndMenu();
             }
             ImGui::EndMenu();
         }
@@ -1090,24 +1090,10 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             GameObject* newObj = obj->AddChild(std::make_unique<GameObject>("New GameObject"));
             SelectCreatedObject(this, newObj);
         }
-        if (ImGui::BeginMenu("3D Object"))
+        if (ImGui::MenuItem("Camera"))
         {
-            if (ImGui::MenuItem("Cube"))
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateCubeObject(obj));
-            }
-            if (ImGui::MenuItem("Sphere"))
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSphereObject(obj));
-            }
-            if (ImGui::MenuItem("Quad"))
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateQuadObject(obj));
-            }
-            ImGui::EndMenu();
+            PushUndoSnapshot();
+            SelectCreatedObject(this, CreateCameraObject(obj));
         }
         if (ImGui::BeginMenu("Light"))
         {
@@ -1115,20 +1101,6 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             {
                 PushUndoSnapshot();
                 SelectCreatedObject(this, CreateDirectionalLightObject(obj));
-            }
-            ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("2D Object"))
-        {
-            if (ImGui::MenuItem("Square"))
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteSquare));
-            }
-            if (ImGui::MenuItem("Circle"))
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteCircle));
             }
             ImGui::EndMenu();
         }
@@ -1161,10 +1133,38 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             }
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Camera"))
+        if (ImGui::BeginMenu("2D Object"))
         {
-            PushUndoSnapshot();
-            SelectCreatedObject(this, CreateCameraObject(obj));
+            if (ImGui::MenuItem("Square"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteSquare));
+            }
+            if (ImGui::MenuItem("Circle"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteCircle));
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("3D Object"))
+        {
+            if (ImGui::MenuItem("Cube"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateCubeObject(obj));
+            }
+            if (ImGui::MenuItem("Sphere"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSphereObject(obj));
+            }
+            if (ImGui::MenuItem("Quad"))
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateQuadObject(obj));
+            }
+            ImGui::EndMenu();
         }
         // Deferred: both mutate an ancestor's children vector mid-draw.
         if (ImGui::MenuItem("Copy")) m_pendingCopy = true;
@@ -1190,42 +1190,11 @@ void Editor::DrawHierarchy()
             PushUndoSnapshot();
             SelectCreatedObject(this, root->AddChild(std::make_unique<GameObject>("GameObject")));
         }
-
-        if (ImGui::BeginMenu("3D Object"))
+        if (ImGui::MenuItem("Camera") && root)
         {
-            if (ImGui::MenuItem("Cube") && root)
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateCubeObject(root));
-            }
-            if (ImGui::MenuItem("Sphere") && root)
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSphereObject(root));
-            }
-            if (ImGui::MenuItem("Quad") && root)
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateQuadObject(root));
-            }
-            ImGui::EndMenu();
+            PushUndoSnapshot();
+            SelectCreatedObject(this, CreateCameraObject(root));
         }
-
-        if (ImGui::BeginMenu("2D Object"))
-        {
-            if (ImGui::MenuItem("Square") && root)
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteSquare));
-            }
-            if (ImGui::MenuItem("Circle") && root)
-            {
-                PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteCircle));
-            }
-            ImGui::EndMenu();
-        }
-
         if (ImGui::BeginMenu("Light"))
         {
             if (ImGui::MenuItem("Directional Light") && root)
@@ -1235,7 +1204,6 @@ void Editor::DrawHierarchy()
             }
             ImGui::EndMenu();
         }
-
         if (ImGui::BeginMenu("UI"))
         {
             if (ImGui::MenuItem("Canvas") && root)
@@ -1265,10 +1233,38 @@ void Editor::DrawHierarchy()
             }
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Camera") && root)
+        if (ImGui::BeginMenu("2D Object"))
         {
-            PushUndoSnapshot();
-            SelectCreatedObject(this, CreateCameraObject(root));
+            if (ImGui::MenuItem("Square") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteSquare));
+            }
+            if (ImGui::MenuItem("Circle") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteCircle));
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("3D Object"))
+        {
+            if (ImGui::MenuItem("Cube") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateCubeObject(root));
+            }
+            if (ImGui::MenuItem("Sphere") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateSphereObject(root));
+            }
+            if (ImGui::MenuItem("Quad") && root)
+            {
+                PushUndoSnapshot();
+                SelectCreatedObject(this, CreateQuadObject(root));
+            }
+            ImGui::EndMenu();
         }
         ImGui::EndPopup();
     }

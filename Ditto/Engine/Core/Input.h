@@ -25,6 +25,18 @@ struct Input
     static bool GetMouseButtonDown(int button);
     static bool GetMouseButtonUp(int button);
 
+    // Unity-style virtual axes. "Horizontal" = A/D + Left/Right,
+    // "Vertical" = W/S + Up/Down. GetAxis applies simple per-frame smoothing
+    // toward the raw target; GetAxisRaw returns the instantaneous -1/0/+1.
+    static float GetAxis(const char* axisName);
+    static float GetAxisRaw(const char* axisName);
+
+    // Unity-style named buttons. Built-ins: "Jump" (Space), "Fire1" (LMB),
+    // "Fire2" (RMB), "Fire3" (MMB), "Submit" (Enter), "Cancel" (Escape).
+    static bool GetButton(const char* buttonName);
+    static bool GetButtonDown(const char* buttonName);
+    static bool GetButtonUp(const char* buttonName);
+
     // Cursor position relative to the game viewport origin (pixels). May be
     // outside [0,size) when the cursor is outside the viewport.
     static glm::vec2 GetMousePosition();
@@ -44,4 +56,8 @@ private:
     static double s_mouseX, s_mouseY;
     static float s_viewX, s_viewY, s_viewW, s_viewH;
     static float s_contentW, s_contentH;
+
+    // Smoothed virtual-axis values, advanced each NewFrame() toward their raw
+    // targets so GetAxis("Horizontal") ramps like Unity's default input.
+    static float s_axisHorizontal, s_axisVertical;
 };

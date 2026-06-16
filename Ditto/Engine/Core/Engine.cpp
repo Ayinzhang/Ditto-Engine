@@ -14,6 +14,8 @@
 #include "Input.h"
 #include "PathUtils.h"
 #include "Logger.h"
+#include "../Animation/AnimatorComponent.h"
+#include "../Graphics/ParticleSystemComponent.h"
 #include "../Audio/AudioEngine.h"
 #include "../Graphics/RHI/GLRenderer.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
@@ -301,6 +303,15 @@ void Engine::Run()
                         }
                     });
                 });
+
+                // Auto-start Animator/ParticleSystem components flagged playOnAwake.
+                ForEachGameObject(scene.get(), [](GameObject* obj)
+                {
+                    if (auto* anim = obj->GetComponent<AnimatorComponent>())
+                        if (anim->playOnAwake) anim->Play();
+                    if (auto* ps = obj->GetComponent<ParticleSystemComponent>())
+                        if (ps->playOnAwake) ps->Play();
+                });
             }
 
             double physStart = glfwGetTime();
@@ -439,6 +450,26 @@ void Engine::Run()
                 {
                     script->Update();
                 });
+            });
+        }
+
+        // Component simulation that runs every frame.
+        //  - Animator: only in Play mode (it drives the Transform, so running it
+        //    in Edit would overwrite the values the user is authoring).
+        //  - ParticleSystem: always ticked so the Inspector "Play" button can
+        //    preview particles in Edit mode (Unity-like). Each system self-gates
+        //    on its own `playing` flag, so idle systems cost nothing.
+        {
+            float frameDt = static_cast<float>(deltaTime);
+            bool isPlay = (state == Play);
+            ForEachGameObject(scene.get(), [frameDt, isPlay](GameObject* obj)
+            {
+                if (!obj->enabled) return;
+                if (isPlay)
+                    if (auto* anim = obj->GetComponent<AnimatorComponent>())
+                        anim->Update(frameDt);
+                if (auto* ps = obj->GetComponent<ParticleSystemComponent>())
+                    ps->Update(frameDt);
             });
         }
 

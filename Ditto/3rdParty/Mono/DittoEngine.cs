@@ -948,6 +948,32 @@ namespace DittoEngine
                 return new Vector2(p[0], p[1]);
             }
         }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetAxisNative(string axisName);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetAxisRawNative(string axisName);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetButtonNative(string buttonName);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetButtonDownNative(string buttonName);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetButtonUpNative(string buttonName);
+
+        // 虚拟轴: "Horizontal" (A/D, Left/Right), "Vertical" (W/S, Up/Down)。
+        // GetAxis 带平滑过渡, GetAxisRaw 返回瞬时 -1/0/+1。
+        public static float GetAxis(string axisName) => GetAxisNative(axisName);
+        public static float GetAxisRaw(string axisName) => GetAxisRawNative(axisName);
+
+        // 命名按钮: "Jump"(Space), "Fire1"(左键), "Fire2"(右键), "Fire3"(中键),
+        // "Submit"(Enter), "Cancel"(Esc)。
+        public static bool GetButton(string buttonName) => GetButtonNative(buttonName) != 0;
+        public static bool GetButtonDown(string buttonName) => GetButtonDownNative(buttonName) != 0;
+        public static bool GetButtonUp(string buttonName) => GetButtonUpNative(buttonName) != 0;
     }
     
     // Debug 类

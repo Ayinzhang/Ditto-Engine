@@ -6,6 +6,8 @@
 #include "GameObject.h"
 #include "Logger.h"
 #include "CSharpScript.h"
+#include "../Animation/AnimatorComponent.h"
+#include "../Graphics/ParticleSystemComponent.h"
 #ifndef DITTO_HEADLESS_TESTS
 #include "ProjectManager.h"
 #include "PathUtils.h"
@@ -373,6 +375,10 @@ GameObject::GameObject(GameObject* other)
             AddComponent<CanvasComponent>(canvas);
         else if (auto rect = dynamic_cast<RectTransformComponent*>(comp))
             AddComponent<RectTransformComponent>(rect);
+        else if (auto anim = dynamic_cast<AnimatorComponent*>(comp))
+            AddComponent<AnimatorComponent>(anim);
+        else if (auto ps = dynamic_cast<ParticleSystemComponent*>(comp))
+            AddComponent<ParticleSystemComponent>(ps);
         else if (auto cs = dynamic_cast<CSharpScriptComponent*>(comp))
         {
             // CSharpScriptComponent has no copy-ctor; default-construct then
@@ -585,6 +591,8 @@ void GameObject::Deserialize(std::istream& file)
         case CI::Collider2D:   newComp = std::make_unique<Collider2DComponent>(); break;
         case CI::Canvas:       newComp = std::make_unique<CanvasComponent>(); break;
         case CI::RectTransform: newComp = std::make_unique<RectTransformComponent>(); break;
+        case CI::Animator:     newComp = std::make_unique<AnimatorComponent>(); break;
+        case CI::ParticleSystem: newComp = std::make_unique<ParticleSystemComponent>(); break;
         default: continue;
         }
         if (newComp)

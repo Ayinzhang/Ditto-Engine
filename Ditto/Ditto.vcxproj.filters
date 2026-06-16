@@ -64,6 +64,12 @@
     <Filter Include="源文件\Engine\Physics">
       <UniqueIdentifier>{4ca95b89-4782-4646-84ef-d52410582398}</UniqueIdentifier>
     </Filter>
+    <Filter Include="头文件\Engine\Animation">
+      <UniqueIdentifier>{a7c1e2d4-5b6f-4a80-9c3e-1d2f3a4b5c61}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Engine\Animation">
+      <UniqueIdentifier>{b8d2f3e5-6c70-4b91-ad4f-2e3a4b5c6d72}</UniqueIdentifier>
+    </Filter>
     <Filter Include="三方库\Mono">
       <UniqueIdentifier>{007951ef-7bdc-45d4-8383-b2019b50dd4f}</UniqueIdentifier>
     </Filter>
@@ -996,6 +1002,12 @@
     <ClInclude Include="Engine\Graphics\Camera.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Graphics\ParticleSystemComponent.h">
+      <Filter>头文件\Engine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Animation\AnimatorComponent.h">
+      <Filter>头文件\Engine\Animation</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Graphics\Materials\MaterialAsset.h">
       <Filter>头文件\Engine\Graphics</Filter>
     </ClInclude>
@@ -1598,6 +1610,12 @@
     </ClCompile>
     <ClCompile Include="Engine\Graphics\Camera.cpp">
       <Filter>源文件\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\ParticleSystemComponent.cpp">
+      <Filter>源文件\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Animation\AnimatorComponent.cpp">
+      <Filter>源文件\Engine\Animation</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\Materials\MaterialAsset.cpp">
       <Filter>源文件\Engine\Graphics</Filter>

@@ -352,6 +352,8 @@
     <ClInclude Include="Engine\Graphics\RHI\IRenderer.h" />
     <ClInclude Include="Engine\Graphics\RHI\GLRenderer.h" />
     <ClInclude Include="Engine\Graphics\RHI\Vulkan\VulkanRenderer.h" />
+    <ClInclude Include="Engine\Animation\AnimatorComponent.h" />
+    <ClInclude Include="Engine\Graphics\ParticleSystemComponent.h" />
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
     <ClInclude Include="Engine\Physics\ComputePhysics.h" />
     <ClInclude Include="Engine\Physics\GJK.h" />
@@ -568,6 +570,8 @@
     <ClCompile Include="Engine\Physics\Physics2D.cpp" />
     <ClCompile Include="Engine\Physics\ThreadPool.cpp" />
     <ClCompile Include="Engine\Resources\Resource.cpp" />
+    <ClCompile Include="Engine\Animation\AnimatorComponent.cpp" />
+    <ClCompile Include="Engine\Graphics\ParticleSystemComponent.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Ditto.rc" />

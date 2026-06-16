@@ -10,6 +10,7 @@ double Input::s_mouseX = 0.0, Input::s_mouseY = 0.0;
 float Input::s_viewX = 0.0f, Input::s_viewY = 0.0f;
 float Input::s_viewW = 1.0f, Input::s_viewH = 1.0f;
 float Input::s_contentW = 1.0f, Input::s_contentH = 1.0f;
+float Input::s_axisHorizontal = 0.0f, Input::s_axisVertical = 0.0f;
 
 void Input::Init(GLFWwindow* window)
 {
@@ -36,6 +37,18 @@ void Input::NewFrame()
         s_curMouse[b] = glfwGetMouseButton(s_window, b) == GLFW_PRESS;
 
     glfwGetCursorPos(s_window, &s_mouseX, &s_mouseY);
+
+    // Advance smoothed virtual axes toward their raw targets (Unity-like ramp).
+    // A fixed per-frame step keeps this independent of the gameplay timestep.
+    const float kAxisStep = 0.25f;
+    auto approach = [&](float current, float target) -> float
+    {
+        if (current < target) return (current + kAxisStep > target) ? target : current + kAxisStep;
+        if (current > target) return (current - kAxisStep < target) ? target : current - kAxisStep;
+        return current;
+    };
+    s_axisHorizontal = approach(s_axisHorizontal, GetAxisRaw("Horizontal"));
+    s_axisVertical   = approach(s_axisVertical, GetAxisRaw("Vertical"));
 }
 
 bool Input::GetKey(int key)
@@ -98,4 +111,75 @@ void Input::SetGameViewport(float x, float y, float w, float h, float contentW, 
     s_viewH = (h > 0.0f) ? h : 1.0f;
     s_contentW = (contentW > 0.0f) ? contentW : s_viewW;
     s_contentH = (contentH > 0.0f) ? contentH : s_viewH;
+}
+
+static bool StrEq(const char* a, const char* b)
+{
+    if (!a || !b) return false;
+    while (*a && *b) { if (*a != *b) return false; ++a; ++b; }
+    return *a == *b;
+}
+
+float Input::GetAxisRaw(const char* axisName)
+{
+    if (StrEq(axisName, "Horizontal"))
+    {
+        float v = 0.0f;
+        if (GetKey(GLFW_KEY_D) || GetKey(GLFW_KEY_RIGHT)) v += 1.0f;
+        if (GetKey(GLFW_KEY_A) || GetKey(GLFW_KEY_LEFT))  v -= 1.0f;
+        return v;
+    }
+    if (StrEq(axisName, "Vertical"))
+    {
+        float v = 0.0f;
+        if (GetKey(GLFW_KEY_W) || GetKey(GLFW_KEY_UP))   v += 1.0f;
+        if (GetKey(GLFW_KEY_S) || GetKey(GLFW_KEY_DOWN)) v -= 1.0f;
+        return v;
+    }
+    return 0.0f;
+}
+
+float Input::GetAxis(const char* axisName)
+{
+    if (StrEq(axisName, "Horizontal")) return s_axisHorizontal;
+    if (StrEq(axisName, "Vertical"))   return s_axisVertical;
+    return GetAxisRaw(axisName);
+}
+
+// Map a named button to its (keyKind, code). keyKind 0 = keyboard, 1 = mouse.
+static bool ResolveButton(const char* name, int& kind, int& code)
+{
+    struct Binding { const char* name; int kind; int code; };
+    static const Binding bindings[] = {
+        { "Jump",   0, GLFW_KEY_SPACE },
+        { "Submit", 0, GLFW_KEY_ENTER },
+        { "Cancel", 0, GLFW_KEY_ESCAPE },
+        { "Fire1",  1, 0 },   // left mouse
+        { "Fire2",  1, 1 },   // right mouse
+        { "Fire3",  1, 2 },   // middle mouse
+    };
+    for (const Binding& b : bindings)
+        if (StrEq(name, b.name)) { kind = b.kind; code = b.code; return true; }
+    return false;
+}
+
+bool Input::GetButton(const char* buttonName)
+{
+    int kind, code;
+    if (!ResolveButton(buttonName, kind, code)) return false;
+    return kind == 0 ? GetKey(code) : GetMouseButton(code);
+}
+
+bool Input::GetButtonDown(const char* buttonName)
+{
+    int kind, code;
+    if (!ResolveButton(buttonName, kind, code)) return false;
+    return kind == 0 ? GetKeyDown(code) : GetMouseButtonDown(code);
+}
+
+bool Input::GetButtonUp(const char* buttonName)
+{
+    int kind, code;
+    if (!ResolveButton(buttonName, kind, code)) return false;
+    return kind == 0 ? GetKeyUp(code) : GetMouseButtonUp(code);
 }

@@ -5,6 +5,7 @@
 #include "../Graphics/Shaders/ShaderAsset.h"
 #include "../Graphics/Materials/MaterialAsset.h"
 #include "../Graphics/UI/UIRenderer.h"
+#include "../Graphics/ParticleSystemComponent.h"
 #include "../../3rdParty/stb_image.h"
 #endif
 #include "PathUtils.h"
@@ -18,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 
 Scene* g_currentScene = nullptr;
 std::uint32_t g_sceneLoadingVersion = 0;
@@ -352,6 +354,46 @@ void Scene::CollectRenderData()
                     finalColor, sprite->sortingOrder);
             }
 
+            // Particle systems: each alive particle becomes a camera-facing Quad
+            // instance. Particles carry per-instance color, so they cannot use the
+            // color-keyed addBatchInstance path; push directly into a dedicated
+            // batch keyed only by the system (one batch per particle component).
+            ParticleSystemComponent* ps = obj->GetComponent<ParticleSystemComponent>();
+            if (ps && ps->enabled)
+            {
+                const std::string shaderName = SpriteRendererComponent::DefaultShaderName;
+                std::string batchKey = "particles|" + std::to_string(reinterpret_cast<uintptr_t>(ps));
+                GeometryInstances* batch = nullptr;
+                auto batchIt = renderBatches.find(batchKey);
+                if (batchIt == renderBatches.end())
+                {
+                    auto newBatch = std::make_unique<GeometryInstances>(RendererComponent::Quad);
+                    newBatch->shaderName = shaderName;
+                    newBatch->sortingOrder = 1000; // draw after opaque/sprites
+                    batch = newBatch.get();
+                    renderBatches[batchKey] = std::move(newBatch);
+                }
+                else
+                {
+                    batch = batchIt->second.get();
+                }
+
+                for (const Particle& p : ps->particles)
+                {
+                    if (!p.alive) continue;
+                    // Billboard: columns are camera right/up scaled by size, facing
+                    // the camera, positioned at the particle's world position.
+                    glm::mat4 m(1.0f);
+                    m[0] = glm::vec4(cameraRight * p.size, 0.0f);
+                    m[1] = glm::vec4(cameraUp * p.size, 0.0f);
+                    m[2] = glm::vec4(glm::normalize(glm::cross(cameraRight, cameraUp)), 0.0f);
+                    m[3] = glm::vec4(p.position, 1.0f);
+                    batch->modelMatrices.push_back(m);
+                    batch->instanceColors.push_back(p.color);
+                    batch->instanceCount++;
+                }
+            }
+
             for (const auto& child : obj->children) collect(child.get());
         };
 
@@ -391,6 +433,11 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     const glm::vec3& viewPos, int viewportWidth, int viewportHeight, bool renderUI)
 {
     if (!renderer) return;
+
+    // Extract the camera basis from the view matrix so particle systems can
+    // build camera-facing billboards during CollectRenderData.
+    cameraRight = glm::vec3(view[0][0], view[1][0], view[2][0]);
+    cameraUp    = glm::vec3(view[0][1], view[1][1], view[2][1]);
 
     CollectRenderData();
     UpdateSSBOs();
