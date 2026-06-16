@@ -11,6 +11,7 @@
 struct Editor;
 
 enum ToolMode { Translate, Rotate, Scale };
+enum class ViewToolMode { Hand, Move, Rotate, Scale, Transform, Rect };
 
 struct ImRect2D { float MinX, MinY, MaxX, MaxY; };
 struct ImVec2D { float x, y; ImVec2D() : x(0), y(0) {} ImVec2D(float _x, float _y) : x(_x), y(_y) {} };
@@ -27,6 +28,7 @@ private:
     Editor* m_editor;
     GameObject* m_selectedObject = nullptr;
     ToolMode m_toolMode = ToolMode::Translate;
+    ViewToolMode m_viewToolMode = ViewToolMode::Move;
     bool m_pivotCenter = true;
     bool m_localSpace = true;
     bool m_gridVisible = true;
@@ -65,6 +67,9 @@ private:
     ColliderComponent* GetSelectedCollider() const;
     ImVec2D WorldToScreen(const glm::vec3& worldPos);
     void DrawWorldLine(const glm::vec3& a, const glm::vec3& b, ImU32 color, float thickness);
+    void DrawSceneGrid(const ImVec2& viewMin, const ImVec2& viewMax);
+    void DrawSceneObjectIcon(GameObject* obj, void* iconTexture, ImU32 tint, float size, const char* tooltip);
+    bool IsSelectedOrAncestor(GameObject* obj) const;
 
     std::unordered_map<std::string, std::unique_ptr<MeshData>> m_physicsMeshCache;
 };

@@ -24,12 +24,17 @@ enum class SceneToolbarIcon
     Camera,
     Visibility,
     Grid,
+    Hand,
     Move,
     Rotate,
     Scale,
+    Transform,
     Rect,
     Tools,
     Pivot,
+    Center,
+    Local,
+    Global,
     Count
 };
 
@@ -84,7 +89,9 @@ struct Editor
     std::vector<EditorSnapshot> m_undoStack;   // snapshots of pre-change scene + selection states
     std::vector<EditorSnapshot> m_redoStack;
     EditorSnapshot m_pendingPreEdit;           // pre-edit snapshot captured at drag start
+    EditorSnapshot m_playModeEntrySnapshot;
     bool m_hasPendingEdit = false;
+    bool m_hasPlayModeEntrySnapshot = false;
     static constexpr size_t kUndoDepth = 64;
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;

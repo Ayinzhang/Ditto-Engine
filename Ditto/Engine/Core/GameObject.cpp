@@ -1564,6 +1564,13 @@ void RigidbodyComponent::OnInspectorGUI()
     if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
+    const char* typeNames[] = { "Static", "Dynamic", "Kinematic" };
+    int currentType = static_cast<int>(type);
+    if (UnityCombo("Type", &currentType, typeNames, 3, "##RigidbodyType"))
+    {
+        type = static_cast<Type>(currentType);
+        isKinematic = type == Kinematic;
+    }
     UnityDragFloat("Mass", &mass, "##RigidbodyMass", 0.1f, 0.001f, 100000.0f);
     UnityDragFloat("Drag", &damp, "##RigidbodyDrag", 0.01f, 0.0f, 100.0f);
     UnityDragFloat("Angular Drag", &angularDamp, "##RigidbodyAngularDrag", 0.01f, 0.0f, 100.0f);
@@ -1571,7 +1578,8 @@ void RigidbodyComponent::OnInspectorGUI()
     bool kinematic = isKinematic || type == Kinematic;
     UnityCheckbox("Is Kinematic", &kinematic, "##RigidbodyIsKinematic");
     isKinematic = kinematic;
-    type = isKinematic ? Kinematic : Dynamic;
+    if (isKinematic) type = Kinematic;
+    else if (type == Kinematic) type = Dynamic;
     const char* interpolateNames[] = { "None", "Interpolate", "Extrapolate" };
     UnityCombo("Interpolate", &interpolate, interpolateNames, 3, "##RigidbodyInterpolate");
     const char* collisionNames[] = { "Discrete", "Continuous", "Continuous Dynamic", "Continuous Speculative" };

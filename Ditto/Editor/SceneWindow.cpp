@@ -258,43 +258,76 @@ void SceneWindow::DrawConvexMeshColliderGizmo(const glm::mat4& worldMat, MeshDat
 
 void SceneWindow::DrawPhysicsMeshGizmos()
 {
-    if (!m_editor || !m_editor->activeSelection) return;
+    if (!m_editor || !m_editor->engine || !m_editor->activeSelection) return;
 
-    GameObject* selectedObject = m_editor->activeSelection;
-    TransformComponent* transform = selectedObject->GetComponent<TransformComponent>();
-    if (!transform) return;
-
-    glm::mat4 worldMat = transform->GetWorldModel();
     if (auto* selectedCollider = dynamic_cast<ColliderComponent*>(m_editor->selectedComponent))
     {
-        if (selectedCollider->gameObject == selectedObject && selectedCollider->enabled)
-            DrawColliderMeshGizmo(selectedCollider, worldMat);
+        GameObject* obj = selectedCollider->gameObject;
+        TransformComponent* transform = obj ? obj->GetComponent<TransformComponent>() : nullptr;
+        if (obj && IsSelectedOrAncestor(obj) && transform && selectedCollider->enabled)
+            DrawColliderMeshGizmo(selectedCollider, transform->GetWorldModel());
         return;
     }
 
-    for (ColliderComponent* collider : selectedObject->GetComponents<ColliderComponent>())
-        if (collider && collider->enabled)
-            DrawColliderMeshGizmo(collider, worldMat);
-
-    if ((selectedObject->compMask & ComponentIndex::Collider) == 0)
+    std::function<void(GameObject*)> visit = [&](GameObject* obj)
     {
-        RendererComponent* renderer = selectedObject->GetComponent<RendererComponent>();
-        RigidbodyComponent* rigidbody = selectedObject->GetComponent<RigidbodyComponent>();
-        if (renderer && renderer->enabled && rigidbody && m_editor->engine->resource)
+        if (!obj || !obj->enabled) return;
+        if (!IsSelectedOrAncestor(obj))
         {
-            ColliderComponent implicitCollider(
-                renderer->type == RendererComponent::Sphere ? ColliderComponent::Sphere : ColliderComponent::Box);
-            implicitCollider.gameObject = selectedObject;
-            if (renderer->type == RendererComponent::Quad)
-                implicitCollider.biasScale.z = 0.01f;
-            DrawColliderMeshGizmo(&implicitCollider, worldMat);
+            for (const auto& child : obj->children)
+                visit(child.get());
+            return;
         }
+
+        TransformComponent* transform = obj->GetComponent<TransformComponent>();
+        if (!transform) return;
+
+        glm::mat4 worldMat = transform->GetWorldModel();
+        for (ColliderComponent* collider : obj->GetComponents<ColliderComponent>())
+            if (collider && collider->enabled)
+                DrawColliderMeshGizmo(collider, worldMat);
+
+        for (const auto& child : obj->children)
+            visit(child.get());
+    };
+    visit(m_editor->engine && m_editor->engine->scene ? m_editor->engine->scene->rootGameObject.get() : m_editor->activeSelection);
+}
+
+bool SceneWindow::IsSelectedOrAncestor(GameObject* obj) const
+{
+    if (!m_editor || !obj || !m_editor->activeSelection) return false;
+
+    GameObject* current = obj;
+    while (current)
+    {
+        if (current == m_editor->activeSelection) return true;
+        current = current->parent;
     }
+    return false;
+}
+
+void SceneWindow::DrawSceneObjectIcon(GameObject* obj, void* iconTexture, ImU32 tint, float size, const char* tooltip)
+{
+    if (!obj || !iconTexture) return;
+    TransformComponent* transform = obj->GetComponent<TransformComponent>();
+    if (!transform) return;
+
+    ImVec2D screen = WorldToScreen(glm::vec3(transform->GetWorldModel()[3]));
+    if (screen.x < -500.0f || screen.y < -500.0f) return;
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 min(screen.x - size * 0.5f, screen.y - size * 0.5f);
+    ImVec2 max(screen.x + size * 0.5f, screen.y + size * 0.5f);
+    drawList->AddImage((ImTextureID)iconTexture, min, max, ImVec2(0, 1), ImVec2(1, 0), tint);
+
+    if (tooltip && ImGui::IsMouseHoveringRect(min, max))
+        ImGui::SetTooltip("%s", tooltip);
 }
 
 void SceneWindow::DrawUIGizmos(const ImVec2& viewMin, const ImVec2& viewMax)
 {
     if (!m_editor || !m_editor->engine || !m_editor->engine->scene || !m_gizmosEnabled) return;
+    if (!m_editor->activeSelection) return;
 
     glm::vec2 gameSize = Input::GetGameViewportSize();
     const float w = gameSize.x > 0.0f ? gameSize.x : (viewMax.x - viewMin.x);
@@ -310,6 +343,13 @@ void SceneWindow::DrawUIGizmos(const ImVec2& viewMin, const ImVec2& viewMax)
     std::function<void(GameObject*)> visit = [&](GameObject* obj)
     {
         if (!obj || !obj->enabled) return;
+        if (!IsSelectedOrAncestor(obj))
+        {
+            for (const auto& child : obj->children)
+                visit(child.get());
+            return;
+        }
+
         RectTransformComponent* rect = obj->GetComponent<RectTransformComponent>();
         bool isUI = rect && (obj->GetComponent<CanvasComponent>() || obj->GetComponent<UIImageComponent>() ||
             obj->GetComponent<UITextComponent>() || obj->GetComponent<UIButtonComponent>());
@@ -339,14 +379,28 @@ void SceneWindow::DrawUIGizmos(const ImVec2& viewMin, const ImVec2& viewMax)
 void SceneWindow::DrawCameraGizmos()
 {
     if (!m_editor || !m_editor->engine || !m_editor->engine->scene || !m_gizmosEnabled) return;
+    void* cameraIcon = m_editor->GetCameraIcon();
+    void* gameObjectIcon = m_editor->GetGameObjectIcon();
 
     std::function<void(GameObject*)> visit = [&](GameObject* obj)
     {
         if (!obj || !obj->enabled) return;
         CameraComponent* camera = obj->GetComponent<CameraComponent>();
         TransformComponent* transform = obj->GetComponent<TransformComponent>();
+        if (transform && !camera && glm::length(glm::vec3(transform->GetWorldModel()[3])) < 0.0001f)
+            DrawSceneObjectIcon(obj, gameObjectIcon, IM_COL32(255, 255, 255, IsSelectedOrAncestor(obj) ? 235 : 120), 18.0f, obj->name.c_str());
+
         if (camera && camera->enabled && transform)
         {
+            DrawSceneObjectIcon(obj, cameraIcon, IM_COL32(255, 255, 255, IsSelectedOrAncestor(obj) ? 255 : 150), 22.0f, obj->name.c_str());
+
+            if (!IsSelectedOrAncestor(obj))
+            {
+                for (const auto& child : obj->children)
+                    visit(child.get());
+                return;
+            }
+
             Camera c = camera->ToCamera(transform);
             const glm::vec3 origin = c.position;
             const glm::vec3 f = glm::normalize(c.forward);
@@ -435,6 +489,31 @@ void SceneWindow::HandleCameraMovement()
     }
 }
 
+void SceneWindow::DrawSceneGrid(const ImVec2& viewMin, const ImVec2& viewMax)
+{
+    if (!m_gridVisible || !m_editor || !m_editor->engine || !m_editor->engine->sceneCamera) return;
+
+    Camera* camera = m_editor->engine->sceneCamera.get();
+    const float w = viewMax.x - viewMin.x;
+    const float h = viewMax.y - viewMin.y;
+    if (!camera || w <= 0.0f || h <= 0.0f) return;
+
+    glm::mat4 view = camera->GetViewMatrix();
+    glm::mat4 proj = camera->GetProjectionMatrix(w / h);
+    glm::mat4 grid = glm::mat4(1.0f);
+    if (m_scene2D)
+        grid = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(viewMin.x, viewMin.y, w, h);
+    ImGuizmo::SetOrthographic(camera->projectionType == Camera::ProjectionType::Orthographic);
+    ImGuizmo::DrawGridCustomColor(glm::value_ptr(view), glm::value_ptr(proj), glm::value_ptr(grid),
+        100.0f, 1.0f, 10,
+        IM_COL32(100, 100, 100, 85),
+        IM_COL32(70, 70, 70, 55),
+        IM_COL32(135, 135, 135, 120));
+}
+
 // ImGuizmo translate/rotate/scale manipulator for the selected object,
 // replacing the old hand-rolled gizmos. Edit mode only.
 void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
@@ -443,6 +522,11 @@ void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
     m_isDragging = false;
 
     if (!m_selectedObject || !m_editor->engine || m_editor->engine->state != Engine::Edit)
+    {
+        m_gizmoWasUsing = false;
+        return;
+    }
+    if (m_viewToolMode == ViewToolMode::Hand)
     {
         m_gizmoWasUsing = false;
         return;
@@ -466,9 +550,15 @@ void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
     ImGuizmo::SetRect(viewMin.x, viewMin.y, w, h);
     ImGuizmo::SetGizmoSizeClipSpace(0.22f);
 
-    ImGuizmo::OPERATION op =
-        m_toolMode == ToolMode::Rotate ? ImGuizmo::ROTATE :
-        m_toolMode == ToolMode::Scale ? ImGuizmo::SCALE : ImGuizmo::TRANSLATE;
+    ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE;
+    if (m_viewToolMode == ViewToolMode::Transform)
+        op = ImGuizmo::UNIVERSAL;
+    else if (m_toolMode == ToolMode::Rotate)
+        op = ImGuizmo::ROTATE;
+    else if (m_toolMode == ToolMode::Scale)
+        op = ImGuizmo::SCALE;
+    else
+        op = ImGuizmo::TRANSLATE;
 
     glm::mat4 model = transform->GetWorldModel();
 
@@ -541,14 +631,17 @@ void SceneWindow::Draw()
     if (ImGui::IsKeyPressed(ImGuiKey_W))
     {
         m_toolMode = ToolMode::Translate;
+        m_viewToolMode = ViewToolMode::Move;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_E))
     {
         m_toolMode = ToolMode::Rotate;
+        m_viewToolMode = ViewToolMode::Rotate;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_R))
     {
         m_toolMode = ToolMode::Scale;
+        m_viewToolMode = ViewToolMode::Scale;
     }
 
     HandleCameraMovement();
@@ -570,6 +663,8 @@ void SceneWindow::Draw()
     if (sceneTex)
         ImGui::GetWindowDrawList()->AddImage((ImTextureID)sceneTex, min, max, ImVec2(0, 1), ImVec2(1, 0));
 
+    DrawSceneGrid(min, max);
+
     if (m_gizmosEnabled)
     {
         DrawPhysicsMeshGizmos();
@@ -584,7 +679,8 @@ void SceneWindow::Draw()
 
     // Only handle object selection when not dragging the gizmo, not hovering
     // it, not rotating the camera, and not just finished a drag.
-    if (ImGui::IsWindowHovered() && !m_toolbarHovered && ImGui::IsMouseClicked(0) && !m_isRotatingCamera &&
+    if (ImGui::IsWindowHovered() && !m_toolbarHovered && m_viewToolMode != ViewToolMode::Hand &&
+        ImGui::IsMouseClicked(0) && !m_isRotatingCamera &&
         !m_isDragging && !m_justFinishedDrag && !ImGuizmo::IsOver())
     {
         HandleObjectSelection();
@@ -700,7 +796,8 @@ void SceneWindow::DrawSceneToolbar(const ImVec2& viewMin, const ImVec2& viewMax)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.35f, 0.50f, 1.0f));
         bool clicked = false;
         if (tex)
-            clicked = ImGui::ImageButton(id, (ImTextureID)tex, ImVec2(iconSize, iconSize), ImVec2(0, 1), ImVec2(1, 0));
+            clicked = ImGui::ImageButton(id, (ImTextureID)tex, ImVec2(iconSize, iconSize),
+                ImVec2(0, 1), ImVec2(1, 0), ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1));
         else
             clicked = ImGui::Button(id, ImVec2(30.0f, 22.0f));
         if (active)
@@ -710,24 +807,13 @@ void SceneWindow::DrawSceneToolbar(const ImVec2& viewMin, const ImVec2& viewMax)
         return clicked;
     };
 
-    if (ImGui::Button(compact ? (m_pivotCenter ? "C" : "P") : (m_pivotCenter ? "Center" : "Pivot")))
+    if (iconButton("##ScenePivot", m_pivotCenter ? SceneToolbarIcon::Center : SceneToolbarIcon::Pivot,
+        m_pivotCenter, m_pivotCenter ? "Center" : "Pivot"))
         m_pivotCenter = !m_pivotCenter;
     ImGui::SameLine();
-    if (ImGui::Button(compact ? (m_localSpace ? "L" : "G") : (m_localSpace ? "Local" : "Global")))
+    if (iconButton("##SceneSpace", m_localSpace ? SceneToolbarIcon::Local : SceneToolbarIcon::Global,
+        m_localSpace, m_localSpace ? "Local" : "Global"))
         m_localSpace = !m_localSpace;
-
-    ImGui::SameLine();
-    SceneToolbarIcon toolIcon = m_toolMode == ToolMode::Rotate ? SceneToolbarIcon::Rotate :
-        m_toolMode == ToolMode::Scale ? SceneToolbarIcon::Scale : SceneToolbarIcon::Move;
-    if (iconButton("##SceneToolMode", toolIcon, false, "Tool Mode"))
-        ImGui::OpenPopup("SceneToolModePopup");
-    if (ImGui::BeginPopup("SceneToolModePopup"))
-    {
-        if (ImGui::MenuItem("Move", nullptr, m_toolMode == ToolMode::Translate)) m_toolMode = ToolMode::Translate;
-        if (ImGui::MenuItem("Rotate", nullptr, m_toolMode == ToolMode::Rotate)) m_toolMode = ToolMode::Rotate;
-        if (ImGui::MenuItem("Scale", nullptr, m_toolMode == ToolMode::Scale)) m_toolMode = ToolMode::Scale;
-        ImGui::EndPopup();
-    }
 
     ImGui::SameLine();
     if (iconButton("##SceneGrid", SceneToolbarIcon::Grid, m_gridVisible, "Grid"))
@@ -764,6 +850,69 @@ void SceneWindow::DrawSceneToolbar(const ImVec2& viewMin, const ImVec2& viewMax)
         m_gizmosEnabled = !m_gizmosEnabled;
 
     ImGui::PopStyleVar(2);
+
+    const float sideButton = compact ? 24.0f : 28.0f;
+    const float sideIcon = compact ? 15.0f : 18.0f;
+    const float sidePad = 5.0f;
+    ImVec2 sidePos(viewMin.x + 8.0f, viewMin.y + height + 12.0f);
+    ImVec2 sideSize(sideButton + sidePad * 2.0f, sideButton * 6.0f + sidePad * 2.0f);
+    m_toolbarHovered = m_toolbarHovered ||
+        (mouse.x >= sidePos.x && mouse.x <= sidePos.x + sideSize.x &&
+         mouse.y >= sidePos.y && mouse.y <= sidePos.y + sideSize.y);
+    drawList->AddRectFilled(sidePos, ImVec2(sidePos.x + sideSize.x, sidePos.y + sideSize.y), IM_COL32(37, 37, 37, 235), 3.0f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(3.0f, 3.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+
+    auto sideToolButton = [&](const char* id, SceneToolbarIcon icon, ViewToolMode mode, const char* tooltip) -> bool
+    {
+        void* tex = m_editor ? m_editor->GetSceneIcon(icon) : nullptr;
+        const bool active = m_viewToolMode == mode;
+        ImGui::SetCursorScreenPos(ImVec2(sidePos.x + sidePad, sidePos.y + sidePad + static_cast<float>(static_cast<int>(mode)) * sideButton));
+        if (active)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.35f, 0.50f, 1.0f));
+        bool clicked = false;
+        if (tex)
+            clicked = ImGui::ImageButton(id, (ImTextureID)tex, ImVec2(sideIcon, sideIcon),
+                ImVec2(0, 1), ImVec2(1, 0), ImVec4(0, 0, 0, 0), ImVec4(1, 1, 1, 1));
+        else
+            clicked = ImGui::Button(id, ImVec2(sideButton - 6.0f, sideButton - 6.0f));
+        if (active)
+            ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tooltip);
+        return clicked;
+    };
+
+    if (sideToolButton("##SceneHandTool", SceneToolbarIcon::Hand, ViewToolMode::Hand, "View Tool"))
+        m_viewToolMode = ViewToolMode::Hand;
+    if (sideToolButton("##SceneMoveTool", SceneToolbarIcon::Move, ViewToolMode::Move, "Move Tool"))
+    {
+        m_viewToolMode = ViewToolMode::Move;
+        m_toolMode = ToolMode::Translate;
+    }
+    if (sideToolButton("##SceneRotateTool", SceneToolbarIcon::Rotate, ViewToolMode::Rotate, "Rotate Tool"))
+    {
+        m_viewToolMode = ViewToolMode::Rotate;
+        m_toolMode = ToolMode::Rotate;
+    }
+    if (sideToolButton("##SceneScaleTool", SceneToolbarIcon::Scale, ViewToolMode::Scale, "Scale Tool"))
+    {
+        m_viewToolMode = ViewToolMode::Scale;
+        m_toolMode = ToolMode::Scale;
+    }
+    if (sideToolButton("##SceneTransformTool", SceneToolbarIcon::Transform, ViewToolMode::Transform, "Transform Tool"))
+    {
+        m_viewToolMode = ViewToolMode::Transform;
+        m_toolMode = ToolMode::Translate;
+    }
+    if (sideToolButton("##SceneRectTool", SceneToolbarIcon::Rect, ViewToolMode::Rect, "Rect Tool"))
+    {
+        m_viewToolMode = ViewToolMode::Rect;
+        m_toolMode = ToolMode::Translate;
+    }
+
+    ImGui::PopStyleVar(2);
 }
 
 void SceneWindow::DrawAxisGizmo()
@@ -775,7 +924,8 @@ void SceneWindow::DrawAxisGizmo()
     // Position in top-right corner with some padding
     float gizmoSize = 110.0f;
     float padding = 20.0f;
-    ImVec2 center(windowPos.x + windowSize.x - gizmoSize * 0.5f - padding, windowPos.y + gizmoSize * 0.5f + padding);
+    float topOffset = 42.0f;
+    ImVec2 center(windowPos.x + windowSize.x - gizmoSize * 0.5f - padding, windowPos.y + gizmoSize * 0.5f + padding + topOffset);
     
     Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera) return;
@@ -899,6 +1049,17 @@ void SceneWindow::HandleCameraRotation()
         ImVec2D currentMousePos(mousePos.x, mousePos.y);
         float deltaX = currentMousePos.x - m_lastMousePos.x;
         float deltaY = currentMousePos.y - m_lastMousePos.y;
+
+        if (m_scene2D || camera->projectionType == Camera::ProjectionType::Orthographic)
+        {
+            ImGuiWindow* window = ImGui::GetCurrentWindow();
+            const float viewportHeight = window ? glm::max(1.0f, window->InnerRect.Max.y - window->InnerRect.Min.y) : 1.0f;
+            const float unitsPerPixel = (camera->orthographicSize * 2.0f) / viewportHeight;
+            camera->position -= camera->right * (deltaX * unitsPerPixel);
+            camera->position += camera->up * (deltaY * unitsPerPixel);
+            m_lastMousePos = currentMousePos;
+            return;
+        }
         
         float sensitivity = 0.005f;
         

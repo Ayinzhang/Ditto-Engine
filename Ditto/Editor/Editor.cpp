@@ -797,6 +797,9 @@ void Editor::DrawToolbar()
         {
             if (engine->state == Engine::Edit)
             {
+                m_playModeEntrySnapshot = CaptureEditorSnapshot();
+                m_hasPlayModeEntrySnapshot = !m_playModeEntrySnapshot.sceneData.empty();
+
                 // Save current scene to temp file before entering Play mode
                 m_tempScenePath = "../../Ditto/Ditto/Temp/PlayModeScene.scene";
                 std::filesystem::create_directories("../../Ditto/Ditto/Temp");
@@ -2596,29 +2599,39 @@ static const char* s_sceneToolbarIconFiles[] = {
     "SceneViewCamera.png",
     "SceneViewVisibility.png",
     "SceneGrid.png",
+    "SceneHandTool.png",
     "SceneMoveTool.png",
     "SceneRotateTool.png",
     "SceneScaleTool.png",
+    "SceneTransformTool.png",
     "SceneRectTool.png",
     "SceneViewTools.png",
     "ScenePivot.png",
+    "SceneCenter.png",
+    "SceneLocal.png",
+    "SceneGlobal.png",
 };
 
 void Editor::StopAndRestoreScene()
 {
-    // Reload the temp scene snapshot (captured when Play started) and reset
-    // editor selection state. After this returns the engine state should be
-    // Engine::Edit; the caller is expected to set that.
+    // Reload the temp scene snapshot captured when Play started. After loading,
+    // old GameObject pointers are invalid, so restore hierarchy UI by paths.
     if (!m_tempScenePath.empty() && std::filesystem::exists(m_tempScenePath))
     {
         engine->scene->LoadScene(m_tempScenePath);
     }
 
-    // After scene reload, all old GameObject pointers are invalidated.
-    selectedObject = nullptr;
-    activeSelection = nullptr;
-    selectedFile.Clear();
-    m_expandedGameObjects.clear();
+    if (m_hasPlayModeEntrySnapshot)
+        RestoreEditorSelection(m_playModeEntrySnapshot);
+    else
+    {
+        selectedObject = nullptr;
+        activeSelection = nullptr;
+        selectedComponent = nullptr;
+        selectedFile.Clear();
+        m_expandedGameObjects.clear();
+    }
+    m_hasPlayModeEntrySnapshot = false;
 
     engine->state = Engine::Edit;
 }

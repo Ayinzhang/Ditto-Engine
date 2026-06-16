@@ -19,6 +19,8 @@ static Ditto::IRenderer* PreviewRenderer(Editor* editor);
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <functional>
+#include <vector>
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
 
@@ -54,6 +56,18 @@ namespace
         if (fileW.rfind(assetsW + L"/", 0) == 0)
             return filePath.lexically_relative(assetsPath).generic_string();
         return path;
+    }
+
+    std::string LowerText(std::string text)
+    {
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    }
+
+    bool MatchesSearch(const std::string& text, const std::string& search)
+    {
+        if (search.empty()) return true;
+        return LowerText(text).find(LowerText(search)) != std::string::npos;
     }
 
     bool DrawFileObjectField(const char* label, const std::string& value, const char* id, std::string* droppedPath)
@@ -434,10 +448,12 @@ void InspectorWindow::Draw()
         
         // Unified Add Component area - supports click to expand menu and drag scripts
         ImGui::Separator();
+        static char addComponentSearch[128] = "";
         ImVec4 prevColor = ImGui::GetStyle().Colors[ImGuiCol_Button];
         ImGui::GetStyle().Colors[ImGuiCol_Button] = ImVec4(0.2f, 0.2f, 0.2f, 0.5f);
         if (ImGui::Button("Add Component", ImVec2(ImGui::GetContentRegionAvail().x, 30)))
         {
+            addComponentSearch[0] = '\0';
             ImGui::OpenPopup("AddComponentPopup");
         }
         ImGui::GetStyle().Colors[ImGuiCol_Button] = prevColor;
@@ -455,10 +471,103 @@ void InspectorWindow::Draw()
         }
         
         // Component selection popup menu
+        const float inspectorWidth = ImGui::GetWindowWidth();
+        const float popupWidth = std::clamp(inspectorWidth - 32.0f, 300.0f, 420.0f);
+        const float popupHeight = std::clamp(ImGui::GetIO().DisplaySize.y * 0.42f, 360.0f, 520.0f);
+        ImGui::SetNextWindowSize(ImVec2(popupWidth, popupHeight), ImGuiCond_Always);
         if (ImGui::BeginPopup("AddComponentPopup"))
         {
             ImGui::TextUnformatted("Components");
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 18.0f);
+            if (ImGui::SmallButton("x##CloseAddComponent"))
+                ImGui::CloseCurrentPopup();
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::IsWindowAppearing())
+                ImGui::SetKeyboardFocusHere();
+            ImGui::InputText("##AddComponentSearch", addComponentSearch, sizeof(addComponentSearch));
             ImGui::Separator();
+
+            std::string search = addComponentSearch;
+            struct ComponentMenuItem
+            {
+                const char* name;
+                int singleMask;
+                std::function<void()> add;
+            };
+
+            std::vector<ComponentMenuItem> items = {
+                { "Light", ComponentIndex::Light, [&]() { m_currentObject->AddComponent<LightComponent>(); } },
+                { "Camera", ComponentIndex::Camera, [&]() { m_currentObject->AddComponent<CameraComponent>(); } },
+                { "Mesh Renderer", ComponentIndex::Renderer, [&]() { m_currentObject->AddComponent<RendererComponent>(); } },
+                { "Sprite Renderer", ComponentIndex::SpriteRenderer, [&]() { m_currentObject->AddComponent<SpriteRendererComponent>(); } },
+                { "Rigidbody", ComponentIndex::Rigidbody, [&]() { m_currentObject->AddComponent<RigidbodyComponent>(); } },
+                { "Box Collider", 0, [&]() { m_currentObject->AddComponent<ColliderComponent>(ColliderComponent::Box); } },
+                { "Sphere Collider", 0, [&]() { m_currentObject->AddComponent<ColliderComponent>(ColliderComponent::Sphere); } },
+                { "Mesh Collider", 0, [&]() { m_currentObject->AddComponent<ColliderComponent>(ColliderComponent::MeshConvex); } },
+                { "Rigidbody 2D", ComponentIndex::Rigidbody2D, [&]() { m_currentObject->AddComponent<Rigidbody2DComponent>(); } },
+                { "Box Collider 2D", 0, [&]() { m_currentObject->AddComponent<Collider2DComponent>(Collider2DComponent::Box); } },
+                { "Circle Collider 2D", 0, [&]() { m_currentObject->AddComponent<Collider2DComponent>(Collider2DComponent::Circle); } },
+                { "Canvas", ComponentIndex::Canvas, [&]() { m_currentObject->AddComponent<CanvasComponent>(); } },
+                { "Rect Transform", ComponentIndex::RectTransform, [&]() { m_currentObject->AddComponent<RectTransformComponent>(); } },
+                { "Image", ComponentIndex::UIImage, [&]() { m_currentObject->AddComponent<UIImageComponent>(); } },
+                { "Text", ComponentIndex::UIText, [&]() { m_currentObject->AddComponent<UITextComponent>(); } },
+                { "Button", ComponentIndex::UIButton, [&]() { m_currentObject->AddComponent<UIButtonComponent>(); } },
+                { "Audio Source", ComponentIndex::AudioSource, [&]() { m_currentObject->AddComponent<AudioSourceComponent>(); } },
+            };
+
+            auto drawComponentItem = [&](const ComponentMenuItem& item) -> bool
+            {
+                if (!MatchesSearch(item.name, search)) return false;
+                if (item.singleMask != 0 && (m_currentObject->compMask & item.singleMask) != 0)
+                    return false;
+                if (ImGui::MenuItem(item.name))
+                {
+                    if (m_editor) m_editor->PushUndoSnapshot();
+                    item.add();
+                    ImGui::CloseCurrentPopup();
+                }
+                return true;
+            };
+
+            if (!search.empty())
+            {
+                bool any = false;
+                for (const ComponentMenuItem& item : items)
+                    any = drawComponentItem(item) || any;
+
+                Project* project = ProjectManager::GetInstance().GetCurrentProject();
+                if (project)
+                {
+                    std::string scriptsDir = project->path + "/Assets/Scripts";
+                    if (fs::exists(scriptsDir))
+                    {
+                        for (const auto& entry : fs::directory_iterator(scriptsDir))
+                        {
+                            if (!entry.is_regular_file()) continue;
+                            std::string ext = entry.path().extension().string();
+                            if (ext != ".cs" && ext != ".cpp") continue;
+                            std::string filename = entry.path().stem().string();
+                            if (!MatchesSearch(filename, search)) continue;
+                            any = true;
+                            std::string fullPath = entry.path().string();
+                            if (ImGui::MenuItem((filename + "##SearchScript").c_str()))
+                            {
+                                m_editor->OnScriptComponentDroppedToObject(m_currentObject, fullPath.c_str());
+                                ImGui::CloseCurrentPopup();
+                            }
+                        }
+                    }
+                }
+                if (!any)
+                    ImGui::TextDisabled("No matching components");
+
+                ImGui::EndPopup();
+                if (!ImGui::IsPopupOpen("AddComponentPopup"))
+                    addComponentSearch[0] = '\0';
+                if (m_editor->engine && m_editor->engine->state == Engine::State::Play) ImGui::EndDisabled();
+                ImGui::End();
+                return;
+            }
             
             if (ImGui::BeginMenu("Rendering"))
             {
