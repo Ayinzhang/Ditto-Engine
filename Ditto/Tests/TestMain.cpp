@@ -3,6 +3,7 @@
 #include "../Engine/Core/PathUtils.h"
 #include "../Engine/Core/CSharpScript.h"
 #include "../Engine/Core/ProjectManager.h"
+#include "../Engine/Graphics/Camera.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
 #include "../Engine/Physics/Physics.h"
 
@@ -232,6 +233,18 @@ namespace
 
 #define TEST_CASE(stage, name) static void name(); static RegisterTest reg_##name(stage, #name, &name); static void name()
 #define REQUIRE(expr) Require(static_cast<bool>(expr), #expr, __FILE__, __LINE__)
+
+TEST_CASE("file", CameraProjectionUsesZeroToOneDepthRange)
+{
+    Camera camera(glm::vec3(0.0f, 0.0f, 10.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    camera.SetOrthographic(6.0f, 0.01f, 1000.0f);
+
+    glm::vec4 clip = camera.GetProjectionMatrix(1.0f) * camera.GetViewMatrix() * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    float ndcZ = clip.z / clip.w;
+
+    REQUIRE(ndcZ >= 0.0f);
+    REQUIRE(ndcZ <= 1.0f);
+}
 
 TEST_CASE("file", GameObjectComponentsAndRemoval)
 {

@@ -38,10 +38,10 @@ glm::mat4 Camera::GetProjectionMatrix(float aspect) const
     {
         const float halfHeight = std::max(0.0001f, orthographicSize);
         const float halfWidth = halfHeight * aspect;
-        return glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, nearClipPlane, farClipPlane);
+        return glm::orthoZO(-halfWidth, halfWidth, -halfHeight, halfHeight, nearClipPlane, farClipPlane);
     }
 
-    return glm::perspective(glm::radians(std::clamp(fieldOfView, 1.0f, 179.0f)),
+    return glm::perspectiveZO(glm::radians(std::clamp(fieldOfView, 1.0f, 179.0f)),
         aspect, nearClipPlane, farClipPlane);
 }
 
