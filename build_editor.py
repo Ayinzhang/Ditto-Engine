@@ -17,10 +17,25 @@ cmd = [
 ]
 
 print("Building Ditto project...")
-result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
-print(result.stdout)
+result = subprocess.run(cmd, capture_output=True, text=True, errors='ignore')
+
+# Try to print stdout, ignore encoding errors
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
+if result.stdout:
+    try:
+        print(result.stdout)
+    except UnicodeEncodeError:
+        print(result.stdout.encode('ascii', 'replace').decode('ascii'))
 if result.stderr:
-    print(result.stderr, file=sys.stderr)
+    try:
+        print(result.stderr, file=sys.stderr)
+    except UnicodeEncodeError:
+        print(result.stderr.encode('ascii', 'replace').decode('ascii'), file=sys.stderr)
 
 print(f"\nBuild {'succeeded' if result.returncode == 0 else 'failed'} with exit code {result.returncode}")
 sys.exit(result.returncode)

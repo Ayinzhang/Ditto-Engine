@@ -328,10 +328,18 @@ namespace
         float circleButtonWidth = buttonHeight; // Square button for the circle
         float mainButtonWidth = availWidth - circleButtonWidth - 2.0f;
 
-        // Initialize icon cache
+        // Initialize icon cache (legacy OpenGL cache for fallback)
         g_iconCache.Initialize();
         ImTextureID icon = g_iconCache.GetIcon(iconKey);
         ImTextureID pickerIcon = g_iconCache.GetIcon("picker");
+
+        // Prefer RHI-loaded icons (used by Editor) so the picker button matches
+        // the rest of the editor regardless of the active graphics backend.
+        if (editor)
+        {
+            if (void* rhiIcon = editor->GetIconByExtension(".objectpicker"))
+                pickerIcon = (ImTextureID)rhiIcon;
+        }
 
         // Main button showing current selection
         ImGui::BeginGroup();
