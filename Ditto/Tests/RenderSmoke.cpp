@@ -229,7 +229,7 @@ int main(int argc, char** argv)
         transform->scale = glm::vec3(1.0f);
         transform->localDirty = true;
         transform->UpdateTransform();
-        auto* rc = cube->AddComponent<RendererComponent>(RendererComponent::Cube);
+        auto* rc = cube->AddComponent<RendererComponent>();
         rc->materialPath = (opt.outDir / "RenderSmoke.mat").string();
         scene.rootGameObject->AddChild(std::move(cube));
 

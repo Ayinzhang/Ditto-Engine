@@ -231,20 +231,41 @@ void ProjectWindow::NavigateToFile(const std::string& filePath)
     Project* project = ProjectManager::GetInstance().GetCurrentProject();
     if (!project) return;
 
-    // Convert to absolute path
-    fs::path absPath = fs::absolute(filePath);
-    fs::path assetsPath = fs::absolute(fs::path(project->path) / "Assets");
+    // Try to resolve the file path to get its parent folder
+    fs::path absPath;
+    fs::path assetsPath = fs::path(project->path) / "Assets";
+
+    // Check if filePath is already under assetsPath (relative or absolute)
+    fs::path inputPath(filePath);
+    if (inputPath.is_absolute())
+    {
+        absPath = inputPath;
+    }
+    else
+    {
+        // Try as project-relative path first
+        fs::path candidate = assetsPath / filePath;
+        if (fs::exists(candidate))
+        {
+            absPath = candidate;
+        }
+        else
+        {
+            // Fall back to current directory relative
+            absPath = fs::absolute(filePath);
+        }
+    }
 
     // Calculate relative path from Assets
-    fs::path relativePath = absPath.lexically_relative(assetsPath);
+    fs::path relativePath = absPath.lexically_relative(fs::absolute(assetsPath));
     if (relativePath.empty() || relativePath.string().find("..") != std::string::npos)
     {
-        // File is not under Assets folder
+        // File is not under Assets folder - just ignore navigation
         DITTO_LOG_WARN_STREAM("[ProjectWindow] Cannot navigate to file outside Assets: " << filePath);
         return;
     }
 
-    // Set current folder to the parent directory (only jump, don't select)
+    // Set current folder to the parent directory (just navigate, selection is handled elsewhere)
     fs::path parentPath = relativePath.parent_path();
     if (parentPath.empty() || parentPath == ".")
     {
@@ -683,7 +704,7 @@ void ProjectWindow::Draw()
                     {
                         std::string filePath = entry.path().string();
                         std::string nameOnly = filename.substr(0, filename.size() - ext.size());
-                        
+
                         OnFileSelected(filePath, nameOnly, ext, m_currentFolder);
                         
                         if (m_editor && (ext == ".obj" || ext == ".fbx")) {

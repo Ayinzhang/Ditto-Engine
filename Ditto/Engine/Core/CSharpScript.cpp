@@ -1753,16 +1753,17 @@ void Internal_Renderer_SetColor(void* renderer, float r, float g, float b, float
 int Internal_Renderer_GetShapeType(void* renderer)
 {
     if (!renderer) return 0;
-    RendererComponent* rend = static_cast<RendererComponent*>(renderer);
-    return static_cast<int>(rend->type);
+    (void)renderer;
+    // Shape type is no longer a meaningful int — file mesh only.
+    return 0;
 }
 
 void Internal_Renderer_SetShapeType(void* renderer, int type)
 {
-    if (!renderer) return;
-    RendererComponent* rend = static_cast<RendererComponent*>(renderer);
-    rend->type = static_cast<RendererComponent::Type>(type);
-    rend->meshSource = RendererComponent::BuiltIn;
+    // Shape type is deprecated: the renderer is now exclusively file-mesh driven.
+    // Kept as a no-op so existing C# scripts that call it still compile.
+    (void)renderer;
+    (void)type;
 }
 
 void Internal_SpriteRenderer_GetColor(void* spriteRenderer, float* outColor)

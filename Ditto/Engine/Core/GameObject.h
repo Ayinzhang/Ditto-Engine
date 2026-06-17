@@ -237,16 +237,8 @@ struct RendererComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::Renderer;
 
-    // Internal types for rendering system - not exposed in UI
-    enum Type { Cube, Sphere, Quad };
-    enum MeshSource { BuiltIn, File };
-
     enum ShadowCastingMode { ShadowsOff, ShadowsOn, TwoSided, ShadowsOnly };
     static constexpr const char* DefaultShaderName = "Lit_Toon";
-
-    // Internal fields - managed by serialization
-    Type type = Cube;
-    MeshSource meshSource = File;
 
     glm::vec4 color;
     std::string materialPath;
@@ -266,9 +258,7 @@ struct RendererComponent : Component
     std::string meshPath;
 
     RendererComponent();
-    RendererComponent(Type _type);
     RendererComponent(RendererComponent* other);
-    bool UsesFileMesh() const;
     void OnInspectorGUI() override;
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;
@@ -281,18 +271,12 @@ struct SpriteRendererComponent : Component
     enum MaskInteraction { None, VisibleInsideMask, VisibleOutsideMask };
     enum SpriteSortPoint { Center, Pivot };
 
-    // Internal type for rendering system - not exposed in UI
-    enum BuiltInSprite { SpriteNone, SpriteSquare, SpriteCircle, SpriteAsset };
-
     static constexpr const char* DefaultShaderName = "Lit_Sprite";
 
     glm::vec4 color{ 1.0f };
     std::string spritePath;  // Required - must be loaded from Assets
     std::string materialPath;
     std::string shaderName = DefaultShaderName;
-
-    // Internal field - managed by serialization
-    BuiltInSprite builtInSprite = SpriteAsset;
 
     bool flipX = false;
     bool flipY = false;
@@ -340,7 +324,7 @@ struct RigidbodyComponent : Component
     RigidbodyComponent();
     RigidbodyComponent(RigidbodyComponent* other);
     void OnInspectorGUI() override;
-    void CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale);
+    void CalculateInertia(const glm::vec3& scale);
     void Serialize(std::ostream& file) const override;
     void Deserialize(std::istream& file) override;
 };

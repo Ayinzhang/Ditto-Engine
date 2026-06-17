@@ -58,22 +58,22 @@ static GameObject* CreateCameraObject(GameObject* parent, const std::string& nam
     return cameraObj;
 }
 
-static RendererComponent* AddDefaultRenderer(GameObject* obj, RendererComponent::Type type)
+static RendererComponent* AddDefaultRenderer(GameObject* obj, const std::string& meshPath = "")
 {
-    RendererComponent* renderer = obj->AddComponent<RendererComponent>(type);
+    RendererComponent* renderer = obj->AddComponent<RendererComponent>();
+    renderer->meshPath = meshPath;
     renderer->materialPath = "Materials/Lit_Toon.mat";
     renderer->shaderName = RendererComponent::DefaultShaderName;
     return renderer;
 }
 
-static GameObject* CreateSpriteObject(GameObject* parent, SpriteRendererComponent::BuiltInSprite spriteType = SpriteRendererComponent::SpriteSquare)
+static GameObject* CreateSpriteObject(GameObject* parent, const std::string& spritePath = "")
 {
-    const char* name = spriteType == SpriteRendererComponent::SpriteCircle ? "Circle" : "Square";
-    GameObject* sprite = parent->AddChild(std::make_unique<GameObject>(name));
+    GameObject* sprite = parent->AddChild(std::make_unique<GameObject>("Sprite"));
     SpriteRendererComponent* renderer = sprite->AddComponent<SpriteRendererComponent>();
     renderer->shaderName = SpriteRendererComponent::DefaultShaderName;
     renderer->materialPath = "Materials/Lit_Sprite.mat";
-    renderer->builtInSprite = spriteType;
+    renderer->spritePath = spritePath;
     renderer->color = glm::vec4(1.0f);
     if (TransformComponent* transform = sprite->GetComponent<TransformComponent>())
     {
@@ -176,22 +176,23 @@ static void SelectCreatedObject(Editor* editor, GameObject* obj)
 
 static GameObject* CreateCubeObject(GameObject* parent)
 {
+    // Default: no mesh assigned. The user must pick a mesh from project Assets.
     GameObject* obj = parent->AddChild(std::make_unique<GameObject>("Cube"));
-    AddDefaultRenderer(obj, RendererComponent::Cube);
+    AddDefaultRenderer(obj, "Models/Cube.obj");
     return obj;
 }
 
 static GameObject* CreateSphereObject(GameObject* parent)
 {
     GameObject* obj = parent->AddChild(std::make_unique<GameObject>("Sphere"));
-    AddDefaultRenderer(obj, RendererComponent::Sphere);
+    AddDefaultRenderer(obj, "Models/Sphere.obj");
     return obj;
 }
 
 static GameObject* CreateQuadObject(GameObject* parent)
 {
     GameObject* obj = parent->AddChild(std::make_unique<GameObject>("Quad"));
-    AddDefaultRenderer(obj, RendererComponent::Quad);
+    AddDefaultRenderer(obj, "Models/Quad.obj");
     return obj;
 }
 
@@ -348,7 +349,8 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     frame = deltaTime = 0;
 
     // Initialize ProjectManager
-    ProjectManager::GetInstance().Initialize("../../Ditto/Ditto/Projects");
+    // exe lives in <root>/x64/Debug; user projects live in <root>/Ditto/Projects.
+    ProjectManager::GetInstance().Initialize("../../Ditto/Projects");
     
     // Initialize LayoutManager
     std::string editorAssetsPath = FindEditorAssetsPath();
@@ -709,12 +711,12 @@ void Editor::DrawToolbar()
                 if (ImGui::MenuItem("Square") && parent)
                 {
                     PushUndoSnapshot();
-                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteSquare));
+                    SelectCreatedObject(this, CreateSpriteObject(parent, "Sprites/Square.png"));
                 }
                 if (ImGui::MenuItem("Circle") && parent)
                 {
                     PushUndoSnapshot();
-                    SelectCreatedObject(this, CreateSpriteObject(parent, SpriteRendererComponent::SpriteCircle));
+                    SelectCreatedObject(this, CreateSpriteObject(parent, "Sprites/Circle.png"));
                 }
                 ImGui::EndMenu();
             }
@@ -1138,12 +1140,12 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             if (ImGui::MenuItem("Square"))
             {
                 PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteSquare));
+                SelectCreatedObject(this, CreateSpriteObject(obj, "Sprites/Square.png"));
             }
             if (ImGui::MenuItem("Circle"))
             {
                 PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(obj, SpriteRendererComponent::SpriteCircle));
+                SelectCreatedObject(this, CreateSpriteObject(obj, "Sprites/Circle.png"));
             }
             ImGui::EndMenu();
         }
@@ -1238,12 +1240,12 @@ void Editor::DrawHierarchy()
             if (ImGui::MenuItem("Square") && root)
             {
                 PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteSquare));
+                SelectCreatedObject(this, CreateSpriteObject(root, "Sprites/Square.png"));
             }
             if (ImGui::MenuItem("Circle") && root)
             {
                 PushUndoSnapshot();
-                SelectCreatedObject(this, CreateSpriteObject(root, SpriteRendererComponent::SpriteCircle));
+                SelectCreatedObject(this, CreateSpriteObject(root, "Sprites/Circle.png"));
             }
             ImGui::EndMenu();
         }
@@ -2753,7 +2755,7 @@ void* Editor::GetGameObjectIconForObject(GameObject* obj)
     if (obj->GetComponent<SpriteRendererComponent>())
         return GetSpriteRendererIcon();
     if (RendererComponent* renderer = obj->GetComponent<RendererComponent>())
-        if (renderer->meshSource == RendererComponent::BuiltIn && renderer->type == RendererComponent::Quad)
+        if (renderer->meshPath == "__sprite_quad__")
             return GetSpriteIcon();
     return GetGameObjectIcon();
 }

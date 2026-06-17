@@ -68,6 +68,22 @@ namespace
         return result;
     }
 
+    // Convert a project-relative path (e.g. "Materials/Lit_Toon.mat") into
+    // an absolute path on disk. Empty input -> empty output.
+    std::string ToFullAssetPath(const std::string& relativePath)
+    {
+        if (relativePath.empty()) return "";
+
+        Project* project = ProjectManager::GetInstance().GetCurrentProject();
+        if (!project) return relativePath;
+
+        fs::path p(relativePath);
+        if (p.is_absolute()) return relativePath;
+
+        fs::path fullPath = fs::path(project->path) / "Assets" / relativePath;
+        return fullPath.string();
+    }
+
     std::string LowerText(std::string text)
     {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -317,7 +333,7 @@ namespace
     bool DrawFileObjectField(const char* label, const std::string& value, const char* id,
                             const char* assetType, const std::vector<std::string>& extensions,
                             const std::string& iconKey, std::string* outSelectedPath, std::string* droppedPath,
-                            Editor* editor)
+                            Editor* editor, const std::string& fullPath = "")
     {
         ImGui::TextUnformatted(label);
         ImGui::SameLine();
@@ -355,19 +371,21 @@ namespace
             display = display.substr(0, dotPos);
 
         // Draw icon inside button if available
-        bool clicked = false;
         bool doubleClicked = false;
+        bool singleClicked = false;
         ImVec2 buttonPos = ImGui::GetCursorScreenPos();
 
-        if (ImGui::Button(("##main" + std::string(id)).c_str(), ImVec2(mainButtonWidth, buttonHeight)))
-        {
-            clicked = true;
-        }
+        bool buttonPressed = ImGui::Button(("##main" + std::string(id)).c_str(), ImVec2(mainButtonWidth, buttonHeight));
 
-        // Check for double click
+        // Check double click first (works even if button didn't return true on this exact frame)
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
         {
             doubleClicked = true;
+        }
+        else if (buttonPressed)
+        {
+            // Single click: button was pressed and it wasn't a double click
+            singleClicked = true;
         }
 
         // Draw icon and text on top of button
@@ -391,21 +409,34 @@ namespace
         ImGui::PopStyleColor();
 
         // Handle left button behavior
-        if (doubleClicked && !value.empty() && editor)
+        const std::string& navPath = !fullPath.empty() ? fullPath : value;
+
+        DITTO_LOG_INFO_STREAM("[DrawFileObjectField] doubleClicked=" << doubleClicked << " singleClicked=" << singleClicked << " navPath=" << navPath << " editor=" << (editor ? "valid" : "null"));
+
+        if (doubleClicked && !navPath.empty() && editor)
         {
+            DITTO_LOG_INFO_STREAM("[DrawFileObjectField] Double clicked: " << navPath);
             // Double click: switch Inspector to show this asset
-            editor->selectedFile.path = value;
+            editor->selectedFile.path = navPath;
             editor->selectedFile.name = display;
-            editor->selectedFile.extension = LowerExtension(value);
+            editor->selectedFile.extension = LowerExtension(navPath);
             editor->selectedObject = nullptr;
         }
-        else if (clicked && !value.empty() && editor)
+        else if (singleClicked && !navPath.empty() && editor)
         {
-            // Single click: navigate Project window to this file
+            DITTO_LOG_INFO_STREAM("[DrawFileObjectField] Single clicked: " << navPath);
+
+            // 1. First navigate Project window to show the file's folder
             if (ProjectWindow* projectWindow = editor->GetProjectWindow())
             {
-                projectWindow->NavigateToFile(value);
+                projectWindow->NavigateToFile(navPath);
             }
+
+            // 2. Then select this file in Inspector
+            editor->selectedFile.path = navPath;
+            editor->selectedFile.name = display;
+            editor->selectedFile.extension = LowerExtension(navPath);
+            editor->selectedObject = nullptr;
         }
 
         // Circle picker button (like Unity's)
@@ -461,7 +492,7 @@ namespace
         if (DrawAssetPicker(id, assetType, extensions, *outSelectedPath, iconKey, searchBuffer, sizeof(searchBuffer)))
             return true;
 
-        return clicked;
+        return false;
     }
 
     void DrawMaterialFileInspector(const std::string& materialPath, Editor* editor)
@@ -484,7 +515,8 @@ namespace
         std::string droppedShader;
         if (DrawFileObjectField("Shader", material.shaderName, "MaterialShaderAsset",
                                "Select Shader", {".shader", ".hlsl", ".glsl", ".vert", ".frag"},
-                               "shader", &selectedShader, &droppedShader, editor))
+                               "shader", &selectedShader, &droppedShader, editor,
+                               ToFullAssetPath(material.shaderName)))
         {
             material.shaderName = selectedShader;
             changed = true;
@@ -528,7 +560,8 @@ namespace
                     std::string droppedTexture;
                     if (DrawFileObjectField(label.c_str(), material.mainTexturePath, ("MaterialFileTexture" + property.name).c_str(),
                                            "Select Texture", {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr"},
-                                           "texture", &selectedTexture, &droppedTexture, editor))
+                                           "texture", &selectedTexture, &droppedTexture, editor,
+                                           ToFullAssetPath(material.mainTexturePath)))
                     {
                         material.mainTexturePath = selectedTexture;
                         changed = true;

@@ -159,21 +159,19 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique
         }
         else if (renderer)
         {
-            colliderType = (renderer->type == RendererComponent::Sphere)
-                ? ColliderComponent::Sphere : ColliderComponent::Box;
-            if (renderer->type == RendererComponent::Quad)
-                colliderScale.z = std::max(colliderScale.z, 0.01f);
+            // No explicit collider: fall back to a box around the mesh.
+            colliderType = ColliderComponent::Box;
         }
 
         switch (colliderType)
         {
         case ColliderComponent::Box:
             collider->mesh = engine->resource->cubeMesh.get();
-            collider->rigidbody->CalculateInertia(RendererComponent::Cube, colliderScale);
+            collider->rigidbody->CalculateInertia(colliderScale);
             break;
         case ColliderComponent::Sphere:
             collider->mesh = engine->resource->sphereMesh.get();
-            collider->rigidbody->CalculateInertia(RendererComponent::Sphere, colliderScale);
+            collider->rigidbody->CalculateInertia(colliderScale);
             break;
         case ColliderComponent::MeshConvex:
         {
@@ -188,7 +186,7 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique
             {
                 collider->ownedMesh = std::make_unique<MeshData>(resolved.string(), false);
                 collider->mesh = collider->ownedMesh.get();
-                collider->rigidbody->CalculateInertia(RendererComponent::Cube, colliderScale);
+                collider->rigidbody->CalculateInertia(colliderScale);
                 DITTO_LOG_INFO_STREAM("[Physics] MeshConvex collider loaded OBJ point cloud: "
                     << resolved.string() << " (" << collider->mesh->vertices.size() << " verts)");
             }
@@ -196,7 +194,7 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique
             {
                 DITTO_LOG_WARN_STREAM("[Physics] MeshConvex collider requires an OBJ mesh path; using Box collider on " << obj->name);
                 collider->mesh = engine->resource->cubeMesh.get();
-                collider->rigidbody->CalculateInertia(RendererComponent::Cube, colliderScale);
+                collider->rigidbody->CalculateInertia(colliderScale);
             }
             break;
         }

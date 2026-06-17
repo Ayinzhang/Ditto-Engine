@@ -211,7 +211,7 @@ namespace
         scene.rootGameObject->name = scene.name;
 
         auto player = std::make_unique<GameObject>("Player");
-        player->AddComponent<RendererComponent>(RendererComponent::Cube);
+        player->AddComponent<RendererComponent>();
         player->AddComponent<RigidbodyComponent>();
         player->AddComponent<ColliderComponent>(ColliderComponent::Box);
         scene.rootGameObject->AddChild(std::move(player));
@@ -252,7 +252,7 @@ TEST_CASE("file", GameObjectComponentsAndRemoval)
     REQUIRE(obj.GetComponent<TransformComponent>() != nullptr);
     REQUIRE((obj.compMask & ComponentIndex::Transform) != 0);
 
-    auto* renderer = obj.AddComponent<RendererComponent>(RendererComponent::Sphere);
+    auto* renderer = obj.AddComponent<RendererComponent>();
     auto* rigidbody = obj.AddComponent<RigidbodyComponent>();
     REQUIRE(obj.GetComponent<RendererComponent>() == renderer);
     REQUIRE(obj.GetComponent<RigidbodyComponent>() == rigidbody);
@@ -301,9 +301,8 @@ TEST_CASE("file", SceneSnapshotRoundTrip)
     transform->localDirty = true;
     transform->UpdateTransform();
 
-    auto* renderer = actor->AddComponent<RendererComponent>(RendererComponent::Sphere);
+    auto* renderer = actor->AddComponent<RendererComponent>();
     renderer->color = { 0.25f, 0.5f, 0.75f, 1.0f };
-    renderer->meshSource = RendererComponent::File;
     renderer->meshPath = "Models/Custom.obj";
     renderer->materialPath = "Materials/Test.mat";
     renderer->shaderName = "Lit_Toon";
@@ -346,8 +345,6 @@ TEST_CASE("file", SceneSnapshotRoundTrip)
 
     REQUIRE(NearlyEqual(loadedTransform->position.x, 1.0f));
     REQUIRE(NearlyEqual(loadedTransform->scale.z, 4.0f));
-    REQUIRE(loadedRenderer->type == RendererComponent::Sphere);
-    REQUIRE(loadedRenderer->meshSource == RendererComponent::File);
     REQUIRE(loadedRenderer->meshPath == "Models/Custom.obj");
     REQUIRE(loadedRenderer->materialPath == "Materials/Test.mat");
     REQUIRE(loadedRenderer->mainTexturePath == "Textures/Diffuse.png");
@@ -417,7 +414,7 @@ TEST_CASE("file", SceneSaveLoadAndCorruptFileHandling)
     scene.name = "FileRoundTrip";
     scene.rootGameObject->name = scene.name;
     auto obj = std::make_unique<GameObject>("DiskActor");
-    obj->AddComponent<RendererComponent>(RendererComponent::Cube);
+    obj->AddComponent<RendererComponent>();
     scene.rootGameObject->AddChild(std::move(obj));
 
     REQUIRE(scene.SaveScene(scenePath.string()));

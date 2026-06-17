@@ -117,6 +117,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     EnsureDirectoryExists(projectPath + "/Assets/Models");
     EnsureDirectoryExists(projectPath + "/Assets/Materials");
     EnsureDirectoryExists(projectPath + "/Assets/Textures");
+    EnsureDirectoryExists(projectPath + "/Assets/Sprites");
     EnsureDirectoryExists(projectPath + "/Assets/Prefabs");
     EnsureDirectoryExists(projectPath + "/Assets/Scripts");
     EnsureDirectoryExists(projectPath + "/Assets/Shaders");
@@ -128,6 +129,8 @@ bool ProjectManager::CreateProject(const std::string& name)
     CopyDefaultAsset("Shaders/Lit_Sprite.shader", projectAssetsPath);
     CopyDefaultAsset("Materials/Lit_Toon.mat", projectAssetsPath);
     CopyDefaultAsset("Materials/Lit_Sprite.mat", projectAssetsPath);
+    CopyDefaultAsset("Sprites/Square.png", projectAssetsPath);
+    CopyDefaultAsset("Sprites/Circle.png", projectAssetsPath);
     
     // Create default scene file
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";
@@ -165,10 +168,10 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
         DITTO_LOG_ERROR_STREAM("Project does not exist: " << projectPath );
         return false;
     }
-    
+
     // Close current project
     CloseProject();
-    
+
     // Allocate new project
     currentProject = std::make_unique<Project>();
     currentProject->path = projectPath;

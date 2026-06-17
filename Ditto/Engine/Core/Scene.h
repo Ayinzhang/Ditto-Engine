@@ -21,7 +21,6 @@ struct BaseGeometry
 
 struct GeometryInstances
 {
-    RendererComponent::Type type;
     std::string meshPath;
     std::string shaderName;
     std::string texturePath;
@@ -31,7 +30,7 @@ struct GeometryInstances
     Ditto::StorageBufferHandle modelSBO, colorSBO;   // owned by the renderer
     size_t instanceCount = 0;
 
-    GeometryInstances(RendererComponent::Type t) : type(t) {}
+    GeometryInstances() = default;
     // No GL teardown here: the Scene destroys these storage buffers via its
     // renderer (GeometryInstances has no renderer pointer).
 };
@@ -46,12 +45,9 @@ struct Scene
     std::unique_ptr<GameObject> rootGameObject;
 
     GameObject* mainLight = nullptr;
-    std::unordered_map<RendererComponent::Type, BaseGeometry> baseGeometries;
-    std::unordered_map<RendererComponent::Type, std::unique_ptr<GeometryInstances>> geometryBatches;
 
-    // Custom-mesh rendering runs as a parallel, lazily-populated pipeline keyed
-    // by the renderer's meshPath. The built-in Cube/Sphere path above is left
-    // untouched. GL buffers + batches here are owned by the Scene.
+    // Mesh rendering: lazily-populated pipelines keyed by meshPath.
+    // GL buffers + batches here are owned by the Scene.
     std::unordered_map<std::string, BaseGeometry> customGeometries;
     std::unordered_map<std::string, std::unique_ptr<GeometryInstances>> customBatches;
     std::unordered_map<std::string, std::unique_ptr<GeometryInstances>> renderBatches;

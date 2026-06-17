@@ -43,8 +43,8 @@ void SceneWindow::FrameObject(GameObject* obj)
     float radius = 2.5f;
     if (RendererComponent* renderer = obj->GetComponent<RendererComponent>())
     {
-        if (renderer->type == RendererComponent::Sphere) radius = 2.5f;
-        else radius = 2.0f;
+        // Default framing radius — was previously based on a built-in sphere hint.
+        radius = 2.0f;
     }
     if (SpriteRendererComponent* sprite = obj->GetComponent<SpriteRendererComponent>())
         radius = sprite->drawMode == SpriteRendererComponent::Simple ? 2.0f : glm::max(sprite->size.x, sprite->size.y) * 1.5f;

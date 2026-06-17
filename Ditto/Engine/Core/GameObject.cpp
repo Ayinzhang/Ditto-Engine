@@ -226,6 +226,7 @@ static bool DrawObjectFieldButton(const char* label, void* iconTexture, const st
     // Handle left button behavior
     if (doubleClicked && !fullPath.empty() && g_editor)
     {
+        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Double clicked: " << fullPath);
         // Double click: switch Inspector to show this asset
         g_editor->selectedFile.path = fullPath;
         g_editor->selectedFile.name = value;
@@ -238,11 +239,28 @@ static bool DrawObjectFieldButton(const char* label, void* iconTexture, const st
     }
     else if (clicked && !fullPath.empty() && g_editor)
     {
-        // Single click: navigate Project window to this file
+        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Single clicked: " << fullPath);
+        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Before: selectedObject=" << (g_editor->selectedObject ? "valid" : "null"));
+
+        // Single click: navigate Project window AND select the file
         if (auto* projectWindow = g_editor->GetProjectWindow())
         {
             projectWindow->NavigateToFile(fullPath);
         }
+
+        // CRITICAL: Clear selectedObject FIRST before setting selectedFile
+        g_editor->selectedObject = nullptr;
+
+        // Select the file in Inspector
+        g_editor->selectedFile.path = fullPath;
+        g_editor->selectedFile.name = value;
+        std::string ext;
+        size_t dotPos = fullPath.find_last_of('.');
+        if (dotPos != std::string::npos)
+            ext = fullPath.substr(dotPos);
+        g_editor->selectedFile.extension = ext;
+
+        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] After: selectedFile.path=" << g_editor->selectedFile.path << " selectedObject=" << (g_editor->selectedObject ? "valid" : "null"));
     }
 
     // Handle drag and drop
@@ -1145,17 +1163,12 @@ void CameraComponent::Deserialize(std::istream& file)
 }
 
 RendererComponent::RendererComponent()
-    : type(Cube), meshSource(File), color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
-{
-    index = CI::Renderer;
-}
-RendererComponent::RendererComponent(Type _type)
-    : type(_type), meshSource(File), color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
+    : color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
 {
     index = CI::Renderer;
 }
 RendererComponent::RendererComponent(RendererComponent* other)
-    : type(other->type), meshSource(other->meshSource), color(other->color),
+    : color(other->color),
     materialPath(other->materialPath), shaderName(other->shaderName),
     mainTexturePath(other->mainTexturePath), shadowCastingMode(other->shadowCastingMode),
     receiveShadows(other->receiveShadows), staticShadowCaster(other->staticShadowCaster),
@@ -1165,11 +1178,6 @@ RendererComponent::RendererComponent(RendererComponent* other)
     meshPath(other->meshPath)
 {
     index = CI::Renderer;
-}
-
-bool RendererComponent::UsesFileMesh() const
-{
-    return meshSource == File && !meshPath.empty();
 }
 
 void RendererComponent::OnInspectorGUI()
@@ -1311,12 +1319,8 @@ void RendererComponent::OnInspectorGUI()
 }
 void RendererComponent::Serialize(std::ostream& file) const
 {
-    int32_t typeInt = static_cast<int32_t>(type);
-    file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
     WriteString(file, meshPath);
-    int32_t meshSourceInt = static_cast<int32_t>(meshSource);
-    file.write(reinterpret_cast<const char*>(&meshSourceInt), sizeof(meshSourceInt));
     WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
     WriteString(file, mainTexturePath);
     WriteString(file, materialPath);
@@ -1333,14 +1337,8 @@ void RendererComponent::Serialize(std::ostream& file) const
 }
 void RendererComponent::Deserialize(std::istream& file)
 {
-    int32_t typeInt = 0;
-    file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
-    type = static_cast<Type>(typeInt);
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
     meshPath = ReadString(file);
-    int32_t meshSourceInt = 0;
-    file.read(reinterpret_cast<char*>(&meshSourceInt), sizeof(meshSourceInt));
-    meshSource = static_cast<MeshSource>(meshSourceInt);
     shaderName = ReadString(file);
     if (shaderName.empty()) shaderName = DefaultShaderName;
     mainTexturePath = ReadString(file);
@@ -1365,7 +1363,7 @@ SpriteRendererComponent::SpriteRendererComponent()
 
 SpriteRendererComponent::SpriteRendererComponent(SpriteRendererComponent* other)
     : color(other->color), spritePath(other->spritePath), materialPath(other->materialPath),
-    shaderName(other->shaderName), builtInSprite(other->builtInSprite), flipX(other->flipX), flipY(other->flipY), drawMode(other->drawMode),
+    shaderName(other->shaderName), flipX(other->flipX), flipY(other->flipY), drawMode(other->drawMode),
     size(other->size), maskInteraction(other->maskInteraction), sortingLayer(other->sortingLayer),
     sortingOrder(other->sortingOrder), spriteSortPoint(other->spriteSortPoint)
 {
@@ -1510,8 +1508,6 @@ void SpriteRendererComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&sortingOrder), sizeof(sortingOrder));
     int32_t sortPointInt = static_cast<int32_t>(spriteSortPoint);
     file.write(reinterpret_cast<const char*>(&sortPointInt), sizeof(sortPointInt));
-    int32_t builtInSpriteInt = static_cast<int32_t>(builtInSprite);
-    file.write(reinterpret_cast<const char*>(&builtInSpriteInt), sizeof(builtInSpriteInt));
 }
 
 void SpriteRendererComponent::Deserialize(std::istream& file)
@@ -1535,9 +1531,6 @@ void SpriteRendererComponent::Deserialize(std::istream& file)
     int32_t sortPointInt = 0;
     file.read(reinterpret_cast<char*>(&sortPointInt), sizeof(sortPointInt));
     spriteSortPoint = static_cast<SpriteSortPoint>(sortPointInt);
-    int32_t builtInSpriteInt = static_cast<int32_t>(SpriteAsset);
-    file.read(reinterpret_cast<char*>(&builtInSpriteInt), sizeof(builtInSpriteInt));
-    builtInSprite = static_cast<BuiltInSprite>(builtInSpriteInt);
 }
 
 RigidbodyComponent::RigidbodyComponent()
@@ -1603,28 +1596,16 @@ void RigidbodyComponent::OnInspectorGUI()
 #endif
 }
 
-void RigidbodyComponent::CalculateInertia(RendererComponent::Type shapeType, const glm::vec3& scale)
+void RigidbodyComponent::CalculateInertia(const glm::vec3& scale)
 {
+    // Default to a box inertia tensor. Without a built-in shape hint we
+    // assume the bounding box of the (scaled) mesh.
+    float w = scale.x, h = scale.y, d = scale.z;
+    float Ixx = (1.0f / 12.0f) * mass * (h * h + d * d);
+    float Iyy = (1.0f / 12.0f) * mass * (w * w + d * d);
+    float Izz = (1.0f / 12.0f) * mass * (w * w + h * h);
     inertia = glm::mat3(0.0f);
-    switch (shapeType)
-    {
-    case RendererComponent::Cube:
-    {
-        float w = scale.x, h = scale.y, d = scale.z;
-        float Ixx = (1.0f / 12.0f) * mass * (h * h + d * d);
-        float Iyy = (1.0f / 12.0f) * mass * (w * w + d * d);
-        float Izz = (1.0f / 12.0f) * mass * (w * w + h * h);
-        inertia[0][0] = Ixx; inertia[1][1] = Iyy; inertia[2][2] = Izz;
-        break;
-    }
-    case RendererComponent::Sphere:
-    {
-        float r = glm::max(scale.x, glm::max(scale.y, scale.z)) * 0.5f;
-        float I = (2.0f / 5.0f) * mass * r * r;
-        inertia[0][0] = I; inertia[1][1] = I; inertia[2][2] = I;
-        break;
-    }
-    }
+    inertia[0][0] = Ixx; inertia[1][1] = Iyy; inertia[2][2] = Izz;
     inverseInertia = glm::inverse(inertia);
 }
 

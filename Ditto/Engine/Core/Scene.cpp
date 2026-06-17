@@ -49,28 +49,6 @@ static unsigned char* LoadImageRGBA(const std::filesystem::path& path, int* widt
 }
 #endif
 
-static const char* RendererTypeName(RendererComponent::Type type)
-{
-    switch (type)
-    {
-    case RendererComponent::Cube: return "Cube";
-    case RendererComponent::Sphere: return "Sphere";
-    case RendererComponent::Quad: return "Quad";
-    default: return "Unknown";
-    }
-}
-
-static const char* RendererTypeKey(RendererComponent::Type type)
-{
-    switch (type)
-    {
-    case RendererComponent::Cube: return "cube";
-    case RendererComponent::Sphere: return "sphere";
-    case RendererComponent::Quad: return "quad";
-    default: return "unknown";
-    }
-}
-
 Scene::Scene()
 {
     name = "Default";
@@ -79,10 +57,6 @@ Scene::Scene()
     rootGameObject = std::make_unique<GameObject>(name);
     rootGameObject->name = name;
     EnsureDefaultCamera();
-
-    geometryBatches[RendererComponent::Cube] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
-    geometryBatches[RendererComponent::Sphere] = std::make_unique<GeometryInstances>(RendererComponent::Sphere);
-    geometryBatches[RendererComponent::Quad] = std::make_unique<GeometryInstances>(RendererComponent::Quad);
 }
 
 Scene::~Scene()
@@ -91,14 +65,6 @@ Scene::~Scene()
 
     // Release all GPU resources through the renderer (sole owner). The renderer
     // is guaranteed alive here: Engine deletes the Scene before resetting it.
-    for (auto& pair : geometryBatches)
-    {
-        if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
-                        renderer->DestroyStorageBuffer(pair.second->colorSBO); }
-    }
-    for (auto& pair : baseGeometries)
-        if (renderer) renderer->DestroyMesh(pair.second.mesh);
-
     for (auto& pair : customBatches)
     {
         if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
@@ -255,15 +221,13 @@ void Scene::CollectRenderData()
             if (!obj->enabled) return;
 
             TransformComponent* transform = obj->GetComponent<TransformComponent>();
-            auto addBatchInstance = [&](RendererComponent::Type type, const std::string& meshPath,
+            auto addBatchInstance = [&](const std::string& meshPath,
                 const std::string& shaderName, const std::string& texturePath,
                 const glm::vec4& color, int sortingOrder)
                 {
                     if (!transform || !transform->enabled) return;
 
-                    std::string meshKey = meshPath.empty()
-                        ? std::string("builtin:") + RendererTypeKey(type)
-                        : "file:" + meshPath;
+                    std::string meshKey = "file:" + meshPath;
                     std::string colorKey = std::to_string(color.r) + "," + std::to_string(color.g) + "," +
                         std::to_string(color.b) + "," + std::to_string(color.a);
                     std::string batchKey = shaderName + "|" + meshKey + "|" + texturePath + "|" + colorKey + "|" + std::to_string(sortingOrder);
@@ -272,7 +236,7 @@ void Scene::CollectRenderData()
                     auto batchIt = renderBatches.find(batchKey);
                     if (batchIt == renderBatches.end())
                     {
-                        auto newBatch = std::make_unique<GeometryInstances>(type);
+                        auto newBatch = std::make_unique<GeometryInstances>();
                         newBatch->meshPath = meshPath;
                         newBatch->shaderName = shaderName;
                         newBatch->texturePath = texturePath;
@@ -295,15 +259,10 @@ void Scene::CollectRenderData()
 
             RendererComponent* renderer = obj->GetComponent<RendererComponent>();
             if (renderer && renderer->enabled && transform && transform->enabled &&
-                !(renderer->meshSource == RendererComponent::File && renderer->meshPath.empty()))
+                !renderer->meshPath.empty())
             {
-                std::string meshPath;
-                if (renderer->UsesFileMesh())
-                {
-                    // Custom mesh: lazily build its geometry/batch, then route to it.
-                    EnsureCustomGeometry(renderer->meshPath);
-                    meshPath = renderer->meshPath;
-                }
+                // All meshes come from project Assets.
+                EnsureCustomGeometry(renderer->meshPath);
 
                 Ditto::MaterialAsset material = renderer->materialPath.empty()
                     ? Ditto::MakeDefaultMaterial("Inline Material")
@@ -317,12 +276,12 @@ void Scene::CollectRenderData()
 
                 std::string shaderName = material.shaderName.empty() ? RendererComponent::DefaultShaderName : material.shaderName;
                 std::string texturePath = material.mainTexturePath;
-                addBatchInstance(renderer->type, meshPath, shaderName, texturePath, glm::vec4(material.color), 0);
+                addBatchInstance(renderer->meshPath, shaderName, texturePath, glm::vec4(material.color), 0);
             }
 
             SpriteRendererComponent* sprite = obj->GetComponent<SpriteRendererComponent>();
             if (sprite && sprite->enabled && transform && transform->enabled &&
-                sprite->builtInSprite != SpriteRendererComponent::SpriteNone)
+                !sprite->spritePath.empty())
             {
                 const bool hasMaterial = !sprite->materialPath.empty();
                 Ditto::MaterialAsset material = sprite->materialPath.empty()
@@ -332,25 +291,13 @@ void Scene::CollectRenderData()
                 {
                     material.shaderName = sprite->shaderName.empty() ? SpriteRendererComponent::DefaultShaderName : sprite->shaderName;
                     material.color = sprite->color;
-                    if (sprite->builtInSprite == SpriteRendererComponent::SpriteCircle)
-                        material.mainTexturePath = "builtin:circle-sprite";
-                    else if (sprite->builtInSprite == SpriteRendererComponent::SpriteAsset)
-                        material.mainTexturePath = sprite->spritePath;
-                    else
-                        material.mainTexturePath.clear();
-                }
-                if (sprite->builtInSprite == SpriteRendererComponent::SpriteCircle)
-                {
-                    material.mainTexturePath = "builtin:circle-sprite";
-                }
-                else if (sprite->builtInSprite == SpriteRendererComponent::SpriteAsset && !sprite->spritePath.empty())
-                {
                     material.mainTexturePath = sprite->spritePath;
                 }
 
                 std::string shaderName = material.shaderName.empty() ? SpriteRendererComponent::DefaultShaderName : material.shaderName;
                 glm::vec4 finalColor = hasMaterial && material.ok ? glm::vec4(material.color) * sprite->color : sprite->color;
-                addBatchInstance(RendererComponent::Quad, "", shaderName, material.mainTexturePath,
+                // Sprites use a built-in quad mesh — we just use a sentinel "sprite" meshPath
+                addBatchInstance("__sprite_quad__", shaderName, material.mainTexturePath,
                     finalColor, sprite->sortingOrder);
             }
 
@@ -367,7 +314,8 @@ void Scene::CollectRenderData()
                 auto batchIt = renderBatches.find(batchKey);
                 if (batchIt == renderBatches.end())
                 {
-                    auto newBatch = std::make_unique<GeometryInstances>(RendererComponent::Quad);
+                    auto newBatch = std::make_unique<GeometryInstances>();
+                    newBatch->meshPath = "__particle_quad__";
                     newBatch->shaderName = shaderName;
                     newBatch->sortingOrder = 1000; // draw after opaque/sprites
                     batch = newBatch.get();
@@ -489,18 +437,19 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
         renderer->SetFrameUniforms(fu);
         renderer->BindTexture(2, GetOrCreateMaterialTexture(batch->texturePath));
 
-        if (!batch->meshPath.empty())
+        if (batch->meshPath.empty()) continue;
+
+        // Special sentinel mesh paths for sprites and particles — these are
+        // handled directly in the rendering pipeline (camera-facing quads).
+        if (batch->meshPath == "__sprite_quad__" || batch->meshPath == "__particle_quad__")
         {
-            auto geoIt = customGeometries.find(batch->meshPath);
-            if (geoIt == customGeometries.end()) continue;
-            DrawBatch(renderer, geoIt->second, batch);
+            DrawBatch(renderer, BaseGeometry{}, batch);
+            continue;
         }
-        else
-        {
-            auto geoIt = baseGeometries.find(batch->type);
-            if (geoIt == baseGeometries.end()) continue;
-            DrawBatch(renderer, geoIt->second, batch);
-        }
+
+        auto geoIt = customGeometries.find(batch->meshPath);
+        if (geoIt == customGeometries.end()) continue;
+        DrawBatch(renderer, geoIt->second, batch);
     }
 
     if (renderUI)
@@ -631,24 +580,10 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
     this->resource = _resource;
     this->renderer = rhi;
 
-    // Interleaved layout shared by all base/custom models: pos(vec3)+normal(vec3)+uv(vec2).
+    // All visible geometry now comes from project Assets. The only base
+    // geometry the scene still owns is the unit quad used for sprite and
+    // particle billboarding.
     const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3}, {2, 2, 6} };
-
-    if (renderer && resource->cubeModel && !resource->cubeModel->vertexData.empty())
-    {
-        const auto& m = *resource->cubeModel;
-        baseGeometries[RendererComponent::Cube] =
-            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 8, attribs,
-                                               m.indices.data(), m.indices.size()) };
-    }
-
-    if (renderer && resource->sphereModel && !resource->sphereModel->vertexData.empty())
-    {
-        const auto& m = *resource->sphereModel;
-        baseGeometries[RendererComponent::Sphere] =
-            BaseGeometry{ renderer->CreateMesh(m.vertexData.data(), m.vertexData.size(), 8, attribs,
-                                               m.indices.data(), m.indices.size()) };
-    }
 
     if (renderer)
     {
@@ -661,14 +596,16 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
             -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f,
         };
         const unsigned int quadIndices[] = { 0, 1, 2, 0, 2, 3 };
-        baseGeometries[RendererComponent::Quad] =
+        customGeometries["__sprite_quad__"] =
             BaseGeometry{ renderer->CreateMesh(quadVerts, 32, 8, attribs, quadIndices, 6) };
+        customGeometries["__particle_quad__"] = customGeometries["__sprite_quad__"];
     }
 }
 
 void Scene::EnsureCustomGeometry(const std::string& meshPath)
 {
     if (meshPath.empty()) return;
+    if (meshPath == "__sprite_quad__" || meshPath == "__particle_quad__") return;
     if (customGeometries.find(meshPath) != customGeometries.end()) return; // already built (or cached as failed)
 
     // Resolve the path: accept an existing path as-is, else anchor it to the
@@ -684,7 +621,7 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
             DITTO_LOG_ERROR_STREAM("[Scene] Custom mesh has no geometry: " << resolved);
         // Cache empties so we don't re-attempt the load every frame.
         customGeometries[meshPath] = BaseGeometry{};
-        customBatches[meshPath] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
+        customBatches[meshPath] = std::make_unique<GeometryInstances>();
         return;
     }
 
@@ -693,8 +630,7 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
                                            model.indices.data(), model.indices.size()) };
 
     customGeometries[meshPath] = geo;
-    // `type` is unused for custom batches (geometry comes from customGeometries).
-    customBatches[meshPath] = std::make_unique<GeometryInstances>(RendererComponent::Cube);
+    customBatches[meshPath] = std::make_unique<GeometryInstances>();
     DITTO_LOG_INFO_STREAM("[Scene] Loaded custom mesh: " << resolved
         << " (" << model.vertexData.size() / 8 << " verts)");
 }
@@ -734,7 +670,9 @@ float Scene::GetLightIntensity() const
     return 1.0f;
 }
 
-static void GetBuiltinRaycastMesh(RendererComponent::Type type, Resource* resource,
+// Get raycast mesh for a given meshPath. Sprites/particles use the unit quad;
+// project meshes are loaded from disk on demand and cached.
+static void GetRaycastMeshForPath(const std::string& meshPath, Resource* resource,
     const std::vector<glm::vec3>*& vertices, const std::vector<unsigned int>*& indices)
 {
     static const std::vector<glm::vec3> quadVertices = {
@@ -745,21 +683,45 @@ static void GetBuiltinRaycastMesh(RendererComponent::Type type, Resource* resour
 
     vertices = nullptr;
     indices = nullptr;
-    if (type == RendererComponent::Quad)
+
+    // Sprite/particle billboard uses the unit quad for raycasting.
+    if (meshPath == "__sprite_quad__" || meshPath == "__particle_quad__" || meshPath.empty())
     {
         vertices = &quadVertices;
         indices = &quadIndices;
         return;
     }
-    if (!resource) return;
 
-    MeshData* mesh = nullptr;
-    if (type == RendererComponent::Cube) mesh = resource->cubeMesh.get();
-    else if (type == RendererComponent::Sphere) mesh = resource->sphereMesh.get();
+    // Project mesh — try to load it.
+    static std::unordered_map<std::string, std::pair<std::vector<glm::vec3>, std::vector<unsigned int>>> s_raycastCache;
+    auto it = s_raycastCache.find(meshPath);
+    if (it != s_raycastCache.end())
+    {
+        vertices = &it->second.first;
+        indices = &it->second.second;
+        return;
+    }
 
-    if (!mesh) return;
-    vertices = &mesh->vertices;
-    indices = &mesh->indices;
+    std::string resolved = meshPath;
+    if (!std::filesystem::exists(resolved))
+        resolved = PathUtils::ResolveAsset(meshPath).string();
+
+    ModelData model(resolved);
+    if (model.vertexData.empty())
+    {
+        // Cache empty entries so we don't re-attempt every frame.
+        s_raycastCache[meshPath] = {};
+        return;
+    }
+
+    auto& entry = s_raycastCache[meshPath];
+    // ModelData is interleaved: pos(vec3)+normal(vec3)+uv(vec2) — extract positions.
+    for (size_t i = 0; i + 2 < model.vertexData.size(); i += 8)
+        entry.first.push_back(glm::vec3(model.vertexData[i], model.vertexData[i + 1], model.vertexData[i + 2]));
+    entry.second = model.indices;
+
+    vertices = &entry.first;
+    indices = &entry.second;
 }
 
 GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4& view, const glm::mat4& projection, int viewportWidth, int viewportHeight)
@@ -808,24 +770,31 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
         RendererComponent* renderer = obj->GetComponent<RendererComponent>();
         SpriteRendererComponent* spriteRenderer = obj->GetComponent<SpriteRendererComponent>();
         TransformComponent* transform = obj->GetComponent<TransformComponent>();
-        RendererComponent::Type renderType = RendererComponent::Cube;
+
+        // Determine the mesh path used for raycasting. Empty path = no
+        // hit-test possible, skip. Sprites use the unit-quad sentinel.
+        std::string raycastPath;
         if (renderer && renderer->enabled)
         {
-            if (renderer->meshSource == RendererComponent::File && renderer->meshPath.empty())
-                return;
-            renderType = renderer->type;
+            if (renderer->meshPath.empty()) return;
+            raycastPath = renderer->meshPath;
         }
-        else if (spriteRenderer && spriteRenderer->enabled && spriteRenderer->builtInSprite != SpriteRendererComponent::SpriteNone)
-            renderType = RendererComponent::Quad;
+        else if (spriteRenderer && spriteRenderer->enabled && !spriteRenderer->spritePath.empty())
+        {
+            raycastPath = "__sprite_quad__";
+        }
         else
+        {
             return;
+        }
+
         if (!transform || !transform->enabled) return;
 
         checkedCount++;
         glm::mat4 worldMat = transform->GetWorldModel();
         const std::vector<glm::vec3>* vertices = nullptr;
         const std::vector<unsigned int>* indices = nullptr;
-        GetBuiltinRaycastMesh(renderType, resource, vertices, indices);
+        GetRaycastMeshForPath(raycastPath, resource, vertices, indices);
 
         if (!vertices || !indices)
         {
@@ -833,7 +802,7 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const glm::mat4
             return;
         }
 
-        DITTO_LOG_INFO_STREAM("[Raycast] Checking object: " << obj->name << " (type=" << RendererTypeName(renderType)
+        DITTO_LOG_INFO_STREAM("[Raycast] Checking object: " << obj->name << " (mesh=" << raycastPath
             << ", vertices: " << vertices->size() << ", indices: " << indices->size() << ")");
 
         float tMin = FLT_MAX;
@@ -926,24 +895,28 @@ GameObject* Scene::RaycastGameObjects(const glm::vec2& mousePos, const Camera& c
         RendererComponent* renderer = obj->GetComponent<RendererComponent>();
         SpriteRendererComponent* spriteRenderer = obj->GetComponent<SpriteRendererComponent>();
         TransformComponent* transform = obj->GetComponent<TransformComponent>();
-        RendererComponent::Type renderType = RendererComponent::Cube;
+
+        std::string raycastPath;
         if (renderer && renderer->enabled)
         {
-            if (renderer->meshSource == RendererComponent::File && renderer->meshPath.empty())
-                return;
-            renderType = renderer->type;
+            if (renderer->meshPath.empty()) return;
+            raycastPath = renderer->meshPath;
         }
-        else if (spriteRenderer && spriteRenderer->enabled && spriteRenderer->builtInSprite != SpriteRendererComponent::SpriteNone)
-            renderType = RendererComponent::Quad;
+        else if (spriteRenderer && spriteRenderer->enabled && !spriteRenderer->spritePath.empty())
+        {
+            raycastPath = "__sprite_quad__";
+        }
         else
+        {
             return;
+        }
         if (!transform || !transform->enabled) return;
 
         checkedCount++;
         glm::mat4 worldMat = transform->GetWorldModel();
         const std::vector<glm::vec3>* vertices = nullptr;
         const std::vector<unsigned int>* indices = nullptr;
-        GetBuiltinRaycastMesh(renderType, resource, vertices, indices);
+        GetRaycastMeshForPath(raycastPath, resource, vertices, indices);
         if (!vertices || !indices) return;
 
         float tMin = FLT_MAX;
@@ -1195,7 +1168,7 @@ bool Scene::ReadFromStream(std::istream& file)
                     << " (enabled=" << obj->enabled
                     << ", renderer=" << (renderer->enabled ? "enabled" : "disabled")
                     << ", transform=" << (transform->enabled ? "enabled" : "disabled")
-                    << ", type=" << RendererTypeName(renderer->type)
+                    << ", meshPath=" << renderer->meshPath
                     << ", pos=[" << transform->position.x << ", " << transform->position.y << ", " << transform->position.z << "])");
                 raycastObjCount++;
             }
