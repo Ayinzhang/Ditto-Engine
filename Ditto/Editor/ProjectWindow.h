@@ -29,6 +29,9 @@ public:
     // 拖拽脚本到 Inspector 时调用
     void OnScriptDropped(const std::string& scriptPath);
 
+    // 跳转到指定文件并选中（用于Inspector中单击文件名跳转）
+    void NavigateToFile(const std::string& filePath);
+
 private:
     Editor* m_editor = nullptr;
 

@@ -214,12 +214,48 @@ void ProjectWindow::OnFileSelected(const std::string& path, const std::string& n
     if (m_editor) {
         // If Inspector locks selection, don't switch files
         if (m_editor->lockingSelection) return;
-        
+
         m_editor->selectedFile.path = path;
         m_editor->selectedFile.name = name;
         m_editor->selectedFile.extension = ext;
         m_editor->selectedFile.folder = folder;
     }
+}
+
+void ProjectWindow::NavigateToFile(const std::string& filePath)
+{
+    namespace fs = std::filesystem;
+
+    if (!m_editor) return;
+
+    Project* project = ProjectManager::GetInstance().GetCurrentProject();
+    if (!project) return;
+
+    // Convert to absolute path
+    fs::path absPath = fs::absolute(filePath);
+    fs::path assetsPath = fs::absolute(fs::path(project->path) / "Assets");
+
+    // Calculate relative path from Assets
+    fs::path relativePath = absPath.lexically_relative(assetsPath);
+    if (relativePath.empty() || relativePath.string().find("..") != std::string::npos)
+    {
+        // File is not under Assets folder
+        DITTO_LOG_WARN_STREAM("[ProjectWindow] Cannot navigate to file outside Assets: " << filePath);
+        return;
+    }
+
+    // Set current folder to the parent directory (only jump, don't select)
+    fs::path parentPath = relativePath.parent_path();
+    if (parentPath.empty() || parentPath == ".")
+    {
+        m_currentFolder = "Assets";
+    }
+    else
+    {
+        m_currentFolder = "Assets/" + parentPath.generic_string();
+    }
+
+    DITTO_LOG_INFO_STREAM("[ProjectWindow] Navigated to: " << m_currentFolder);
 }
 
 void ProjectWindow::Draw()

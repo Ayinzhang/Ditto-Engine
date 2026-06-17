@@ -140,6 +140,41 @@ static void UnityColor3(const char* label, glm::vec3* value, const char* id)
     TrackUndoableEdit();
 }
 
+// Extract filename from path
+static std::string FileNameFromPath(const std::string& path)
+{
+    size_t pos = path.find_last_of("/\\");
+    return pos == std::string::npos ? path : path.substr(pos + 1);
+}
+
+// Convert relative asset path to full path
+static std::string ToFullAssetPath(const std::string& relativePath)
+{
+    if (relativePath.empty()) return "";
+
+    namespace fs = std::filesystem;
+    Project* project = ProjectManager::GetInstance().GetCurrentProject();
+    if (!project) return relativePath;
+
+    // If already absolute, return as-is
+    fs::path p(relativePath);
+    if (p.is_absolute()) return relativePath;
+
+    // Construct full path: project/Assets/relativePath
+    fs::path fullPath = fs::path(project->path) / "Assets" / relativePath;
+    return fullPath.string();
+}
+
+// Remove extension from filename for display
+static std::string FileNameWithoutExtension(const std::string& path)
+{
+    std::string name = FileNameFromPath(path);
+    size_t dotPos = name.find_last_of('.');
+    if (dotPos != std::string::npos)
+        return name.substr(0, dotPos);
+    return name;
+}
+
 static bool UnityCombo(const char* label, int* value, const char* const* names, int count, const char* id)
 {
     UnityLabel(label);
@@ -149,33 +184,113 @@ static bool UnityCombo(const char* label, int* value, const char* const* names, 
 }
 
 static bool DrawObjectFieldButton(const char* label, void* iconTexture, const std::string& value, const char* popupId,
-    std::string* droppedPath = nullptr)
+    std::string* droppedPath = nullptr, const std::string& fullPath = "")
 {
     UnityLabel(label);
 
-    float rowWidth = ImGui::GetContentRegionAvail().x;
+    float availWidth = ImGui::GetContentRegionAvail().x;
+    float buttonHeight = ImGui::GetFrameHeight();
+    float circleButtonWidth = buttonHeight;
+    float mainButtonWidth = availWidth - circleButtonWidth - 2.0f;
+
+    // Main button
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f)); // Left align
+
+    ImVec2 buttonPos = ImGui::GetCursorScreenPos();
+    bool clicked = ImGui::Button(("##main" + std::string(popupId)).c_str(), ImVec2(mainButtonWidth, buttonHeight));
+    bool doubleClicked = ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0);
+
+    // Draw icon and text on top of button
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 textPos = buttonPos;
+    textPos.x += 4.0f;
+    textPos.y += (buttonHeight - ImGui::GetTextLineHeight()) * 0.5f;
+
     if (iconTexture)
     {
-        ImGui::Image(iconTexture, ImVec2(16.0f, 16.0f), ImVec2(0, 1), ImVec2(1, 0));
-        ImGui::SameLine();
-        rowWidth -= 16.0f + ImGui::GetStyle().ItemSpacing.x;
+        ImVec2 iconPos = buttonPos;
+        iconPos.x += 2.0f;
+        iconPos.y += (buttonHeight - 16.0f) * 0.5f;
+        drawList->AddImage(iconTexture, iconPos, ImVec2(iconPos.x + 16, iconPos.y + 16));
+        textPos.x += 18.0f;
     }
-    float fieldWidth = std::max(40.0f, rowWidth);
 
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.13f, 0.16f, 0.19f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.23f, 0.28f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.21f, 0.29f, 0.36f, 1.0f));
-    bool opened = ImGui::Button((value + "##" + std::string(popupId) + "Field").c_str(), ImVec2(fieldWidth, 0.0f));
+    drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), value.c_str());
+
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+
+    // Handle left button behavior
+    if (doubleClicked && !fullPath.empty() && g_editor)
+    {
+        // Double click: switch Inspector to show this asset
+        g_editor->selectedFile.path = fullPath;
+        g_editor->selectedFile.name = value;
+        std::string ext;
+        size_t dotPos = fullPath.find_last_of('.');
+        if (dotPos != std::string::npos)
+            ext = fullPath.substr(dotPos);
+        g_editor->selectedFile.extension = ext;
+        g_editor->selectedObject = nullptr;
+    }
+    else if (clicked && !fullPath.empty() && g_editor)
+    {
+        // Single click: navigate Project window to this file
+        if (auto* projectWindow = g_editor->GetProjectWindow())
+        {
+            projectWindow->NavigateToFile(fullPath);
+        }
+    }
+
+    // Handle drag and drop
     if (droppedPath && ImGui::BeginDragDropTarget())
     {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PROJECT_FILE"))
             *droppedPath = static_cast<const char*>(payload->Data);
         ImGui::EndDragDropTarget();
     }
+
+    // Circle picker button
+    ImGui::SameLine(0, 2.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.35f, 0.35f, 0.35f, 1.0f));
+
+    ImVec2 pickerButtonPos = ImGui::GetCursorScreenPos();
+    bool pickerClicked = ImGui::Button(("##picker" + std::string(popupId)).c_str(), ImVec2(circleButtonWidth, buttonHeight));
+
+    // Try to get ObjectPicker icon from editor
+    void* pickerIcon = g_editor ? g_editor->GetIconByExtension(".objectpicker") : nullptr;
+
+    if (pickerIcon)
+    {
+        // Draw picker icon centered in button
+        float iconSize = 16.0f;
+        ImVec2 iconPos = ImVec2(
+            pickerButtonPos.x + (circleButtonWidth - iconSize) * 0.5f,
+            pickerButtonPos.y + (buttonHeight - iconSize) * 0.5f
+        );
+        drawList->AddImage(pickerIcon, iconPos, ImVec2(iconPos.x + iconSize, iconPos.y + iconSize));
+    }
+    else
+    {
+        // Fallback: Draw circle with outer ring icon
+        ImVec2 center = ImVec2(pickerButtonPos.x + circleButtonWidth * 0.5f, pickerButtonPos.y + buttonHeight * 0.5f);
+        float innerRadius = 5.0f;
+        float outerRadius = 7.5f;
+        drawList->AddCircle(center, innerRadius, ImGui::GetColorU32(ImGuiCol_Text), 16, 1.5f);
+        drawList->AddCircle(center, outerRadius, ImGui::GetColorU32(ImGuiCol_Text), 16, 1.5f);
+    }
+
     ImGui::PopStyleColor(3);
-    if (opened)
+
+    if (pickerClicked)
         ImGui::OpenPopup(popupId);
-    return opened;
+
+    return clicked || pickerClicked;
 }
 
 static bool DrawUnitySelectorHeader(const char* title, const char* searchId, char* searchBuffer, size_t searchBufferSize)
@@ -189,12 +304,6 @@ static bool DrawUnitySelectorHeader(const char* title, const char* searchId, cha
     return close;
 }
 
-static std::string FileNameFromPath(const std::string& path)
-{
-    size_t pos = path.find_last_of("/\\");
-    return pos == std::string::npos ? path : path.substr(pos + 1);
-}
-
 static std::string ToAssetRelativePath(const std::string& path)
 {
     Project* project = ProjectManager::GetInstance().GetCurrentProject();
@@ -202,17 +311,17 @@ static std::string ToAssetRelativePath(const std::string& path)
 
     std::filesystem::path filePath = std::filesystem::absolute(path).lexically_normal();
     std::filesystem::path assetsPath = std::filesystem::absolute(std::filesystem::path(project->path) / "Assets").lexically_normal();
-    std::wstring fileW = filePath.wstring();
-    std::wstring assetsW = assetsPath.wstring();
-    std::replace(fileW.begin(), fileW.end(), L'\\', L'/');
-    std::replace(assetsW.begin(), assetsW.end(), L'\\', L'/');
 
-    if (fileW.rfind(assetsW + L"/", 0) == 0)
+    // Try to make the path relative to Assets
+    std::filesystem::path relativePath = filePath.lexically_relative(assetsPath);
+    if (relativePath.empty() || relativePath.string().find("..") != std::string::npos)
     {
-        std::filesystem::path relative = filePath.lexically_relative(assetsPath);
-        return relative.generic_string();
+        return path;
     }
-    return path;
+
+    // Convert to forward slashes
+    std::string result = relativePath.generic_string();
+    return result;
 }
 
 static std::string LowerExtension(const std::string& path)
@@ -1035,8 +1144,13 @@ void CameraComponent::Deserialize(std::istream& file)
     }
 }
 
+RendererComponent::RendererComponent()
+    : type(Cube), meshSource(File), color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
+{
+    index = CI::Renderer;
+}
 RendererComponent::RendererComponent(Type _type)
-    : type(_type), meshSource(BuiltIn), color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
+    : type(_type), meshSource(File), color(1.0f, 1.0f, 1.0f, 1.0f), shaderName(DefaultShaderName)
 {
     index = CI::Renderer;
 }
@@ -1051,17 +1165,6 @@ RendererComponent::RendererComponent(RendererComponent* other)
     meshPath(other->meshPath)
 {
     index = CI::Renderer;
-}
-
-static const char* RendererTypeName(RendererComponent::Type type)
-{
-    switch (type)
-    {
-    case RendererComponent::Cube: return "Cube";
-    case RendererComponent::Sphere: return "Sphere";
-    case RendererComponent::Quad: return "Quad";
-    default: return "Unknown";
-    }
 }
 
 bool RendererComponent::UsesFileMesh() const
@@ -1079,24 +1182,16 @@ void RendererComponent::OnInspectorGUI()
     SelectComponentOnLastItem(this);
     ImGui::Indent(20.0f);
 
-    std::string meshDisplay;
-    const bool meshIsNone = meshSource == File && meshPath.empty();
-    if (meshIsNone)
-        meshDisplay = "None (Mesh)";
-    else if (meshSource == BuiltIn)
-        meshDisplay = RendererTypeName(type);
-    else
-        meshDisplay = FileNameFromPath(meshPath);
-
+    std::string meshDisplay = meshPath.empty() ? "None (Mesh)" : FileNameWithoutExtension(meshPath);
     std::string droppedMeshPath;
-    DrawObjectFieldButton("Mesh", nullptr, meshDisplay, "RendererMeshObjectPopup", &droppedMeshPath);
+    std::string fullMeshPath = ToFullAssetPath(meshPath);
+    DrawObjectFieldButton("Mesh", nullptr, meshDisplay, "RendererMeshObjectPopup", &droppedMeshPath, fullMeshPath);
     if (!droppedMeshPath.empty())
     {
         std::string ext = LowerExtension(droppedMeshPath);
         if (ext == ".obj" || ext == ".fbx" || ext == ".mesh")
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            meshSource = File;
             meshPath = ToAssetRelativePath(droppedMeshPath);
         }
     }
@@ -1108,37 +1203,16 @@ void RendererComponent::OnInspectorGUI()
             ImGui::CloseCurrentPopup();
         }
         std::string search(meshSearch);
-        DrawUnitySelectorGroupLabel("Built-in");
-        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, meshIsNone))
+        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, meshPath.empty()))
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            meshSource = File;
             meshPath.clear();
         }
-        if (SearchMatches("Cube", search) && ImGui::MenuItem("Cube", nullptr, meshSource == BuiltIn && type == Cube))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            meshSource = BuiltIn;
-            type = Cube;
-        }
-        if (SearchMatches("Sphere", search) && ImGui::MenuItem("Sphere", nullptr, meshSource == BuiltIn && type == Sphere))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            meshSource = BuiltIn;
-            type = Sphere;
-        }
-        if (SearchMatches("Quad", search) && ImGui::MenuItem("Quad", nullptr, meshSource == BuiltIn && type == Quad))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            meshSource = BuiltIn;
-            type = Quad;
-        }
-        DrawUnitySelectorGroupLabel("Assets");
+        ImGui::Separator();
         std::string selectedMeshPath;
         if (DrawFilteredAssetMenuItems(FindProjectAssets({ ".obj", ".fbx", ".mesh" }), meshPath, search, selectedMeshPath))
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            meshSource = File;
             meshPath = selectedMeshPath;
         }
         ImGui::EndPopup();
@@ -1159,9 +1233,10 @@ void RendererComponent::OnInspectorGUI()
     ImGui::TextUnformatted("Materials");
     ImGui::Indent(12.0f);
 
-    std::string materialDisplay = materialPath.empty() ? "Default-Material" : FileNameFromPath(materialPath);
+    std::string materialDisplay = materialPath.empty() ? "Default-Material" : FileNameWithoutExtension(materialPath);
     std::string droppedMaterialPath;
-    DrawObjectFieldButton("Element 0", nullptr, materialDisplay, "RendererMaterialObjectPopup", &droppedMaterialPath);
+    std::string fullMaterialPath = ToFullAssetPath(materialPath);
+    DrawObjectFieldButton("Element 0", nullptr, materialDisplay, "RendererMaterialObjectPopup", &droppedMaterialPath, fullMaterialPath);
     if (!droppedMaterialPath.empty())
     {
         std::string ext = LowerExtension(droppedMaterialPath);
@@ -1239,7 +1314,7 @@ void RendererComponent::Serialize(std::ostream& file) const
     int32_t typeInt = static_cast<int32_t>(type);
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
-    WriteString(file, meshPath);   // scene version 2+
+    WriteString(file, meshPath);
     int32_t meshSourceInt = static_cast<int32_t>(meshSource);
     file.write(reinterpret_cast<const char*>(&meshSourceInt), sizeof(meshSourceInt));
     WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
@@ -1262,60 +1337,25 @@ void RendererComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&typeInt), sizeof(typeInt));
     type = static_cast<Type>(typeInt);
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
-    // Only present in scene version >= 2; older files leave meshPath empty.
-    if (g_sceneLoadingVersion >= 2)
-        meshPath = ReadString(file);
-    else
-        meshPath.clear();
-    if (g_sceneLoadingVersion >= 6)
-    {
-        int32_t meshSourceInt = 0;
-        file.read(reinterpret_cast<char*>(&meshSourceInt), sizeof(meshSourceInt));
-        meshSource = static_cast<MeshSource>(meshSourceInt);
-        shaderName = ReadString(file);
-        if (shaderName.empty()) shaderName = DefaultShaderName;
-        if (g_sceneLoadingVersion >= 7)
-            mainTexturePath = ReadString(file);
-        else
-            mainTexturePath.clear();
-        if (g_sceneLoadingVersion >= 8)
-            materialPath = ReadString(file);
-        else
-            materialPath.clear();
-        if (g_sceneLoadingVersion >= 13)
-        {
-            int32_t shadowModeInt = 1;
-            file.read(reinterpret_cast<char*>(&shadowModeInt), sizeof(shadowModeInt));
-            shadowCastingMode = static_cast<ShadowCastingMode>(shadowModeInt);
-            file.read(reinterpret_cast<char*>(&receiveShadows), sizeof(receiveShadows));
-            file.read(reinterpret_cast<char*>(&staticShadowCaster), sizeof(staticShadowCaster));
-            file.read(reinterpret_cast<char*>(&contributeGI), sizeof(contributeGI));
-            file.read(reinterpret_cast<char*>(&lightProbeUsage), sizeof(lightProbeUsage));
-            file.read(reinterpret_cast<char*>(&reflectionProbeUsage), sizeof(reflectionProbeUsage));
-            file.read(reinterpret_cast<char*>(&motionVectors), sizeof(motionVectors));
-            file.read(reinterpret_cast<char*>(&dynamicOcclusion), sizeof(dynamicOcclusion));
-            file.read(reinterpret_cast<char*>(&renderingLayerMask), sizeof(renderingLayerMask));
-        }
-    }
-    else
-    {
-        meshSource = meshPath.empty() ? BuiltIn : File;
-        shaderName = DefaultShaderName;
-        mainTexturePath.clear();
-        materialPath.clear();
-    }
-    if (g_sceneLoadingVersion < 13)
-    {
-        shadowCastingMode = ShadowsOn;
-        receiveShadows = true;
-        staticShadowCaster = false;
-        contributeGI = false;
-        lightProbeUsage = 1;
-        reflectionProbeUsage = 1;
-        motionVectors = 1;
-        dynamicOcclusion = true;
-        renderingLayerMask = 1;
-    }
+    meshPath = ReadString(file);
+    int32_t meshSourceInt = 0;
+    file.read(reinterpret_cast<char*>(&meshSourceInt), sizeof(meshSourceInt));
+    meshSource = static_cast<MeshSource>(meshSourceInt);
+    shaderName = ReadString(file);
+    if (shaderName.empty()) shaderName = DefaultShaderName;
+    mainTexturePath = ReadString(file);
+    materialPath = ReadString(file);
+    int32_t shadowModeInt = 0;
+    file.read(reinterpret_cast<char*>(&shadowModeInt), sizeof(shadowModeInt));
+    shadowCastingMode = static_cast<ShadowCastingMode>(shadowModeInt);
+    file.read(reinterpret_cast<char*>(&receiveShadows), sizeof(receiveShadows));
+    file.read(reinterpret_cast<char*>(&staticShadowCaster), sizeof(staticShadowCaster));
+    file.read(reinterpret_cast<char*>(&contributeGI), sizeof(contributeGI));
+    file.read(reinterpret_cast<char*>(&lightProbeUsage), sizeof(lightProbeUsage));
+    file.read(reinterpret_cast<char*>(&reflectionProbeUsage), sizeof(reflectionProbeUsage));
+    file.read(reinterpret_cast<char*>(&motionVectors), sizeof(motionVectors));
+    file.read(reinterpret_cast<char*>(&dynamicOcclusion), sizeof(dynamicOcclusion));
+    file.read(reinterpret_cast<char*>(&renderingLayerMask), sizeof(renderingLayerMask));
 }
 
 SpriteRendererComponent::SpriteRendererComponent()
@@ -1346,19 +1386,16 @@ void SpriteRendererComponent::OnInspectorGUI()
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
 
-    std::string spriteDisplay = "Square";
-    if (builtInSprite == SpriteNone) spriteDisplay = "None (Sprite)";
-    else if (builtInSprite == SpriteCircle) spriteDisplay = "Circle";
-    else if (builtInSprite == SpriteAsset) spriteDisplay = spritePath.empty() ? "None (Sprite)" : FileNameFromPath(spritePath);
+    std::string spriteDisplay = spritePath.empty() ? "None (Sprite)" : FileNameWithoutExtension(spritePath);
     std::string droppedSpritePath;
-    DrawObjectFieldButton("Sprite", nullptr, spriteDisplay, "SpriteRendererSpriteObjectPopup", &droppedSpritePath);
+    std::string fullSpritePath = ToFullAssetPath(spritePath);
+    DrawObjectFieldButton("Sprite", nullptr, spriteDisplay, "SpriteRendererSpriteObjectPopup", &droppedSpritePath, fullSpritePath);
     if (!droppedSpritePath.empty())
     {
         std::string ext = LowerExtension(droppedSpritePath);
         if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr")
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            builtInSprite = SpriteAsset;
             spritePath = ToAssetRelativePath(droppedSpritePath);
         }
     }
@@ -1368,32 +1405,17 @@ void SpriteRendererComponent::OnInspectorGUI()
         if (DrawUnitySelectorHeader("Select Sprite", "##SpriteRendererSpriteSearch", spriteSearch, sizeof(spriteSearch)))
             ImGui::CloseCurrentPopup();
         std::string search(spriteSearch);
-        DrawUnitySelectorGroupLabel("Built-in");
-        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, builtInSprite == SpriteNone))
+        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, spritePath.empty()))
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            builtInSprite = SpriteNone;
             spritePath.clear();
         }
-        if (SearchMatches("Square", search) && ImGui::MenuItem("Square", nullptr, builtInSprite == SpriteSquare))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            builtInSprite = SpriteSquare;
-            spritePath.clear();
-        }
-        if (SearchMatches("Circle", search) && ImGui::MenuItem("Circle", nullptr, builtInSprite == SpriteCircle))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            builtInSprite = SpriteCircle;
-            spritePath.clear();
-        }
-        DrawUnitySelectorGroupLabel("Assets");
+        ImGui::Separator();
         std::string selectedSpritePath;
         if (DrawFilteredAssetMenuItems(FindProjectAssets({ ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr" }),
             spritePath, search, selectedSpritePath))
         {
             if (g_editor) g_editor->PushUndoSnapshot();
-            builtInSprite = SpriteAsset;
             spritePath = selectedSpritePath;
         }
         ImGui::EndPopup();
@@ -1415,9 +1437,10 @@ void SpriteRendererComponent::OnInspectorGUI()
     ImGui::TextUnformatted("Materials");
     ImGui::Indent(12.0f);
 
-    std::string materialDisplay = materialPath.empty() ? "Default-Sprite-Material" : FileNameFromPath(materialPath);
+    std::string materialDisplay = materialPath.empty() ? "Default-Sprite-Material" : FileNameWithoutExtension(materialPath);
     std::string droppedMaterialPath;
-    DrawObjectFieldButton("Element 0", nullptr, materialDisplay, "SpriteRendererMaterialObjectPopup", &droppedMaterialPath);
+    std::string fullSpriteMaterialPath = ToFullAssetPath(materialPath);
+    DrawObjectFieldButton("Element 0", nullptr, materialDisplay, "SpriteRendererMaterialObjectPopup", &droppedMaterialPath, fullSpriteMaterialPath);
     if (!droppedMaterialPath.empty())
     {
         std::string ext = LowerExtension(droppedMaterialPath);
@@ -1498,51 +1521,23 @@ void SpriteRendererComponent::Deserialize(std::istream& file)
     materialPath = ReadString(file);
     shaderName = ReadString(file);
     if (shaderName.empty()) shaderName = DefaultShaderName;
-    if (g_sceneLoadingVersion >= 13)
-    {
-        file.read(reinterpret_cast<char*>(&flipX), sizeof(flipX));
-        file.read(reinterpret_cast<char*>(&flipY), sizeof(flipY));
-        int32_t drawModeInt = 0;
-        file.read(reinterpret_cast<char*>(&drawModeInt), sizeof(drawModeInt));
-        drawMode = static_cast<DrawMode>(drawModeInt);
-        file.read(reinterpret_cast<char*>(&size), sizeof(glm::vec2));
-        int32_t maskInteractionInt = 0;
-        file.read(reinterpret_cast<char*>(&maskInteractionInt), sizeof(maskInteractionInt));
-        maskInteraction = static_cast<MaskInteraction>(maskInteractionInt);
-        file.read(reinterpret_cast<char*>(&sortingLayer), sizeof(sortingLayer));
-    }
-    else
-    {
-        flipX = false;
-        flipY = false;
-        drawMode = Simple;
-        size = glm::vec2(1.0f);
-        maskInteraction = None;
-        sortingLayer = 0;
-    }
+    file.read(reinterpret_cast<char*>(&flipX), sizeof(flipX));
+    file.read(reinterpret_cast<char*>(&flipY), sizeof(flipY));
+    int32_t drawModeInt = 0;
+    file.read(reinterpret_cast<char*>(&drawModeInt), sizeof(drawModeInt));
+    drawMode = static_cast<DrawMode>(drawModeInt);
+    file.read(reinterpret_cast<char*>(&size), sizeof(glm::vec2));
+    int32_t maskInteractionInt = 0;
+    file.read(reinterpret_cast<char*>(&maskInteractionInt), sizeof(maskInteractionInt));
+    maskInteraction = static_cast<MaskInteraction>(maskInteractionInt);
+    file.read(reinterpret_cast<char*>(&sortingLayer), sizeof(sortingLayer));
     file.read(reinterpret_cast<char*>(&sortingOrder), sizeof(sortingOrder));
-    if (g_sceneLoadingVersion >= 13)
-    {
-        int32_t sortPointInt = 0;
-        file.read(reinterpret_cast<char*>(&sortPointInt), sizeof(sortPointInt));
-        spriteSortPoint = static_cast<SpriteSortPoint>(sortPointInt);
-    }
-    else
-    {
-        spriteSortPoint = Center;
-        if (shaderName == RendererComponent::DefaultShaderName)
-            shaderName = DefaultShaderName;
-    }
-    if (g_sceneLoadingVersion >= 14)
-    {
-        int32_t builtInSpriteInt = spritePath.empty() ? static_cast<int32_t>(SpriteSquare) : static_cast<int32_t>(SpriteAsset);
-        file.read(reinterpret_cast<char*>(&builtInSpriteInt), sizeof(builtInSpriteInt));
-        builtInSprite = static_cast<BuiltInSprite>(builtInSpriteInt);
-    }
-    else
-    {
-        builtInSprite = spritePath.empty() ? SpriteSquare : SpriteAsset;
-    }
+    int32_t sortPointInt = 0;
+    file.read(reinterpret_cast<char*>(&sortPointInt), sizeof(sortPointInt));
+    spriteSortPoint = static_cast<SpriteSortPoint>(sortPointInt);
+    int32_t builtInSpriteInt = static_cast<int32_t>(SpriteAsset);
+    file.read(reinterpret_cast<char*>(&builtInSpriteInt), sizeof(builtInSpriteInt));
+    builtInSprite = static_cast<BuiltInSprite>(builtInSpriteInt);
 }
 
 RigidbodyComponent::RigidbodyComponent()
@@ -1727,8 +1722,10 @@ void ColliderComponent::OnInspectorGUI()
     if (type == MeshConvex)
     {
         std::string droppedMeshPath;
-        DrawObjectFieldButton("Mesh", nullptr, meshPath.empty() ? "None (Mesh)" : FileNameFromPath(meshPath),
-            "ColliderMeshObjectPopup", &droppedMeshPath);
+        std::string fullColliderMeshPath = ToFullAssetPath(meshPath);
+        std::string meshDisplayName = meshPath.empty() ? "None (Mesh)" : FileNameWithoutExtension(meshPath);
+        DrawObjectFieldButton("Mesh", nullptr, meshDisplayName,
+            "ColliderMeshObjectPopup", &droppedMeshPath, fullColliderMeshPath);
         if (!droppedMeshPath.empty() && ExtensionMatches(droppedMeshPath, { ".obj", ".fbx", ".mesh" }))
         {
             if (g_editor) g_editor->PushUndoSnapshot();
@@ -1872,8 +1869,10 @@ void Rigidbody2DComponent::OnInspectorGUI()
 
     if (type == Dynamic)
     {
-        DrawObjectFieldButton("Material", nullptr, materialPath.empty() ? "None (Physics Material 2D)" : FileNameFromPath(materialPath),
-            "Rigidbody2DMaterialObjectPopup");
+        std::string fullRigidbody2DMaterialPath = ToFullAssetPath(materialPath);
+        std::string materialDisplayName = materialPath.empty() ? "None (Physics Material 2D)" : FileNameWithoutExtension(materialPath);
+        DrawObjectFieldButton("Material", nullptr, materialDisplayName,
+            "Rigidbody2DMaterialObjectPopup", nullptr, fullRigidbody2DMaterialPath);
         if (ImGui::BeginPopup("Rigidbody2DMaterialObjectPopup"))
         {
             if (ImGui::MenuItem("None", nullptr, materialPath.empty())) materialPath.clear();
@@ -2111,8 +2110,10 @@ void AudioSourceComponent::OnInspectorGUI()
     ImGui::Indent(20.0f);
 
     std::string droppedClipPath;
-    DrawObjectFieldButton("Audio Clip", nullptr, clipPath.empty() ? "None (Audio Clip)" : FileNameFromPath(clipPath),
-        "AudioClipObjectPopup", &droppedClipPath);
+    std::string fullClipPath = ToFullAssetPath(clipPath);
+    std::string clipDisplayName = clipPath.empty() ? "None (Audio Clip)" : FileNameWithoutExtension(clipPath);
+    DrawObjectFieldButton("Audio Clip", nullptr, clipDisplayName,
+        "AudioClipObjectPopup", &droppedClipPath, fullClipPath);
     if (!droppedClipPath.empty())
     {
         std::string ext = LowerExtension(droppedClipPath);
@@ -2400,8 +2401,10 @@ void UIImageComponent::OnInspectorGUI()
     ImGui::Indent(20.0f);
 
     std::string droppedTexturePath;
-    DrawObjectFieldButton("Source Image", nullptr, texturePath.empty() ? "None (Texture2D)" : FileNameFromPath(texturePath),
-        "UIImageTextureObjectPopup", &droppedTexturePath);
+    std::string fullTexturePath = ToFullAssetPath(texturePath);
+    std::string textureDisplayName = texturePath.empty() ? "None (Texture2D)" : FileNameWithoutExtension(texturePath);
+    DrawObjectFieldButton("Source Image", nullptr, textureDisplayName,
+        "UIImageTextureObjectPopup", &droppedTexturePath, fullTexturePath);
     if (!droppedTexturePath.empty())
     {
         std::string ext = LowerExtension(droppedTexturePath);
@@ -2530,8 +2533,9 @@ void UITextComponent::OnInspectorGUI()
         text = textBuf;
     TrackUndoableEdit();
 
-    DrawObjectFieldButton("Font", nullptr, fontPath.empty() ? "Default Font" : FileNameFromPath(fontPath),
-        "UITextFontObjectPopup");
+    std::string fontDisplayName = fontPath.empty() ? "Default Font" : FileNameWithoutExtension(fontPath);
+    DrawObjectFieldButton("Font", nullptr, fontDisplayName,
+        "UITextFontObjectPopup", nullptr, ToFullAssetPath(fontPath));
     if (ImGui::BeginPopup("UITextFontObjectPopup"))
     {
         if (ImGui::MenuItem("Default Font", nullptr, fontPath.empty())) fontPath.clear();

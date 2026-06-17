@@ -23,8 +23,13 @@ static Ditto::IRenderer* PreviewRenderer(Editor* editor);
 #include <cctype>
 #include <functional>
 #include <vector>
+#include <map>
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
+
+// For icon loading
+#include "../3rdParty/stb_image.h"
+#include "../3rdParty/GLAD/glad.h"
 
 namespace fs = std::filesystem;
 
@@ -50,14 +55,17 @@ namespace
 
         fs::path filePath = fs::absolute(path).lexically_normal();
         fs::path assetsPath = fs::absolute(fs::path(project->path) / "Assets").lexically_normal();
-        std::wstring fileW = filePath.wstring();
-        std::wstring assetsW = assetsPath.wstring();
-        std::replace(fileW.begin(), fileW.end(), L'\\', L'/');
-        std::replace(assetsW.begin(), assetsW.end(), L'\\', L'/');
 
-        if (fileW.rfind(assetsW + L"/", 0) == 0)
-            return filePath.lexically_relative(assetsPath).generic_string();
-        return path;
+        // Try to make the path relative to Assets
+        fs::path relativePath = filePath.lexically_relative(assetsPath);
+        if (relativePath.empty() || relativePath.string().find("..") != std::string::npos)
+        {
+            return path;
+        }
+
+        // Convert to forward slashes
+        std::string result = relativePath.generic_string();
+        return result;
     }
 
     std::string LowerText(std::string text)
@@ -72,25 +80,383 @@ namespace
         return LowerText(text).find(LowerText(search)) != std::string::npos;
     }
 
-    bool DrawFileObjectField(const char* label, const std::string& value, const char* id, std::string* droppedPath)
+    // Unity icon cache
+    struct IconCache
+    {
+        std::map<std::string, ImTextureID> icons;
+        bool initialized = false;
+        bool initFailed = false;
+
+        ImTextureID GetIcon(const std::string& name)
+        {
+            if (!initialized || initFailed) return (ImTextureID)0;
+            auto it = icons.find(name);
+            return it != icons.end() ? it->second : (ImTextureID)0;
+        }
+
+        void Initialize()
+        {
+            if (initialized || initFailed) return;
+
+            // Check if OpenGL context is available
+            if (!gladLoadGL())
+            {
+                initFailed = true;
+                return;
+            }
+
+            initialized = true;
+
+            // Load icons from Icons folder
+            std::string iconBasePath = "C:/Projects/Ditto-Engine/Ditto/Assets/Icons/";
+
+            // Load icons - map key to filename
+            std::map<std::string, std::string> iconFileMap = {
+                {"picker", "ObjectPicker.png"},
+                {"shader", "Shader.png"},
+                {"material", "Material.png"},
+                {"texture", "Texture2D.png"},
+                {"mesh", "Model.png"},
+                {"sprite", "Sprite.png"},
+            };
+
+            for (const auto& [key, filename] : iconFileMap)
+            {
+                std::string fullPath = iconBasePath + filename;
+
+                if (!fs::exists(fullPath))
+                {
+                    DITTO_LOG_WARN_STREAM("[IconCache] Icon not found: " << fullPath);
+                    continue;
+                }
+
+                int width, height, channels;
+                unsigned char* data = stbi_load(fullPath.c_str(), &width, &height, &channels, 4);
+                if (data)
+                {
+                    GLuint textureID;
+                    glGenTextures(1, &textureID);
+                    if (textureID == 0)
+                    {
+                        stbi_image_free(data);
+                        continue;
+                    }
+
+                    glBindTexture(GL_TEXTURE_2D, textureID);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+                    stbi_image_free(data);
+                    icons[key] = (ImTextureID)(intptr_t)textureID;
+                    DITTO_LOG_INFO_STREAM("[IconCache] Loaded " << key << " from " << fullPath);
+                }
+            }
+
+            DITTO_LOG_INFO_STREAM("[IconCache] Initialized with " << icons.size() << " icons");
+        }
+    };
+
+    static IconCache g_iconCache;
+
+    // Asset item for picker
+    struct AssetItem
+    {
+        std::string name;           // Display name (filename without extension)
+        std::string relativePath;   // Path relative to Assets folder (with extension)
+        std::string fullPath;       // Absolute path
+    };
+
+    // Collect assets from a directory recursively
+    void CollectAssets(const fs::path& directory, const std::vector<std::string>& extensions,
+                       const fs::path& assetsRoot, std::vector<AssetItem>& outAssets)
+    {
+        if (!fs::exists(directory) || !fs::is_directory(directory))
+            return;
+
+        try
+        {
+            for (const auto& entry : fs::recursive_directory_iterator(directory, fs::directory_options::skip_permission_denied))
+            {
+                try
+                {
+                    if (!entry.is_regular_file()) continue;
+
+                    std::string ext = LowerExtension(entry.path().string());
+                    bool matchesExt = false;
+                    for (const auto& allowedExt : extensions)
+                    {
+                        if (ext == allowedExt)
+                        {
+                            matchesExt = true;
+                            break;
+                        }
+                    }
+
+                    if (!matchesExt) continue;
+
+                    AssetItem item;
+                    // Display name without extension
+                    item.name = entry.path().stem().string();
+                    item.fullPath = entry.path().string();
+
+                    // Calculate relative path from assetsRoot (keep extension for loading)
+                    fs::path rel = entry.path().lexically_relative(assetsRoot);
+                    if (!rel.empty())
+                        item.relativePath = rel.generic_string();
+                    else
+                        item.relativePath = entry.path().filename().string();
+
+                    outAssets.push_back(item);
+                }
+                catch (const std::exception&)
+                {
+                    // Skip files that cause errors
+                    continue;
+                }
+            }
+        }
+        catch (const std::exception&)
+        {
+            // Failed to iterate directory
+            return;
+        }
+    }
+
+    // Draw Unity-style asset picker popup with grid layout
+    bool DrawAssetPicker(const char* popupId, const char* assetType, const std::vector<std::string>& extensions,
+                         std::string& outSelectedPath, const std::string& iconKey, char* searchBuffer, size_t searchBufferSize)
+    {
+        bool selected = false;
+
+        if (ImGui::BeginPopup(popupId))
+        {
+            // Header with search
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::IsWindowAppearing())
+                ImGui::SetKeyboardFocusHere();
+            ImGui::InputTextWithHint(("##Search" + std::string(popupId)).c_str(), "Search...", searchBuffer, searchBufferSize);
+
+            ImGui::Separator();
+
+            // Collect assets - ONLY from project, not engine
+            Project* project = ProjectManager::GetInstance().GetCurrentProject();
+            std::vector<AssetItem> assets;
+
+            if (project)
+            {
+                fs::path assetsPath = fs::path(project->path) / "Assets";
+                CollectAssets(assetsPath, extensions, assetsPath, assets);
+            }
+
+            // Filter by search
+            std::string searchStr = searchBuffer;
+
+            // Use table layout for Unity-style grid
+            ImGui::BeginChild("AssetList", ImVec2(400, 400), true);
+
+            // Show "None" option first
+            if (MatchesSearch("None", searchStr))
+            {
+                ImGui::PushID("None");
+                if (ImGui::Selectable("None", false, 0, ImVec2(0, 20)))
+                {
+                    outSelectedPath = "";
+                    selected = true;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::PopID();
+                ImGui::Separator();
+            }
+
+            // Initialize icon cache
+            g_iconCache.Initialize();
+            ImTextureID icon = g_iconCache.GetIcon(iconKey);
+
+            // Display assets in a list with icons
+            for (const auto& asset : assets)
+            {
+                if (!MatchesSearch(asset.name, searchStr) && !MatchesSearch(asset.relativePath, searchStr))
+                    continue;
+
+                ImGui::PushID(asset.fullPath.c_str());
+
+                // Draw icon if available
+                if (icon)
+                {
+                    ImGui::Image(icon, ImVec2(18, 18));
+                    ImGui::SameLine();
+                }
+
+                // Draw selectable with name (without extension)
+                if (ImGui::Selectable(asset.name.c_str(), false, 0, ImVec2(0, 20)))
+                {
+                    outSelectedPath = asset.relativePath;
+                    selected = true;
+                    ImGui::CloseCurrentPopup();
+                }
+
+                // Show path on hover
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::BeginTooltip();
+                    ImGui::TextUnformatted(asset.relativePath.c_str());
+                    ImGui::EndTooltip();
+                }
+
+                ImGui::PopID();
+            }
+
+            ImGui::EndChild();
+            ImGui::EndPopup();
+        }
+
+        return selected;
+    }
+
+    // Draw Unity-style object field with circle button
+    bool DrawFileObjectField(const char* label, const std::string& value, const char* id,
+                            const char* assetType, const std::vector<std::string>& extensions,
+                            const std::string& iconKey, std::string* outSelectedPath, std::string* droppedPath,
+                            Editor* editor)
     {
         ImGui::TextUnformatted(label);
         ImGui::SameLine();
-        float width = std::max(60.0f, ImGui::GetContentRegionAvail().x);
+
+        // Calculate layout
+        float availWidth = ImGui::GetContentRegionAvail().x;
+        float buttonHeight = ImGui::GetFrameHeight();
+        float circleButtonWidth = buttonHeight; // Square button for the circle
+        float mainButtonWidth = availWidth - circleButtonWidth - 2.0f;
+
+        // Initialize icon cache
+        g_iconCache.Initialize();
+        ImTextureID icon = g_iconCache.GetIcon(iconKey);
+        ImTextureID pickerIcon = g_iconCache.GetIcon("picker");
+
+        // Main button showing current selection
+        ImGui::BeginGroup();
+
+        // Draw the main button with icon and text
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f)); // Left align
+
         std::string display = value.empty() ? "None" : FileNameFromPath(value);
-        bool opened = ImGui::Button((display + "##" + id).c_str(), ImVec2(width, 0.0f));
+        // Remove extension from display
+        size_t dotPos = display.find_last_of('.');
+        if (dotPos != std::string::npos)
+            display = display.substr(0, dotPos);
+
+        // Draw icon inside button if available
+        bool clicked = false;
+        bool doubleClicked = false;
+        ImVec2 buttonPos = ImGui::GetCursorScreenPos();
+
+        if (ImGui::Button(("##main" + std::string(id)).c_str(), ImVec2(mainButtonWidth, buttonHeight)))
+        {
+            clicked = true;
+        }
+
+        // Check for double click
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+        {
+            doubleClicked = true;
+        }
+
+        // Draw icon and text on top of button
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImVec2 textPos = buttonPos;
+        textPos.x += 4.0f;
+        textPos.y += (buttonHeight - ImGui::GetTextLineHeight()) * 0.5f;
+
+        if (icon)
+        {
+            ImVec2 iconPos = buttonPos;
+            iconPos.x += 2.0f;
+            iconPos.y += (buttonHeight - 16.0f) * 0.5f;
+            drawList->AddImage(icon, iconPos, ImVec2(iconPos.x + 16, iconPos.y + 16));
+            textPos.x += 18.0f;
+        }
+
+        drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), display.c_str());
+
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+
+        // Handle left button behavior
+        if (doubleClicked && !value.empty() && editor)
+        {
+            // Double click: switch Inspector to show this asset
+            editor->selectedFile.path = value;
+            editor->selectedFile.name = display;
+            editor->selectedFile.extension = LowerExtension(value);
+            editor->selectedObject = nullptr;
+        }
+        else if (clicked && !value.empty() && editor)
+        {
+            // Single click: navigate Project window to this file
+            if (ProjectWindow* projectWindow = editor->GetProjectWindow())
+            {
+                projectWindow->NavigateToFile(value);
+            }
+        }
+
+        // Circle picker button (like Unity's)
+        ImGui::SameLine(0, 2.0f);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
+
+        // Draw picker icon if available, otherwise use 'o'
+        ImVec2 pickerButtonPos = ImGui::GetCursorScreenPos();
+        bool pickerClicked = ImGui::Button(("##picker" + std::string(id)).c_str(), ImVec2(circleButtonWidth, buttonHeight));
+
+        if (pickerIcon)
+        {
+            // Draw picker icon centered in button
+            ImVec2 iconPos = pickerButtonPos;
+            float iconSize = 16.0f;
+            iconPos.x += (circleButtonWidth - iconSize) * 0.5f;
+            iconPos.y += (buttonHeight - iconSize) * 0.5f;
+            drawList->AddImage(pickerIcon, iconPos, ImVec2(iconPos.x + iconSize, iconPos.y + iconSize));
+        }
+        else
+        {
+            // Fallback: draw 'o' text
+            ImVec2 textPos = pickerButtonPos;
+            const char* text = "o";
+            ImVec2 textSize = ImGui::CalcTextSize(text);
+            textPos.x += (circleButtonWidth - textSize.x) * 0.5f;
+            textPos.y += (buttonHeight - textSize.y) * 0.5f;
+            drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), text);
+        }
+
+        if (pickerClicked)
+        {
+            ImGui::OpenPopup(id);
+        }
+
+        ImGui::PopStyleColor();
+
+        ImGui::EndGroup();
+
+        // Handle drag and drop on the entire group
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PROJECT_FILE"))
                 *droppedPath = static_cast<const char*>(payload->Data);
             ImGui::EndDragDropTarget();
         }
-        if (opened)
-            ImGui::OpenPopup(id);
-        return opened;
+
+        // Draw asset picker popup
+        static char searchBuffer[256] = "";
+        if (ImGui::IsPopupOpen(id) && ImGui::IsWindowAppearing())
+            searchBuffer[0] = '\0';
+
+        if (DrawAssetPicker(id, assetType, extensions, *outSelectedPath, iconKey, searchBuffer, sizeof(searchBuffer)))
+            return true;
+
+        return clicked;
     }
 
-    void DrawMaterialFileInspector(const std::string& materialPath)
+    void DrawMaterialFileInspector(const std::string& materialPath, Editor* editor)
     {
         Ditto::MaterialAsset material = Ditto::LoadMaterialAsset(materialPath);
         if (!material.ok)
@@ -105,8 +471,16 @@ namespace
         ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Material");
         ImGui::Separator();
 
+        // Shader picker
+        std::string selectedShader;
         std::string droppedShader;
-        DrawFileObjectField("Shader", material.shaderName, "MaterialShaderAsset", &droppedShader);
+        if (DrawFileObjectField("Shader", material.shaderName, "MaterialShaderAsset",
+                               "Select Shader", {".shader", ".hlsl", ".glsl", ".vert", ".frag"},
+                               "shader", &selectedShader, &droppedShader, editor))
+        {
+            material.shaderName = selectedShader;
+            changed = true;
+        }
         if (!droppedShader.empty())
         {
             std::string ext = LowerExtension(droppedShader);
@@ -116,24 +490,14 @@ namespace
                 changed = true;
             }
         }
-        if (ImGui::BeginPopup("MaterialShaderAsset"))
-        {
-            char shaderBuf[256];
-            strcpy_s(shaderBuf, sizeof(shaderBuf), material.shaderName.c_str());
-            ImGui::TextUnformatted("Shader Name");
-            if (ImGui::InputText("##MaterialShaderName", shaderBuf, sizeof(shaderBuf)))
-            {
-                material.shaderName = shaderBuf;
-                changed = true;
-            }
-            ImGui::EndPopup();
-        }
 
         Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(material.shaderName);
+        DITTO_LOG_INFO_STREAM("[Inspector] Loading shader: " << material.shaderName);
         if (!shader.ok)
         {
             ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f), "Shader unavailable");
             ImGui::TextWrapped("%s", shader.error.c_str());
+            DITTO_LOG_ERROR_STREAM("[Inspector] Shader load failed: " << shader.error);
         }
         else
         {
@@ -152,8 +516,15 @@ namespace
                 }
                 else if (property.type == Ditto::ShaderPropertyType::Texture2D)
                 {
+                    std::string selectedTexture;
                     std::string droppedTexture;
-                    DrawFileObjectField(label.c_str(), material.mainTexturePath, ("MaterialFileTexture" + property.name).c_str(), &droppedTexture);
+                    if (DrawFileObjectField(label.c_str(), material.mainTexturePath, ("MaterialFileTexture" + property.name).c_str(),
+                                           "Select Texture", {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr"},
+                                           "texture", &selectedTexture, &droppedTexture, editor))
+                    {
+                        material.mainTexturePath = selectedTexture;
+                        changed = true;
+                    }
                     if (!droppedTexture.empty())
                     {
                         std::string ext = LowerExtension(droppedTexture);
@@ -162,21 +533,6 @@ namespace
                             material.mainTexturePath = ToAssetRelativePath(droppedTexture);
                             changed = true;
                         }
-                    }
-
-                    char texBuf[256];
-                    strcpy_s(texBuf, sizeof(texBuf), material.mainTexturePath.c_str());
-                    ImGui::TextUnformatted("Path");
-                    ImGui::SameLine();
-                    if (ImGui::InputText(("##MaterialFileTexturePath" + property.name).c_str(), texBuf, sizeof(texBuf)))
-                    {
-                        material.mainTexturePath = texBuf;
-                        changed = true;
-                    }
-                    if (!material.mainTexturePath.empty() && ImGui::SmallButton(("Clear##MaterialFileTexture" + property.name).c_str()))
-                    {
-                        material.mainTexturePath.clear();
-                        changed = true;
                     }
                 }
             }
@@ -345,7 +701,7 @@ void InspectorWindow::Draw()
 
         if (m_editor->selectedFile.extension == ".mat")
         {
-            DrawMaterialFileInspector(m_editor->selectedFile.path);
+            DrawMaterialFileInspector(m_editor->selectedFile.path, m_editor);
             ImGui::End();
             return;
         }

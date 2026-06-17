@@ -694,6 +694,8 @@
       <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)3rdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)3rdParty/ImGuizmo;$(MSBuildThisFileDirectory)3rdParty/ImGui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <StringPooling>true</StringPooling>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

@@ -43,6 +43,8 @@ namespace Ditto
     fs::path ResolveShaderPath(const std::string& shaderName, const fs::path& preferredRoot)
     {
         std::string name = shaderName.empty() ? "Lit_Toon" : shaderName;
+        Logger::Get().Info("[ShaderAsset] Resolving shader: " + name);
+
         std::vector<std::string> candidates;
         candidates.push_back(name);
         if (!HasExtension(name))
@@ -54,26 +56,52 @@ namespace Ditto
         for (const std::string& candidate : candidates)
         {
             fs::path direct(candidate);
-            if (direct.is_absolute() && fs::exists(direct)) return direct;
+            if (direct.is_absolute() && fs::exists(direct))
+            {
+                Logger::Get().Info("[ShaderAsset] Found (absolute): " + direct.string());
+                return direct;
+            }
 
             Project* project = ProjectManager::GetInstance().GetCurrentProject();
             if (project)
             {
                 fs::path projectAsset = fs::path(project->path) / "Assets" / candidate;
-                if (fs::exists(projectAsset)) return projectAsset;
+                Logger::Get().Info("[ShaderAsset] Trying: " + projectAsset.string());
+                if (fs::exists(projectAsset))
+                {
+                    Logger::Get().Info("[ShaderAsset] Found (project): " + projectAsset.string());
+                    return projectAsset;
+                }
 
                 projectAsset = fs::path(project->path) / "Assets" / "Shaders" / candidate;
-                if (fs::exists(projectAsset)) return projectAsset;
+                Logger::Get().Info("[ShaderAsset] Trying: " + projectAsset.string());
+                if (fs::exists(projectAsset))
+                {
+                    Logger::Get().Info("[ShaderAsset] Found (project/Shaders): " + projectAsset.string());
+                    return projectAsset;
+                }
             }
 
             fs::path resolved = PathUtils::ResolveAsset("Shaders/" + candidate, preferredRoot);
-            if (fs::exists(resolved)) return resolved;
+            Logger::Get().Info("[ShaderAsset] Trying: " + resolved.string());
+            if (fs::exists(resolved))
+            {
+                Logger::Get().Info("[ShaderAsset] Found (engine/Shaders): " + resolved.string());
+                return resolved;
+            }
 
             resolved = PathUtils::ResolveAsset(candidate, preferredRoot);
-            if (fs::exists(resolved)) return resolved;
+            Logger::Get().Info("[ShaderAsset] Trying: " + resolved.string());
+            if (fs::exists(resolved))
+            {
+                Logger::Get().Info("[ShaderAsset] Found (engine): " + resolved.string());
+                return resolved;
+            }
         }
 
-        return PathUtils::ResolveAsset("Shaders/" + (HasExtension(name) ? name : name + ".shader"), preferredRoot);
+        fs::path fallback = PathUtils::ResolveAsset("Shaders/" + (HasExtension(name) ? name : name + ".shader"), preferredRoot);
+        Logger::Get().Warning("[ShaderAsset] Not found, using fallback: " + fallback.string());
+        return fallback;
     }
 
     static void ParseProperties(const std::string& source, ShaderAsset& asset)

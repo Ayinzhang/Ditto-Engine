@@ -167,6 +167,9 @@ struct Editor
     void AddConsoleMessage(const std::string& message) { if (m_projectWindow) m_projectWindow->AddConsoleMessage(message); }
     void ImportExternalFilesToProject(const std::vector<std::string>& paths);
 
+    // Get ProjectWindow instance (for navigation from Inspector)
+    ProjectWindow* GetProjectWindow() { return m_projectWindow.get(); }
+
     void DrawGameObjectNode(GameObject* obj, bool isRoot = false, int depth = 0);
     void CopySelectedObject();
     void DeleteSelectedObject();
@@ -225,6 +228,7 @@ private:
     Ditto::TextureHandle m_playIcon;
     Ditto::TextureHandle m_pauseIcon;
     Ditto::TextureHandle m_stopIcon;
+    Ditto::TextureHandle m_objectPickerIcon;
     Ditto::TextureHandle m_sceneToolbarIcons[static_cast<int>(SceneToolbarIcon::Count)];
     bool m_fileIconsInitialized = false;
     std::string m_assetsPath;

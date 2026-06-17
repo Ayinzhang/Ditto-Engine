@@ -236,12 +236,18 @@ struct CameraComponent : Component
 struct RendererComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::Renderer;
+
+    // Internal types for rendering system - not exposed in UI
     enum Type { Cube, Sphere, Quad };
     enum MeshSource { BuiltIn, File };
+
     enum ShadowCastingMode { ShadowsOff, ShadowsOn, TwoSided, ShadowsOnly };
     static constexpr const char* DefaultShaderName = "Lit_Toon";
-    Type type;
-    MeshSource meshSource;
+
+    // Internal fields - managed by serialization
+    Type type = Cube;
+    MeshSource meshSource = File;
+
     glm::vec4 color;
     std::string materialPath;
     std::string shaderName;
@@ -250,19 +256,17 @@ struct RendererComponent : Component
     bool receiveShadows = true;
     bool staticShadowCaster = false;
     bool contributeGI = false;
-    int lightProbeUsage = 1;       // Off, Blend Probes, Use Proxy Volume, Custom Provided
-    int reflectionProbeUsage = 1;  // Off, Blend Probes, Blend Probes And Skybox, Simple
-    int motionVectors = 1;         // Camera Motion Only, Per Object Motion, Force No Motion
+    int lightProbeUsage = 1;
+    int reflectionProbeUsage = 1;
+    int motionVectors = 1;
     bool dynamicOcclusion = true;
     uint32_t renderingLayerMask = 1;
 
-    // Optional custom mesh override (project-relative .obj path). Empty => use
-    // the built-in `type` geometry. This is a RENDER-only override; physics and
-    // colliders still use `type` as a bounding approximation. Serialized from
-    // scene version 2 onward (older scenes load with an empty path).
+    // Mesh path (project-relative path). Required - must be loaded from Assets.
     std::string meshPath;
 
-    RendererComponent(Type _type = Cube);
+    RendererComponent();
+    RendererComponent(Type _type);
     RendererComponent(RendererComponent* other);
     bool UsesFileMesh() const;
     void OnInspectorGUI() override;
@@ -276,14 +280,20 @@ struct SpriteRendererComponent : Component
     enum DrawMode { Simple, Sliced, Tiled };
     enum MaskInteraction { None, VisibleInsideMask, VisibleOutsideMask };
     enum SpriteSortPoint { Center, Pivot };
+
+    // Internal type for rendering system - not exposed in UI
     enum BuiltInSprite { SpriteNone, SpriteSquare, SpriteCircle, SpriteAsset };
+
     static constexpr const char* DefaultShaderName = "Lit_Sprite";
 
     glm::vec4 color{ 1.0f };
-    std::string spritePath;
+    std::string spritePath;  // Required - must be loaded from Assets
     std::string materialPath;
     std::string shaderName = DefaultShaderName;
-    BuiltInSprite builtInSprite = SpriteSquare;
+
+    // Internal field - managed by serialization
+    BuiltInSprite builtInSprite = SpriteAsset;
+
     bool flipX = false;
     bool flipY = false;
     DrawMode drawMode = Simple;

@@ -2637,7 +2637,7 @@ void Editor::InitFileIcons()
     if (m_fileIconsInitialized) return;
     
     // Get icon directory path
-    m_assetsPath = FindEditorAssetsPath() + "/Icon";
+    m_assetsPath = FindEditorAssetsPath() + "/Icons";
     DITTO_LOG_INFO_STREAM("[FileIcon] Initializing from: " << m_assetsPath );
     
     // Load file icons
@@ -2667,6 +2667,7 @@ void Editor::InitFileIcons()
     m_playIcon = LoadIcon(m_assetsPath + "/Play.png");
     m_pauseIcon = LoadIcon(m_assetsPath + "/Pause.png");
     m_stopIcon = LoadIcon(m_assetsPath + "/Scene.png"); // placeholder; swap to "Stop.png" when available
+    m_objectPickerIcon = LoadIcon(m_assetsPath + "/ObjectPicker.png");
     for (int i = 0; i < static_cast<int>(SceneToolbarIcon::Count); ++i)
         m_sceneToolbarIcons[i] = LoadIcon(m_assetsPath + "/" + s_sceneToolbarIconFiles[i]);
 
@@ -2722,6 +2723,11 @@ int Editor::GetIconIndex(const std::string& ext)
 void* Editor::GetIconByExtension(const std::string& extension)
 {
     if (!m_fileIconsInitialized) return nullptr;
+
+    // Special case for ObjectPicker icon
+    if (extension == ".objectpicker")
+        return IconTexID(m_objectPickerIcon);
+
     int idx = GetIconIndex(extension);   // already 0-6 range
     return IconTexID(m_icons[idx]);
 }
