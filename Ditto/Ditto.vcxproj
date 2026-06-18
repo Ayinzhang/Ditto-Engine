@@ -330,6 +330,8 @@
     <ClInclude Include="Editor\InspectorWindow.h" />
     <ClInclude Include="Editor\LayoutManager.h" />
     <ClInclude Include="Editor\ProjectWindow.h" />
+    <ClInclude Include="Editor\AssetPreviewUtils.h" />
+    <ClInclude Include="Editor\ComponentInspectorWidgets.h" />
     <ClInclude Include="Editor\SceneWindow.h" />
     <ClInclude Include="Engine\Core\CSharpScript.h" />
     <ClInclude Include="Engine\Core\MonoRuntime.h" />
@@ -361,7 +363,9 @@
     <ClInclude Include="Engine\Physics\ParallelPhysicsBarrier.h" />
     <ClInclude Include="Engine\Physics\Physics.h" />
     <ClInclude Include="Engine\Physics\Physics2D.h" />
+    <ClInclude Include="Engine\Physics\PhysicsMaterial2DAsset.h" />
     <ClInclude Include="Engine\Physics\ThreadPool.h" />
+    <ClInclude Include="Engine\Resources\AssetPath.h" />
     <ClInclude Include="Engine\Resources\Resource.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
@@ -541,6 +545,8 @@
     <ClCompile Include="Editor\SceneWindow.cpp" />
     <ClCompile Include="Editor\LayoutManager.cpp" />
     <ClCompile Include="Editor\ProjectWindow.cpp" />
+    <ClCompile Include="Editor\AssetPreviewUtils.cpp" />
+    <ClCompile Include="Editor\ComponentInspectorWidgets.cpp" />
     <ClCompile Include="Engine\Core\CSharpScript.cpp" />
     <ClCompile Include="Engine\Core\MonoRuntime.cpp" />
     <ClCompile Include="Engine\Core\Engine.cpp" />
@@ -568,7 +574,9 @@
     <ClCompile Include="Engine\Physics\ParallelPhysicsBarrier.cpp" />
     <ClCompile Include="Engine\Physics\Physics.cpp" />
     <ClCompile Include="Engine\Physics\Physics2D.cpp" />
+    <ClCompile Include="Engine\Physics\PhysicsMaterial2DAsset.cpp" />
     <ClCompile Include="Engine\Physics\ThreadPool.cpp" />
+    <ClCompile Include="Engine\Resources\AssetPath.cpp" />
     <ClCompile Include="Engine\Resources\Resource.cpp" />
     <ClCompile Include="Engine\Animation\AnimatorComponent.cpp" />
     <ClCompile Include="Engine\Graphics\ParticleSystemComponent.cpp" />
@@ -649,7 +657,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>/openmp:llvm /openmp:experimental
+      <AdditionalOptions>/utf-8 /openmp:llvm /openmp:experimental
  %(AdditionalOptions)</AdditionalOptions>
       <OpenMPSupport>false</OpenMPSupport>
     </ClCompile>
@@ -667,7 +675,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>/openmp:llvm /openmp:experimental
+      <AdditionalOptions>/utf-8 /openmp:llvm /openmp:experimental
  %(AdditionalOptions)</AdditionalOptions>
       <OpenMPSupport>false</OpenMPSupport>
     </ClCompile>
@@ -684,7 +692,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <AdditionalOptions>
+      <AdditionalOptions>/utf-8
       </AdditionalOptions>
       <DisableLanguageExtensions>false</DisableLanguageExtensions>
       <OpenMPSupport>false</OpenMPSupport>
@@ -727,7 +735,7 @@ if "$(EnableAssimp)"=="true" copy /Y "$(AssimpRoot)\bin\assimp-vc143-mt.dll" "$(
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>/FS
+      <AdditionalOptions>/utf-8 /FS
       </AdditionalOptions>
       <OpenMPSupport>false</OpenMPSupport>
       <AdditionalIncludeDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>

@@ -1,7 +1,6 @@
 #include "MaterialAsset.h"
 #include "../../Core/Logger.h"
-#include "../../Core/PathUtils.h"
-#include "../../Core/ProjectManager.h"
+#include "../../Resources/AssetPath.h"
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -57,32 +56,11 @@ namespace Ditto
             return fs::absolute(p);
 
         std::vector<fs::path> candidates;
-        Project* project = ProjectManager::GetInstance().GetCurrentProject();
-        if (project)
-        {
-            candidates.push_back(fs::path(project->path) / "Assets" / materialName);
-            candidates.push_back(fs::path(project->path) / "Assets" / "Materials" / materialName);
-        }
-        if (!preferredRoot.empty())
-        {
-            candidates.push_back(preferredRoot / materialName);
-            candidates.push_back(preferredRoot / "Assets" / materialName);
-            candidates.push_back(preferredRoot / "Assets" / "Materials" / materialName);
-        }
-        candidates.push_back(PathUtils::ResolveAsset(materialName));
-        candidates.push_back(PathUtils::ResolveAsset("Materials/" + materialName));
+        candidates.push_back(AssetPath::ResolveAssetPath(materialName, preferredRoot));
+        candidates.push_back(AssetPath::ResolveTypedAssetPath(materialName, "Materials", nullptr, preferredRoot));
 
         if (p.extension().empty())
-        {
-            if (project)
-                candidates.push_back(fs::path(project->path) / "Assets" / "Materials" / (materialName + ".mat"));
-            if (!preferredRoot.empty())
-            {
-                candidates.push_back(preferredRoot / (materialName + ".mat"));
-                candidates.push_back(preferredRoot / "Assets" / "Materials" / (materialName + ".mat"));
-            }
-            candidates.push_back(PathUtils::ResolveAsset("Materials/" + materialName + ".mat"));
-        }
+            candidates.push_back(AssetPath::ResolveTypedAssetPath(materialName, "Materials", ".mat", preferredRoot));
 
         for (const fs::path& candidate : candidates)
             if (!candidate.empty() && fs::exists(candidate))
@@ -161,11 +139,14 @@ namespace Ditto
             return false;
         }
 
+        std::string shaderName = material.shaderName.empty() ? "Lit_Toon" : material.shaderName;
+        std::string mainTexturePath = AssetPath::NormalizeAssetKey(material.mainTexturePath);
+
         file << "DittoMaterial 1\n";
-        file << "shader = \"" << (material.shaderName.empty() ? "Lit_Toon" : material.shaderName) << "\"\n";
+        file << "shader = \"" << shaderName << "\"\n";
         file << "color = " << material.color.r << ", " << material.color.g << ", "
              << material.color.b << ", " << material.color.a << "\n";
-        file << "mainTexture = \"" << material.mainTexturePath << "\"\n";
+        file << "mainTexture = \"" << mainTexturePath << "\"\n";
         return true;
     }
 }

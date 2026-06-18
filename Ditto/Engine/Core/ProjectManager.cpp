@@ -118,6 +118,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     EnsureDirectoryExists(projectPath + "/Assets/Materials");
     EnsureDirectoryExists(projectPath + "/Assets/Textures");
     EnsureDirectoryExists(projectPath + "/Assets/Sprites");
+    EnsureDirectoryExists(projectPath + "/Assets/PhysicsMaterials2D");
     EnsureDirectoryExists(projectPath + "/Assets/Prefabs");
     EnsureDirectoryExists(projectPath + "/Assets/Scripts");
     EnsureDirectoryExists(projectPath + "/Assets/Shaders");
@@ -131,6 +132,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     CopyDefaultAsset("Materials/Lit_Sprite.mat", projectAssetsPath);
     CopyDefaultAsset("Sprites/Square.png", projectAssetsPath);
     CopyDefaultAsset("Sprites/Circle.png", projectAssetsPath);
+    CopyDefaultAsset("PhysicsMaterials2D/Default.physmat2d", projectAssetsPath);
     
     // Create default scene file
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";
@@ -204,6 +206,9 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
     EnsureDefaultAsset("Shaders/Lit_Sprite.shader", projectAssetsPath);
     EnsureDefaultAsset("Materials/Lit_Toon.mat", projectAssetsPath);
     EnsureDefaultAsset("Materials/Lit_Sprite.mat", projectAssetsPath);
+    EnsureDefaultAsset("Sprites/Square.png", projectAssetsPath);
+    EnsureDefaultAsset("Sprites/Circle.png", projectAssetsPath);
+    EnsureDefaultAsset("PhysicsMaterials2D/Default.physmat2d", projectAssetsPath);
     return true;
 }
 

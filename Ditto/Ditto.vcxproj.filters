@@ -1038,10 +1038,16 @@
     <ClInclude Include="Engine\Resources\Resource.h">
       <Filter>头文件\Engine\Resources</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Resources\AssetPath.h">
+      <Filter>头文件\Engine\Resources</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Physics\Physics.h">
       <Filter>头文件\Engine\Physics</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Physics\Physics2D.h">
+      <Filter>头文件\Engine\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Physics\PhysicsMaterial2DAsset.h">
       <Filter>头文件\Engine\Physics</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Physics\CollisionShape.h">
@@ -1081,6 +1087,12 @@
       <Filter>头文件\Editor</Filter>
     </ClInclude>
     <ClInclude Include="Editor\ProjectWindow.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\AssetPreviewUtils.h">
+      <Filter>头文件\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\ComponentInspectorWidgets.h">
       <Filter>头文件\Editor</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Core\CSharpScript.h">
@@ -1653,10 +1665,16 @@
     <ClCompile Include="Engine\Resources\Resource.cpp">
       <Filter>源文件\Engine\Resources</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Resources\AssetPath.cpp">
+      <Filter>源文件\Engine\Resources</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Physics\Physics.cpp">
       <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Physics\Physics2D.cpp">
+      <Filter>源文件\Engine\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Physics\PhysicsMaterial2DAsset.cpp">
       <Filter>源文件\Engine\Physics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Physics\CollisionShape.cpp">
@@ -1690,6 +1708,12 @@
       <Filter>源文件\Editor</Filter>
     </ClCompile>
     <ClCompile Include="Editor\ProjectWindow.cpp">
+      <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\AssetPreviewUtils.cpp">
+      <Filter>源文件\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\ComponentInspectorWidgets.cpp">
       <Filter>源文件\Editor</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Core\CSharpScript.cpp">

@@ -18,6 +18,8 @@ namespace Ditto
         explicit GLRenderer(void* window) : m_window(window) {}
         ~GLRenderer() override;
 
+        RendererBackend Backend() const override { return RendererBackend::OpenGL; }
+
         void BeginFrame() override {}
         void EndFrame() override;   // glfwSwapBuffers
 

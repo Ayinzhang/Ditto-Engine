@@ -12,8 +12,8 @@ struct Engine
 #else
 #include "../Core/Engine.h"
 #endif
-#include "../Core/PathUtils.h"
 #include "../Core/Logger.h"
+#include "../Resources/AssetPath.h"
 #include <iostream>
 #include <algorithm>
 #include <set>
@@ -178,9 +178,7 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique
             if (colliderMeshPath.empty() && renderer)
                 colliderMeshPath = renderer->meshPath;
 
-            std::filesystem::path resolved = colliderMeshPath;
-            if (!colliderMeshPath.empty() && !std::filesystem::exists(resolved))
-                resolved = PathUtils::ResolveAsset(colliderMeshPath);
+            std::filesystem::path resolved = Ditto::AssetPath::ResolveTypedAssetPath(colliderMeshPath, "Models");
 
             if (!colliderMeshPath.empty() && resolved.extension() == ".obj")
             {

@@ -15,6 +15,9 @@
 
 namespace fs = std::filesystem;
 
+struct Editor;
+struct Physics;
+
 enum class ScriptFieldType { Float, Int, Bool, String, Vector2, Vector3, Vector4 };
 
 struct ScriptField
@@ -110,15 +113,15 @@ struct CSharpScriptSystem
         else Ditto::Logger::Get().Info(message);
     }
     
-    static void SetEditor(void* editor) { s_editor = editor; }
+    static void SetEditor(Editor* editor) { s_editor = editor; }
     static void LogToConsole(const std::string& message);
 
-    static void* GetEditor() { return s_editor; }
+    static Editor* GetEditor() { return s_editor; }
 
     // Physics instance for Physics.Raycast internal calls (set by Engine after
     // construction; works in both editor and standalone game mode).
-    static void SetPhysics(void* physics) { s_physics = physics; }
-    static void* GetPhysics() { return s_physics; }
+    static void SetPhysics(Physics* physics) { s_physics = physics; }
+    static Physics* GetPhysics() { return s_physics; }
     
     friend struct Editor;
     
@@ -129,8 +132,8 @@ private:
     static float s_deltaTime;
     static float s_time;
     static LogCallback s_logCallback;
-    static void* s_editor;
-    static void* s_physics;
+    static Editor* s_editor;
+    static Physics* s_physics;
 };
 
 // Internal call function declarations (C++ functions callable from C#)

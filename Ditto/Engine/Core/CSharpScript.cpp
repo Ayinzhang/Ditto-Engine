@@ -180,9 +180,9 @@ static std::string FindNetStandardDll()
 bool CSharpScriptSystem::s_initialized = false;
 float CSharpScriptSystem::s_deltaTime = 0.016f;
 float CSharpScriptSystem::s_time = 0.0f;
-void* CSharpScriptSystem::s_physics = nullptr;
+Physics* CSharpScriptSystem::s_physics = nullptr;
 LogCallback CSharpScriptSystem::s_logCallback = nullptr;
-void* CSharpScriptSystem::s_editor = nullptr;
+Editor* CSharpScriptSystem::s_editor = nullptr;
 
 CSharpScriptComponent::CSharpScriptComponent()
 {
@@ -741,8 +741,8 @@ void CSharpScriptComponent::OnInspectorGUI()
     if (ImGui::SmallButton("X"))
     {
         gameObject->RemoveComponent(this);
-        void* editor = CSharpScriptSystem::GetEditor();
-        if (editor) static_cast<Editor*>(editor)->MarkSceneDirty();
+        Editor* editor = CSharpScriptSystem::GetEditor();
+        if (editor) editor->MarkSceneDirty();
         return;
     }
 
@@ -846,8 +846,8 @@ void CSharpScriptComponent::OnInspectorGUI()
 
         if (modified)
         {
-            void* editor = CSharpScriptSystem::GetEditor();
-            if (editor) static_cast<Editor*>(editor)->MarkSceneDirty();
+            Editor* editor = CSharpScriptSystem::GetEditor();
+            if (editor) editor->MarkSceneDirty();
         }
     }
 
@@ -1239,7 +1239,7 @@ void CSharpScriptSystem::CallStart()
 {
     if (!s_initialized) return;
 
-    void* editor = GetEditor();
+    Editor* editor = GetEditor();
     if (!editor) return;
 }
 
@@ -1247,7 +1247,7 @@ void CSharpScriptSystem::CallUpdate()
 {
     if (!s_initialized) return;
 
-    void* editor = GetEditor();
+    Editor* editor = GetEditor();
     if (!editor) return;
 }
 
@@ -1512,7 +1512,7 @@ int Internal_Input_GetButtonUp(void*)     { return 0; }
 int Internal_Physics_Raycast(float ox, float oy, float oz,
     float dx, float dy, float dz, float maxDist, float* out7, void** outGo)
 {
-    Physics* physics = static_cast<Physics*>(CSharpScriptSystem::GetPhysics());
+    Physics* physics = CSharpScriptSystem::GetPhysics();
     if (!physics || !out7 || !outGo) return 0;
 
     RaycastHit hit;

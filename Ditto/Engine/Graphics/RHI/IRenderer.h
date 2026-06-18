@@ -8,14 +8,17 @@
 // Ditto Render Hardware Interface (RHI)
 //
 // A thin abstraction over the graphics API so engine/editor code never calls
-// gl*/vk* directly. GLRenderer implements this with OpenGL today; a future
-// VulkanRenderer (or a library backend) can implement the same interface
-// without touching Scene/Engine/Editor code.
-//
-// Phase 0 goal: behavior identical to the previous direct-OpenGL path.
+// gl*/vk* directly. Runtime backend scope is intentionally limited to Vulkan
+// and OpenGL: Vulkan is the default when available, OpenGL is the fallback.
 // ---------------------------------------------------------------------------
 namespace Ditto
 {
+    enum class RendererBackend
+    {
+        OpenGL,
+        Vulkan,
+    };
+
     // Opaque resource handles. id == 0 means invalid. The value indexes into a
     // backend-private resource table, so a Vulkan backend can reuse the tickets.
     struct MeshHandle          { uint32_t id = 0; explicit operator bool() const { return id != 0; } };
@@ -63,6 +66,9 @@ namespace Ditto
         bool depthWrite = true;
         DepthFunc depthFunc = DepthFunc::Less;
         bool blend = false;
+        bool wireframe = false;
+        bool usesSceneResources = true; // model/color SSBOs + material texture set
+        bool renderToTexture = false;
         CullMode cull = CullMode::Off;
         int vertexStrideFloats = 8;
         std::vector<VertexAttrib> vertexAttributes{ { 0, 3, 0 }, { 1, 3, 3 }, { 2, 2, 6 } };
@@ -72,6 +78,8 @@ namespace Ditto
     {
     public:
         virtual ~IRenderer() = default;
+
+        virtual RendererBackend Backend() const = 0;
 
         // ---- Frame lifecycle ----
         // GL: BeginFrame is a no-op, EndFrame swaps buffers. Vulkan: BeginFrame

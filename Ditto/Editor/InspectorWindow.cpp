@@ -10,8 +10,10 @@
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
 #include "../Engine/Graphics/Shaders/ShaderAsset.h"
+#include "../Engine/Physics/PhysicsMaterial2DAsset.h"
 #include "../Engine/Animation/AnimatorComponent.h"
 #include "../Engine/Graphics/ParticleSystemComponent.h"
+#include "../Engine/Resources/AssetPath.h"
 
 // Defined below; the model preview routes all GPU work through the RHI.
 static Ditto::IRenderer* PreviewRenderer(Editor* editor);
@@ -50,22 +52,7 @@ namespace
 
     std::string ToAssetRelativePath(const std::string& path)
     {
-        Project* project = ProjectManager::GetInstance().GetCurrentProject();
-        if (!project) return path;
-
-        fs::path filePath = fs::absolute(path).lexically_normal();
-        fs::path assetsPath = fs::absolute(fs::path(project->path) / "Assets").lexically_normal();
-
-        // Try to make the path relative to Assets
-        fs::path relativePath = filePath.lexically_relative(assetsPath);
-        if (relativePath.empty() || relativePath.string().find("..") != std::string::npos)
-        {
-            return path;
-        }
-
-        // Convert to forward slashes
-        std::string result = relativePath.generic_string();
-        return result;
+        return Ditto::AssetPath::ToProjectRelativeAssetPath(path);
     }
 
     // Convert a project-relative path (e.g. "Materials/Lit_Toon.mat") into
@@ -73,15 +60,7 @@ namespace
     std::string ToFullAssetPath(const std::string& relativePath)
     {
         if (relativePath.empty()) return "";
-
-        Project* project = ProjectManager::GetInstance().GetCurrentProject();
-        if (!project) return relativePath;
-
-        fs::path p(relativePath);
-        if (p.is_absolute()) return relativePath;
-
-        fs::path fullPath = fs::path(project->path) / "Assets" / relativePath;
-        return fullPath.string();
+        return Ditto::AssetPath::ResolveAssetPath(relativePath).string();
     }
 
     std::string LowerText(std::string text)
@@ -584,6 +563,36 @@ namespace
             Ditto::SaveMaterialAsset(material, materialPath);
     }
 
+    void DrawPhysicsMaterial2DFileInspector(const std::string& materialPath)
+    {
+        Ditto::PhysicsMaterial2DAsset material = Ditto::LoadPhysicsMaterial2DAsset(materialPath);
+
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Physics Material 2D");
+        ImGui::Separator();
+
+        if (!material.ok)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Physics material 2D load failed");
+            ImGui::TextWrapped("%s", material.error.c_str());
+            return;
+        }
+
+        bool changed = false;
+        ImGui::TextUnformatted("Friction");
+        ImGui::SameLine();
+        if (ImGui::DragFloat("##PhysicsMaterial2DFriction", &material.friction, 0.01f, 0.0f, 1000.0f))
+            changed = true;
+
+        ImGui::TextUnformatted("Restitution");
+        ImGui::SameLine();
+        if (ImGui::DragFloat("##PhysicsMaterial2DRestitution", &material.restitution, 0.01f, 0.0f, 1000.0f))
+            changed = true;
+
+        if (changed)
+            Ditto::SavePhysicsMaterial2DAsset(material, materialPath);
+    }
+
     const char* ShaderPropertyTypeName(Ditto::ShaderPropertyType type)
     {
         switch (type)
@@ -743,6 +752,13 @@ void InspectorWindow::Draw()
         if (m_editor->selectedFile.extension == ".mat")
         {
             DrawMaterialFileInspector(m_editor->selectedFile.path, m_editor);
+            ImGui::End();
+            return;
+        }
+
+        if (m_editor->selectedFile.extension == ".physmat2d")
+        {
+            DrawPhysicsMaterial2DFileInspector(m_editor->selectedFile.path);
             ImGui::End();
             return;
         }
@@ -1102,6 +1118,8 @@ void InspectorWindow::InitModelPreview()
     if (!r) return;
 
     m_previewRT = r->CreateRenderTarget(m_previewWidth, m_previewHeight);
+    if (!m_previewRT)
+        DITTO_LOG_WARN("[Preview] Failed to create preview render target");
     m_previewCamera = std::make_unique<Camera>(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     m_previewCamera->SetPerspective(45.0f, 0.1f, 100.0f);
 
@@ -1126,9 +1144,20 @@ VSOutput VSMain(float3 aPos : POSITION)
 }
 float4 PSMain(VSOutput i) : SV_Target { return float4(1.0, 1.0, 1.0, 1.0); }
 )";
-    m_previewPipeline = r->CreatePipeline(previewHlsl);
+    Ditto::PipelineState previewState;
+    previewState.depthTest = true;
+    previewState.depthWrite = true;
+    previewState.wireframe = true;
+    previewState.usesSceneResources = false;
+    previewState.renderToTexture = true;
+    previewState.cull = Ditto::CullMode::Off;
+    previewState.vertexStrideFloats = 3;
+    previewState.vertexAttributes = { { 0, 3, 0 } };
+    m_previewPipeline = r->CreatePipeline(previewHlsl, previewState);
+    if (!m_previewPipeline)
+        DITTO_LOG_WARN("[Preview] Failed to create preview pipeline");
 
-    m_previewInitialized = true;
+    m_previewInitialized = m_previewRT && m_previewPipeline;
 }
 
 void InspectorWindow::LoadPreviewModel(const std::string& modelPath)
@@ -1258,8 +1287,7 @@ void InspectorWindow::RenderModelPreview()
     r->BeginRenderTarget(m_previewRT);
     r->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
     r->SetDepthState(true);
-    r->SetCullState(true);
-    r->SetWireframe(true);
+    r->SetCullState(false);
 
     glm::mat4 view = m_previewCamera->GetViewMatrix();
     glm::mat4 projection = m_previewCamera->GetProjectionMatrix((float)m_previewWidth / (float)m_previewHeight);
@@ -1273,7 +1301,6 @@ void InspectorWindow::RenderModelPreview()
 
     r->DrawInstanced(m_currentPreviewModel.mesh, 1);
 
-    r->SetWireframe(false);
     r->SetCullState(false);
     r->EndRenderTarget();
 }

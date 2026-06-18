@@ -957,11 +957,14 @@ namespace Ditto
             Logger::Get().Error("[Vulkan] CreatePipeline: push descriptors unavailable");
             return {};
         }
+        if (state.renderToTexture && !EnsureRenderTargetPasses())
+            return {};
         CompiledShader vs = ShaderCompiler::Compile(hlslSource, ShaderStage::Vertex, "VSMain", false);
         CompiledShader ps = ShaderCompiler::Compile(hlslSource, ShaderStage::Pixel, "PSMain", false);
         if (!vs.ok || !ps.ok) { Logger::Get().Error("[Vulkan] pipeline shader compile failed"); return {}; }
 
         VkPipelineRes p;
+        p.usesSceneResources = state.usesSceneResources;
         p.vs = CreateShaderModule(vs.spirv);
         p.fs = CreateShaderModule(ps.spirv);
 
@@ -973,20 +976,24 @@ namespace Ditto
         // PSMain reads PropertyColors via _Color), and a layout that declares
         // fewer stages than the SPIR-V actually uses is invalid
         // (VUID-VkGraphicsPipelineCreateInfo-layout-07988) -> broken draws.
-        const VkShaderStageFlags vsfs = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        VkDescriptorSetLayoutBinding sb[4]{};
-        sb[0].binding = 0; sb[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[0].descriptorCount = 1; sb[0].stageFlags = vsfs;
-        sb[1].binding = 1; sb[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[1].descriptorCount = 1; sb[1].stageFlags = vsfs;
-        sb[2].binding = 2; sb[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; sb[2].descriptorCount = 1; sb[2].stageFlags = vsfs;
-        sb[3].binding = 3; sb[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; sb[3].descriptorCount = 1; sb[3].stageFlags = vsfs;
-        VkDescriptorSetLayoutCreateInfo l1{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-        l1.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-        l1.bindingCount = 4; l1.pBindings = sb;
-        vkCreateDescriptorSetLayout(m_device, &l1, nullptr, &p.setLayouts[1]);
+        if (p.usesSceneResources)
+        {
+            const VkShaderStageFlags vsfs = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            VkDescriptorSetLayoutBinding sb[4]{};
+            sb[0].binding = 0; sb[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[0].descriptorCount = 1; sb[0].stageFlags = vsfs;
+            sb[1].binding = 1; sb[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; sb[1].descriptorCount = 1; sb[1].stageFlags = vsfs;
+            sb[2].binding = 2; sb[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; sb[2].descriptorCount = 1; sb[2].stageFlags = vsfs;
+            sb[3].binding = 3; sb[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; sb[3].descriptorCount = 1; sb[3].stageFlags = vsfs;
+            VkDescriptorSetLayoutCreateInfo l1{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+            l1.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+            l1.bindingCount = 4; l1.pBindings = sb;
+            vkCreateDescriptorSetLayout(m_device, &l1, nullptr, &p.setLayouts[1]);
+        }
 
         VkDescriptorSetLayout layouts[2] = { m_uboSetLayout, p.setLayouts[1] };
         VkPipelineLayoutCreateInfo plc{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-        plc.setLayoutCount = 2; plc.pSetLayouts = layouts;
+        plc.setLayoutCount = p.usesSceneResources ? 2u : 1u;
+        plc.pSetLayouts = layouts;
         vkCreatePipelineLayout(m_device, &plc, nullptr, &p.layout);
 
         VkPipelineShaderStageCreateInfo stages[2]{};
@@ -1028,7 +1035,7 @@ namespace Ditto
         vp.viewportCount = 1; vp.scissorCount = 1;   // dynamic
 
         VkPipelineRasterizationStateCreateInfo rs{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-        rs.polygonMode = VK_POLYGON_MODE_FILL;
+        rs.polygonMode = state.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
         rs.cullMode = state.cull == CullMode::Back ? VK_CULL_MODE_BACK_BIT :
             state.cull == CullMode::Front ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_NONE;
         rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth = 1.0f;
@@ -1062,7 +1069,7 @@ namespace Ditto
         gp.pVertexInputState = &vi; gp.pInputAssemblyState = &ia; gp.pViewportState = &vp;
         gp.pRasterizationState = &rs; gp.pMultisampleState = &msi; gp.pDepthStencilState = &ds;
         gp.pColorBlendState = &cb; gp.pDynamicState = &dynS;
-        gp.layout = p.layout; gp.renderPass = m_renderPass; gp.subpass = 0;
+        gp.layout = p.layout; gp.renderPass = state.renderToTexture ? m_rtRenderPass : m_renderPass; gp.subpass = 0;
 
         if (vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &p.pipeline) != VK_SUCCESS)
         {
@@ -1690,17 +1697,68 @@ namespace Ditto
 
     void VulkanRenderer::DrawInstanced(MeshHandle h, int instanceCount)
     {
-        if (!m_frameActive || !m_boundPipeline || !m_pushDescriptor || instanceCount <= 0) return;
+        static bool s_warnedNoFrame = false;
+        static bool s_warnedNoMesh = false;
+        static bool s_warnedNoSceneResources = false;
+        if (!m_frameActive || !m_boundPipeline || !m_pushDescriptor || instanceCount <= 0)
+        {
+            if (!s_warnedNoFrame)
+            {
+                Logger::Get().Warning("[Vulkan] DrawInstanced skipped: no active frame/pipeline or invalid instance count");
+                s_warnedNoFrame = true;
+            }
+            return;
+        }
         VkMeshRes* mesh = (h.id && h.id <= m_meshes.size()) ? &m_meshes[h.id - 1] : nullptr;
-        if (!mesh || !mesh->vbuf) return;
+        if (!mesh || !mesh->vbuf)
+        {
+            if (!s_warnedNoMesh)
+            {
+                Logger::Get().Warning("[Vulkan] DrawInstanced skipped: invalid mesh handle");
+                s_warnedNoMesh = true;
+            }
+            return;
+        }
+
+        VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
+
+        if (!m_boundPipeline->usesSceneResources)
+        {
+            VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &mesh->vbuf, &offset);
+            if (mesh->indexCount > 0)
+            {
+                vkCmdBindIndexBuffer(cmd, mesh->ibuf, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(cmd, mesh->indexCount, (uint32_t)instanceCount, 0, 0, 0);
+            }
+            else
+            {
+                vkCmdDraw(cmd, mesh->vertexCount, (uint32_t)instanceCount, 0, 0);
+            }
+            return;
+        }
 
         VkStorageRes* model = (m_boundStorage[0].id && m_boundStorage[0].id <= m_storage.size()) ? &m_storage[m_boundStorage[0].id - 1] : nullptr;
         VkStorageRes* color = (m_boundStorage[1].id && m_boundStorage[1].id <= m_storage.size()) ? &m_storage[m_boundStorage[1].id - 1] : nullptr;
-        if (!model || !color) return;
+        if (!model || !color)
+        {
+            if (!s_warnedNoSceneResources)
+            {
+                Logger::Get().Warning("[Vulkan] DrawInstanced skipped: scene resource buffers are not bound");
+                s_warnedNoSceneResources = true;
+            }
+            return;
+        }
         VkTextureRes* tex = (m_boundTextures[2].id && m_boundTextures[2].id <= m_textures.size()) ? &m_textures[m_boundTextures[2].id - 1] : nullptr;
-        if (!tex || !tex->view || !m_sampler) return;
-
-        VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
+        if (!tex || !tex->view || !m_sampler)
+        {
+            if (!s_warnedNoSceneResources)
+            {
+                Logger::Get().Warning("[Vulkan] DrawInstanced skipped: material texture is not bound");
+                s_warnedNoSceneResources = true;
+            }
+            return;
+        }
 
         // Push set 1 (this frame's storage buffers + material texture).
         VkDescriptorBufferInfo bi[2] = {

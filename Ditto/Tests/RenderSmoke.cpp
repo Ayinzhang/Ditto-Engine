@@ -230,8 +230,21 @@ int main(int argc, char** argv)
         transform->localDirty = true;
         transform->UpdateTransform();
         auto* rc = cube->AddComponent<RendererComponent>();
+        rc->meshPath = "Models/Cube.obj";
         rc->materialPath = (opt.outDir / "RenderSmoke.mat").string();
         scene.rootGameObject->AddChild(std::move(cube));
+
+        auto sprite = std::make_unique<GameObject>("SmokeSprite");
+        auto* spriteTransform = sprite->GetComponent<TransformComponent>();
+        spriteTransform->position = glm::vec3(1.1f, 0.0f, 0.0f);
+        spriteTransform->scale = glm::vec3(0.8f);
+        spriteTransform->localDirty = true;
+        spriteTransform->UpdateTransform();
+        auto* spriteRenderer = sprite->AddComponent<SpriteRendererComponent>();
+        spriteRenderer->spritePath = "Sprites/Square.png";
+        spriteRenderer->materialPath = "Materials/Lit_Sprite.mat";
+        spriteRenderer->color = glm::vec4(0.05f, 0.25f, 1.0f, 1.0f);
+        scene.rootGameObject->AddChild(std::move(sprite));
 
         auto ui = std::make_unique<GameObject>("SmokeUIImage");
         auto* uiImage = ui->AddComponent<UIImageComponent>();
@@ -279,6 +292,7 @@ int main(int argc, char** argv)
             int nonBackground = 0;
             int orthoNonBackground = 0;
             int uiPixels = 0;
+            int spritePixels = 0;
             unsigned long long sumR = 0, sumG = 0, sumB = 0;
             const unsigned char bgR = 5, bgG = 8, bgB = 10;
             for (size_t i = 0; i < pixels.size(); i += 4)
@@ -298,6 +312,8 @@ int main(int argc, char** argv)
                 const int dg = std::abs(static_cast<int>(orthoPixels[i + 1]) - bgG);
                 const int db = std::abs(static_cast<int>(orthoPixels[i + 2]) - bgB);
                 if (dr + dg + db > 24) ++orthoNonBackground;
+                if (orthoPixels[i + 2] > 160 && orthoPixels[i + 0] < 80 && orthoPixels[i + 1] < 120)
+                    ++spritePixels;
             }
             const size_t center = static_cast<size_t>(((opt.height / 2) * opt.width + (opt.width / 2)) * 4);
 
@@ -307,6 +323,7 @@ int main(int argc, char** argv)
             stats << "  \"height\":" << opt.height << ",\n";
             stats << "  \"nonBackgroundPixels\":" << nonBackground << ",\n";
             stats << "  \"orthographicNonBackgroundPixels\":" << orthoNonBackground << ",\n";
+            stats << "  \"spritePixels\":" << spritePixels << ",\n";
             stats << "  \"uiPixels\":" << uiPixels << ",\n";
             stats << "  \"centerRGBA\":[" << (int)pixels[center] << "," << (int)pixels[center + 1]
                   << "," << (int)pixels[center + 2] << "," << (int)pixels[center + 3] << "],\n";
@@ -325,6 +342,11 @@ int main(int argc, char** argv)
                 std::cerr << "[FAIL][render] orthographic rendered image is mostly background: " << orthoNonBackground << " pixels\n";
                 exitCode = 1;
             }
+            else if (spritePixels < 512)
+            {
+                std::cerr << "[FAIL][render] sprite did not render enough pixels: " << spritePixels << "\n";
+                exitCode = 1;
+            }
             else if (uiPixels < 512)
             {
                 std::cerr << "[FAIL][render] UI overlay did not render enough pixels: " << uiPixels << "\n";
@@ -334,6 +356,7 @@ int main(int argc, char** argv)
             {
                 std::cout << "[PASS][render] ShaderRenderSmoke nonBackgroundPixels=" << nonBackground
                           << " orthographicNonBackgroundPixels=" << orthoNonBackground
+                          << " spritePixels=" << spritePixels
                           << " uiPixels=" << uiPixels << " output=" << opt.outDir.string() << "\n";
             }
             renderer.DestroyRenderTarget(rt);

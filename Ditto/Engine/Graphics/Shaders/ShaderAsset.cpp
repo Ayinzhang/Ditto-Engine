@@ -1,7 +1,6 @@
 #include "ShaderAsset.h"
-#include "../../Core/PathUtils.h"
-#include "../../Core/ProjectManager.h"
 #include "../../Core/Logger.h"
+#include "../../Resources/AssetPath.h"
 #include <fstream>
 #include <sstream>
 #include <regex>
@@ -62,44 +61,24 @@ namespace Ditto
                 return direct;
             }
 
-            Project* project = ProjectManager::GetInstance().GetCurrentProject();
-            if (project)
-            {
-                fs::path projectAsset = fs::path(project->path) / "Assets" / candidate;
-                Logger::Get().Info("[ShaderAsset] Trying: " + projectAsset.string());
-                if (fs::exists(projectAsset))
-                {
-                    Logger::Get().Info("[ShaderAsset] Found (project): " + projectAsset.string());
-                    return projectAsset;
-                }
-
-                projectAsset = fs::path(project->path) / "Assets" / "Shaders" / candidate;
-                Logger::Get().Info("[ShaderAsset] Trying: " + projectAsset.string());
-                if (fs::exists(projectAsset))
-                {
-                    Logger::Get().Info("[ShaderAsset] Found (project/Shaders): " + projectAsset.string());
-                    return projectAsset;
-                }
-            }
-
-            fs::path resolved = PathUtils::ResolveAsset("Shaders/" + candidate, preferredRoot);
+            fs::path resolved = AssetPath::ResolveAssetPath(candidate, preferredRoot);
             Logger::Get().Info("[ShaderAsset] Trying: " + resolved.string());
             if (fs::exists(resolved))
             {
-                Logger::Get().Info("[ShaderAsset] Found (engine/Shaders): " + resolved.string());
+                Logger::Get().Info("[ShaderAsset] Found (asset): " + resolved.string());
                 return resolved;
             }
 
-            resolved = PathUtils::ResolveAsset(candidate, preferredRoot);
+            resolved = AssetPath::ResolveTypedAssetPath(candidate, "Shaders", nullptr, preferredRoot);
             Logger::Get().Info("[ShaderAsset] Trying: " + resolved.string());
             if (fs::exists(resolved))
             {
-                Logger::Get().Info("[ShaderAsset] Found (engine): " + resolved.string());
+                Logger::Get().Info("[ShaderAsset] Found (asset/Shaders): " + resolved.string());
                 return resolved;
             }
         }
 
-        fs::path fallback = PathUtils::ResolveAsset("Shaders/" + (HasExtension(name) ? name : name + ".shader"), preferredRoot);
+        fs::path fallback = AssetPath::ResolveTypedAssetPath(name, "Shaders", ".shader", preferredRoot);
         Logger::Get().Warning("[ShaderAsset] Not found, using fallback: " + fallback.string());
         return fallback;
     }

@@ -3,12 +3,14 @@
 #endif
 
 #include "ProjectWindow.h"
+#include "AssetPreviewUtils.h"
 #include "Editor.h"
 #include "InspectorWindow.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Logger.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
+#include "../Engine/Physics/PhysicsMaterial2DAsset.h"
 #include "../3rdParty/stb_image.h"
 #include <filesystem>
 #include <shlobj.h>
@@ -21,102 +23,13 @@
 #include <windows.h>
 #include <objbase.h>
 #include <comdef.h>
-#include <cctype>
-#include <cmath>
-#include <cstdio>
 
 namespace fs = std::filesystem;
-
-static std::string LowerExt(std::string ext)
-{
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
-}
-
-static bool IsImageExtension(const std::string& ext)
-{
-    const std::string lower = LowerExt(ext);
-    return lower == ".png" || lower == ".jpg" || lower == ".jpeg" || lower == ".tga" || lower == ".bmp" || lower == ".hdr";
-}
-
-static bool IsMaterialExtension(const std::string& ext)
-{
-    return LowerExt(ext) == ".mat";
-}
-
-static std::vector<unsigned char> GenerateMaterialPreviewPixels(const Ditto::MaterialAsset& material, int size)
-{
-    std::vector<unsigned char> pixels(static_cast<size_t>(size * size * 4), 0);
-    const float radius = size * 0.38f;
-    const float cx = (size - 1) * 0.5f;
-    const float cy = (size - 1) * 0.5f;
-    const glm::vec3 lightDir = glm::normalize(glm::vec3(-0.45f, -0.75f, 0.9f));
-    const glm::vec3 base = glm::clamp(glm::vec3(material.color), glm::vec3(0.0f), glm::vec3(1.0f));
-
-    for (int y = 0; y < size; ++y)
-    {
-        for (int x = 0; x < size; ++x)
-        {
-            float nx = (x - cx) / radius;
-            float ny = (y - cy) / radius;
-            float d2 = nx * nx + ny * ny;
-            size_t i = static_cast<size_t>((y * size + x) * 4);
-
-            glm::vec3 color(0.12f, 0.15f, 0.18f);
-            float alpha = 255.0f;
-            if (d2 <= 1.0f)
-            {
-                float nz = std::sqrt(std::max(0.0f, 1.0f - d2));
-                glm::vec3 normal = glm::normalize(glm::vec3(nx, -ny, nz));
-                float diffuse = std::max(0.0f, glm::dot(normal, lightDir));
-                float rim = std::pow(std::max(0.0f, 1.0f - nz), 2.0f) * 0.25f;
-                color = base * (0.22f + diffuse * 0.72f) + glm::vec3(rim);
-            }
-            else
-            {
-                float checker = ((x / 8 + y / 8) % 2) ? 0.18f : 0.23f;
-                color = glm::vec3(checker);
-            }
-
-            color = glm::clamp(color, glm::vec3(0.0f), glm::vec3(1.0f));
-            pixels[i + 0] = static_cast<unsigned char>(color.r * 255.0f);
-            pixels[i + 1] = static_cast<unsigned char>(color.g * 255.0f);
-            pixels[i + 2] = static_cast<unsigned char>(color.b * 255.0f);
-            pixels[i + 3] = static_cast<unsigned char>(alpha);
-        }
-    }
-    return pixels;
-}
-
-static fs::path MakeUniquePath(const fs::path& desired)
-{
-    if (!fs::exists(desired)) return desired;
-
-    fs::path parent = desired.parent_path();
-    std::string stem = desired.stem().string();
-    std::string ext = desired.extension().string();
-    for (int i = 1; i < 10000; ++i)
-    {
-        fs::path candidate = parent / (stem + "_" + std::to_string(i) + ext);
-        if (!fs::exists(candidate))
-            return candidate;
-    }
-    return desired;
-}
-
-static unsigned char* LoadImageRGBA(const fs::path& path, int* width, int* height, int* channels)
-{
-#ifdef _WIN32
-    FILE* file = nullptr;
-    if (_wfopen_s(&file, path.wstring().c_str(), L"rb") != 0 || !file)
-        return nullptr;
-    unsigned char* pixels = stbi_load_from_file(file, width, height, channels, 4);
-    fclose(file);
-    return pixels;
-#else
-    return stbi_load(path.string().c_str(), width, height, channels, 4);
-#endif
-}
+using Ditto::EditorUtils::GenerateMaterialPreviewPixels;
+using Ditto::EditorUtils::IsImageExtension;
+using Ditto::EditorUtils::IsMaterialExtension;
+using Ditto::EditorUtils::LoadImageRGBA;
+using Ditto::EditorUtils::MakeUniquePath;
 
 ProjectWindow::ProjectWindow(Editor* editor)
     : m_editor(editor)
@@ -553,6 +466,11 @@ void ProjectWindow::Draw()
                 m_showCreateMaterialPopup = true;
                 strcpy_s(m_newMaterialNameBuffer, "New Material");
             }
+            if (ImGui::MenuItem("Create Physics Material 2D..."))
+            {
+                m_showCreatePhysicsMaterial2DPopup = true;
+                strcpy_s(m_newPhysicsMaterial2DNameBuffer, "New Physics Material 2D");
+            }
             if (ImGui::MenuItem("Create Shader..."))
             {
                 m_showCreateShaderPopup = true;
@@ -660,7 +578,7 @@ void ProjectWindow::Draw()
                             ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.5f, 1.0f), "[]");
                         else if (ext == ".obj" || ext == ".fbx")
                             ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[]");
-                        else if (ext == ".mat")
+                        else if (ext == ".mat" || ext == ".physmat2d")
                             ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "[]");
                         else
                             ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "[]");
@@ -878,6 +796,23 @@ void ProjectWindow::CreateNewMaterial(const std::string& name)
         m_thumbnailCache.erase(filePath.string());
         DITTO_LOG_INFO_STREAM("[ProjectWindow] Created material: " << filePath.string());
     }
+}
+
+void ProjectWindow::CreateNewPhysicsMaterial2D(const std::string& name)
+{
+    auto& pm = ProjectManager::GetInstance();
+    std::string assetsPath = pm.GetProjectAssetsPath();
+
+    std::string targetFolder = assetsPath + "/PhysicsMaterials2D";
+    if (!m_currentFolder.empty() && m_currentFolder != "Assets") {
+        targetFolder = assetsPath + "/" + m_currentFolder.substr(7);
+    }
+
+    fs::create_directories(targetFolder);
+    fs::path filePath = MakeUniquePath(fs::path(targetFolder) / (name + ".physmat2d"));
+    Ditto::PhysicsMaterial2DAsset material = Ditto::MakeDefaultPhysicsMaterial2D(filePath.stem().string());
+    if (Ditto::SavePhysicsMaterial2DAsset(material, filePath))
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] Created physics material 2D: " << filePath.string());
 }
 
 void ProjectWindow::CreateNewShader(const std::string& name)
@@ -1100,6 +1035,12 @@ void ProjectWindow::DrawPopups()
         m_showCreateMaterialPopup = false;
     }
 
+    if (m_showCreatePhysicsMaterial2DPopup)
+    {
+        ImGui::OpenPopup("Create Physics Material 2D");
+        m_showCreatePhysicsMaterial2DPopup = false;
+    }
+
     if (m_showCreateShaderPopup)
     {
         ImGui::OpenPopup("Create Shader");
@@ -1116,6 +1057,27 @@ void ProjectWindow::DrawPopups()
             if (strlen(m_newMaterialNameBuffer) > 0)
             {
                 CreateNewMaterial(m_newMaterialNameBuffer);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopupModal("Create Physics Material 2D", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Physics Material 2D Name:"); ImGui::SameLine();
+        ImGui::InputText("##PhysicsMaterial2DName", m_newPhysicsMaterial2DNameBuffer, sizeof(m_newPhysicsMaterial2DNameBuffer));
+
+        if (ImGui::Button("Create", ImVec2(120, 0)))
+        {
+            if (strlen(m_newPhysicsMaterial2DNameBuffer) > 0)
+            {
+                CreateNewPhysicsMaterial2D(m_newPhysicsMaterial2DNameBuffer);
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -2034,4 +1996,3 @@ std::string ProjectWindow::GetVisualStudioPath()
 
     return "";
 }
-

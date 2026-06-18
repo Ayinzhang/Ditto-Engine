@@ -2718,7 +2718,7 @@ int Editor::GetIconIndex(const std::string& ext)
     if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag") return 4;  // Shader.png
     if (ext == ".bin") return 5;  // Scene.png
     if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr") return 6;  // Texture2D.png
-    if (ext == ".mat") return 7;  // Material.png
+    if (ext == ".mat" || ext == ".physmat2d") return 7;  // Material.png
     return 0;  // Default Default.png
 }
 
@@ -2806,4 +2806,3 @@ void Editor::CleanupFileIcons()
     m_fileIconsInitialized = false;
     DITTO_LOG_INFO_STREAM("[FileIcon] Cleaned up" );
 }
-

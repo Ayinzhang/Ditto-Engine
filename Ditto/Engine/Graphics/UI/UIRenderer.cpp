@@ -1,8 +1,8 @@
 #include "UIRenderer.h"
 #include "../../Core/Scene.h"
 #include "../../Core/GameObject.h"
-#include "../../Core/PathUtils.h"
 #include "../../Core/Logger.h"
+#include "../../Resources/AssetPath.h"
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -20,7 +20,7 @@ static std::string ReadTextFileUI(const std::string& path)
 // Engine font: prefer a project/engine-shipped TTF, fall back to Windows fonts.
 static std::string FindDefaultFontPath()
 {
-    fs::path assets = PathUtils::ResolveAsset("Fonts");
+    fs::path assets = Ditto::AssetPath::ResolveAssetPath("Fonts");
     std::error_code ec;
     if (fs::exists(assets, ec))
     {
@@ -53,7 +53,7 @@ bool UIRenderer::Init(Ditto::IRenderer* rhi)
     };
     quadMesh = renderer->CreateMesh(quadVerts, 12, 2, { { 0, 2, 0 } });
 
-    fs::path shaderPath = PathUtils::ResolveAsset("Shaders/UI.hlsl");
+    fs::path shaderPath = Ditto::AssetPath::ResolveTypedAssetPath("UI", "Shaders", ".hlsl");
     std::string hlsl = ReadTextFileUI(shaderPath.string());
     if (hlsl.empty())
     {

@@ -10,7 +10,7 @@
 #include <cmath>
 #include <cctype>
 #include <cstring>
-#include "../Core/PathUtils.h"
+#include "AssetPath.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
 #include "../../3rdParty/GLFW/glfw3.h"
@@ -91,7 +91,7 @@ void Resource::Initialize(const std::string& basePath)
     {
         // Anchor to the executable location rather than guessing relative
         // ladders against the (unpredictable) working directory.
-        std::filesystem::path cubePath = PathUtils::ResolveAsset("Models/Cube.obj");
+        std::filesystem::path cubePath = Ditto::AssetPath::ResolveTypedAssetPath("Cube", "Models", ".obj");
         resourcePath = cubePath.parent_path().string();
     }
     else

@@ -1,16 +1,53 @@
 #include "Physics2D.h"
 #include "../Core/Scene.h"
 #include "../Core/GameObject.h"
+#include "PhysicsMaterial2DAsset.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <unordered_map>
 
 namespace
 {
+    struct ContactMaterial2D
+    {
+        float friction = 0.6f;
+        float restitution = 0.2f;
+    };
+
     float InvMass(const Rigidbody2DComponent* rb)
     {
         return rb && rb->enabled && rb->type == Rigidbody2DComponent::Dynamic
             ? 1.0f / glm::max(0.0001f, rb->mass) : 0.0f;
+    }
+
+    ContactMaterial2D MaterialForBody(const Physics2DBody& body,
+        std::unordered_map<std::string, ContactMaterial2D>& cache)
+    {
+        ContactMaterial2D material;
+        if (body.collider)
+        {
+            material.friction = body.collider->friction;
+            material.restitution = body.collider->restitution;
+        }
+
+        if (!body.rigidbody || body.rigidbody->materialPath.empty())
+            return material;
+
+        const std::string& path = body.rigidbody->materialPath;
+        auto it = cache.find(path);
+        if (it != cache.end())
+            return it->second;
+
+        Ditto::PhysicsMaterial2DAsset asset = Ditto::LoadPhysicsMaterial2DAsset(path);
+        if (asset.ok)
+        {
+            material.friction = asset.friction;
+            material.restitution = asset.restitution;
+        }
+
+        cache[path] = material;
+        return material;
     }
 
     glm::vec2 Position2D(const TransformComponent* t, const Collider2DComponent* c)
@@ -237,6 +274,7 @@ void Physics2DWorld::DetectCollisions()
 
 void Physics2DWorld::SolveVelocity(float)
 {
+    std::unordered_map<std::string, ContactMaterial2D> materialCache;
     for (const Contact& c : contacts)
     {
         Physics2DBody& a = bodies[c.a];
@@ -253,7 +291,10 @@ void Physics2DWorld::SolveVelocity(float)
         float normalVel = glm::dot(vb - va, c.normal);
         if (normalVel > 0.0f) continue;
 
-        float restitution = glm::max(a.collider->restitution, b.collider->restitution);
+        ContactMaterial2D matA = MaterialForBody(a, materialCache);
+        ContactMaterial2D matB = MaterialForBody(b, materialCache);
+
+        float restitution = glm::max(matA.restitution, matB.restitution);
         float j = -(1.0f + restitution) * normalVel / invTotal;
         glm::vec2 impulse = j * c.normal;
         if (a.rigidbody && invA > 0.0f) a.rigidbody->velocity -= impulse * invA;
@@ -266,7 +307,7 @@ void Physics2DWorld::SolveVelocity(float)
         if (tangentLen <= 0.0001f) continue;
         tangent /= tangentLen;
         float jt = -glm::dot(vb - va, tangent) / invTotal;
-        float friction = std::sqrt(glm::max(0.0f, a.collider->friction * b.collider->friction));
+        float friction = std::sqrt(glm::max(0.0f, matA.friction * matB.friction));
         jt = glm::clamp(jt, -j * friction, j * friction);
         glm::vec2 frictionImpulse = jt * tangent;
         if (a.rigidbody && invA > 0.0f) a.rigidbody->velocity -= frictionImpulse * invA;

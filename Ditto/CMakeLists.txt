@@ -4,6 +4,10 @@ project(Ditto)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # Automatically collect source files using GLOB
 file(GLOB_RECURSE SOURCES
     "3rdParty/GLAD/*.c"
@@ -115,10 +119,13 @@ add_executable(DittoTests
     Engine/Graphics/Camera.cpp
     Engine/Physics/Physics.cpp
     Engine/Physics/Physics2D.cpp
+    Engine/Physics/PhysicsMaterial2DAsset.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp
+    Engine/Resources/AssetPath.cpp
     Engine/Resources/Resource.cpp
     Engine/Graphics/Materials/MaterialAsset.cpp
+    Engine/Graphics/Shaders/ShaderAsset.cpp
     Engine/Animation/AnimatorComponent.cpp
     Engine/Graphics/ParticleSystemComponent.cpp
 )
@@ -153,10 +160,14 @@ add_executable(DittoRenderSmoke
     Engine/Graphics/Camera.cpp
     Engine/Physics/Physics.cpp
     Engine/Physics/Physics2D.cpp
+    Engine/Physics/PhysicsMaterial2DAsset.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp
+    Engine/Resources/AssetPath.cpp
     Engine/Resources/Resource.cpp
     Engine/Graphics/Materials/MaterialAsset.cpp
+    Engine/Animation/AnimatorComponent.cpp
+    Engine/Graphics/ParticleSystemComponent.cpp
     Engine/Graphics/RHI/GLRenderer.cpp
     Engine/Graphics/Shaders/ShaderAsset.cpp
     Engine/Graphics/Shaders/ShaderCompiler.cpp

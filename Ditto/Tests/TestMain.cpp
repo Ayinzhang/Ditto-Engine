@@ -5,7 +5,11 @@
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Graphics/Camera.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
+#include "../Engine/Graphics/Shaders/ShaderAsset.h"
 #include "../Engine/Physics/Physics.h"
+#include "../Engine/Physics/Physics2D.h"
+#include "../Engine/Physics/PhysicsMaterial2DAsset.h"
+#include "../Engine/Resources/AssetPath.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -377,6 +381,59 @@ TEST_CASE("file", MaterialAssetRoundTrip)
     REQUIRE(NearlyEqual(loaded.color.a, 1.0f));
 }
 
+TEST_CASE("file", PhysicsMaterial2DAssetRoundTrip)
+{
+    fs::path base = fs::temp_directory_path() / "ditto_tests_physics_materials_2d";
+    fs::remove_all(base);
+    fs::create_directories(base);
+    fs::path materialPath = base / "Bouncy.physmat2d";
+
+    Ditto::PhysicsMaterial2DAsset material = Ditto::MakeDefaultPhysicsMaterial2D("Bouncy");
+    material.friction = 0.15f;
+    material.restitution = 0.9f;
+
+    REQUIRE(Ditto::SavePhysicsMaterial2DAsset(material, materialPath));
+    Ditto::PhysicsMaterial2DAsset loaded = Ditto::LoadPhysicsMaterial2DAsset(materialPath.string());
+    REQUIRE(loaded.ok);
+    REQUIRE(NearlyEqual(loaded.friction, 0.15f));
+    REQUIRE(NearlyEqual(loaded.restitution, 0.9f));
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("file", MaterialAssetSaveNormalizesTextureReference)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_material_asset_refs";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("MaterialRefs"));
+
+    fs::path projectPath = projectsRoot / "MaterialRefs";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    fs::path texturePath = projectPath / "Assets" / "Textures" / "Albedo.png";
+    fs::path materialPath = projectPath / "Assets" / "Materials" / "UsesTexture.mat";
+    fs::create_directories(texturePath.parent_path());
+    fs::create_directories(materialPath.parent_path());
+    std::ofstream(texturePath, std::ios::binary) << "png";
+
+    Ditto::MaterialAsset material = Ditto::MakeDefaultMaterial("UsesTexture");
+    material.shaderName = "Shaders/Lit_Toon.shader";
+    material.mainTexturePath = texturePath.string();
+
+    REQUIRE(Ditto::SaveMaterialAsset(material, materialPath));
+    Ditto::MaterialAsset loaded = Ditto::LoadMaterialAsset(materialPath.string());
+    REQUIRE(loaded.ok);
+    REQUIRE(loaded.mainTexturePath == "Textures/Albedo.png");
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
 TEST_CASE("file", ProjectDefaultsIncludeLitToonMaterial)
 {
     fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_project_defaults";
@@ -389,7 +446,9 @@ TEST_CASE("file", ProjectDefaultsIncludeLitToonMaterial)
 
     fs::path projectPath = projectsRoot / "Defaults";
     fs::path materialPath = projectPath / "Assets" / "Materials" / "Lit_Toon.mat";
+    fs::path physicsMaterialPath = projectPath / "Assets" / "PhysicsMaterials2D" / "Default.physmat2d";
     REQUIRE(fs::exists(materialPath));
+    REQUIRE(fs::exists(physicsMaterialPath));
 
     Ditto::MaterialAsset material = Ditto::LoadMaterialAsset(materialPath.string());
     REQUIRE(material.ok);
@@ -399,7 +458,67 @@ TEST_CASE("file", ProjectDefaultsIncludeLitToonMaterial)
     REQUIRE(NearlyEqual(material.color.b, 1.0f));
     REQUIRE(pm.OpenProject(projectPath.string()));
     REQUIRE(fs::exists(materialPath));
+    REQUIRE(fs::exists(physicsMaterialPath));
     pm.CloseProject();
+}
+
+TEST_CASE("file", OpenProjectRestoresDefaultSpriteAssets)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_project_defaults";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("SpriteDefaults"));
+
+    fs::path projectPath = projectsRoot / "SpriteDefaults";
+    fs::path squarePath = projectPath / "Assets" / "Sprites" / "Square.png";
+    fs::path circlePath = projectPath / "Assets" / "Sprites" / "Circle.png";
+    REQUIRE(fs::exists(squarePath));
+    REQUIRE(fs::exists(circlePath));
+
+    fs::remove(squarePath);
+    fs::remove(circlePath);
+    REQUIRE(!fs::exists(squarePath));
+    REQUIRE(!fs::exists(circlePath));
+
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    REQUIRE(fs::exists(squarePath));
+    REQUIRE(fs::exists(circlePath));
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", OpenProjectRestoresDefaultPhysicsMaterial2D)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_project_defaults";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("PhysicsMaterialDefaults"));
+
+    fs::path projectPath = projectsRoot / "PhysicsMaterialDefaults";
+    fs::path materialPath = projectPath / "Assets" / "PhysicsMaterials2D" / "Default.physmat2d";
+    REQUIRE(fs::exists(materialPath));
+
+    fs::remove(materialPath);
+    REQUIRE(!fs::exists(materialPath));
+
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    REQUIRE(fs::exists(materialPath));
+    Ditto::PhysicsMaterial2DAsset material = Ditto::LoadPhysicsMaterial2DAsset(materialPath.string());
+    REQUIRE(material.ok);
+    REQUIRE(NearlyEqual(material.friction, 0.6f));
+    REQUIRE(NearlyEqual(material.restitution, 0.2f));
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
 }
 
 TEST_CASE("file", SceneSaveLoadAndCorruptFileHandling)
@@ -455,6 +574,156 @@ TEST_CASE("file", PathUtilsFindAncestorContaining)
 
     std::error_code ec;
     fs::remove_all(base, ec);
+}
+
+TEST_CASE("file", AssetPathResolvesProjectRelativeAndTypedAssets)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_assetpath";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("AssetPathProject"));
+
+    fs::path projectPath = projectsRoot / "AssetPathProject";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    fs::path texturePath = projectPath / "Assets" / "Textures" / "Probe.png";
+    fs::path materialPath = projectPath / "Assets" / "Materials" / "Probe.mat";
+    fs::path physicsMaterialPath = projectPath / "Assets" / "PhysicsMaterials2D" / "Probe.physmat2d";
+    fs::path shaderPath = projectPath / "Assets" / "Shaders" / "ProbeShader.shader";
+    fs::path preferredTexturePath = projectsRoot / "PreferredRoot" / "Assets" / "Textures" / "Preferred.png";
+    fs::create_directories(texturePath.parent_path());
+    fs::create_directories(materialPath.parent_path());
+    fs::create_directories(physicsMaterialPath.parent_path());
+    fs::create_directories(shaderPath.parent_path());
+    fs::create_directories(preferredTexturePath.parent_path());
+    std::ofstream(texturePath, std::ios::binary) << "png";
+    std::ofstream(materialPath, std::ios::binary) << "mat";
+    std::ofstream(physicsMaterialPath, std::ios::binary) << "physmat2d";
+    std::ofstream(shaderPath, std::ios::binary) << "Shader \"Probe\" { HLSLPROGRAM ENDHLSL }";
+    std::ofstream(preferredTexturePath, std::ios::binary) << "png";
+
+    REQUIRE(Ditto::AssetPath::NormalizeAssetKey("Assets\\Textures\\Probe.png") == "Textures/Probe.png");
+    REQUIRE(Ditto::AssetPath::NormalizeAssetKey(texturePath.string()) == "Textures/Probe.png");
+    REQUIRE(Ditto::AssetPath::ToProjectRelativeAssetPath(texturePath) == "Textures/Probe.png");
+    REQUIRE(Ditto::AssetPath::ResolveAssetPath("Textures/Probe.png") == texturePath.lexically_normal());
+    REQUIRE(Ditto::AssetPath::ResolveAssetPath("Assets/Textures/Probe.png") == texturePath.lexically_normal());
+    REQUIRE(Ditto::AssetPath::ResolveAssetPath(texturePath.string()) == texturePath.lexically_normal());
+    REQUIRE(Ditto::AssetPath::ResolveTypedAssetPath("Probe", "Materials", ".mat") == materialPath.lexically_normal());
+    REQUIRE(Ditto::AssetPath::ResolveTypedAssetPath("Materials/Probe.mat", "Materials") == materialPath.lexically_normal());
+    REQUIRE(Ditto::AssetPath::ResolveTypedAssetPath("Probe", "PhysicsMaterials2D", ".physmat2d") == physicsMaterialPath.lexically_normal());
+    REQUIRE(Ditto::AssetPath::ResolveAssetPath("Textures/Preferred.png", projectsRoot / "PreferredRoot") == preferredTexturePath.lexically_normal());
+    REQUIRE(Ditto::ResolveMaterialPath("Probe") == materialPath.lexically_normal());
+    REQUIRE(Ditto::ResolvePhysicsMaterial2DPath("Probe") == physicsMaterialPath.lexically_normal());
+    REQUIRE(Ditto::ResolveShaderPath("ProbeShader") == shaderPath.lexically_normal());
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", SceneSerializationNormalizesAssetReferences)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_scene_asset_refs";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("SceneAssetRefs"));
+
+    fs::path projectPath = projectsRoot / "SceneAssetRefs";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    fs::path meshPath = projectPath / "Assets" / "Models" / "Probe.obj";
+    fs::path materialPath = projectPath / "Assets" / "Materials" / "Probe.mat";
+    fs::path physicsMaterialPath = projectPath / "Assets" / "PhysicsMaterials2D" / "Probe.physmat2d";
+    fs::path texturePath = projectPath / "Assets" / "Textures" / "Probe.png";
+    fs::path spritePath = projectPath / "Assets" / "Sprites" / "Probe.png";
+    fs::path audioPath = projectPath / "Assets" / "Audio" / "Probe.wav";
+    fs::path fontPath = projectPath / "Assets" / "Fonts" / "Probe.ttf";
+    fs::create_directories(meshPath.parent_path());
+    fs::create_directories(materialPath.parent_path());
+    fs::create_directories(physicsMaterialPath.parent_path());
+    fs::create_directories(texturePath.parent_path());
+    fs::create_directories(spritePath.parent_path());
+    fs::create_directories(audioPath.parent_path());
+    fs::create_directories(fontPath.parent_path());
+    std::ofstream(meshPath, std::ios::binary) << "obj";
+    std::ofstream(materialPath, std::ios::binary) << "mat";
+    std::ofstream(physicsMaterialPath, std::ios::binary) << "physmat2d";
+    std::ofstream(texturePath, std::ios::binary) << "png";
+    std::ofstream(spritePath, std::ios::binary) << "png";
+    std::ofstream(audioPath, std::ios::binary) << "wav";
+    std::ofstream(fontPath, std::ios::binary) << "ttf";
+
+    Scene scene;
+    scene.name = "AssetRefs";
+    scene.rootGameObject->name = scene.name;
+
+    auto obj = std::make_unique<GameObject>("AssetHost");
+    auto* renderer = obj->AddComponent<RendererComponent>();
+    renderer->meshPath = meshPath.string();
+    renderer->materialPath = materialPath.string();
+    renderer->mainTexturePath = texturePath.string();
+
+    auto* sprite = obj->AddComponent<SpriteRendererComponent>();
+    sprite->spritePath = spritePath.string();
+    sprite->materialPath = materialPath.string();
+
+    auto* collider = obj->AddComponent<ColliderComponent>(ColliderComponent::MeshConvex);
+    collider->meshPath = meshPath.string();
+
+    auto* body2D = obj->AddComponent<Rigidbody2DComponent>();
+    body2D->materialPath = physicsMaterialPath.string();
+
+    auto* audio = obj->AddComponent<AudioSourceComponent>();
+    audio->clipPath = audioPath.string();
+    audio->outputPath = "Master";
+
+    auto* image = obj->AddComponent<UIImageComponent>();
+    image->texturePath = texturePath.string();
+
+    auto* text = obj->AddComponent<UITextComponent>();
+    text->fontPath = fontPath.string();
+
+    scene.rootGameObject->AddChild(std::move(obj));
+
+    Scene loaded;
+    REQUIRE(loaded.RestoreSnapshot(scene.CaptureSnapshot()));
+    GameObject* host = FindDirectChild(loaded.rootGameObject.get(), "AssetHost");
+    REQUIRE(host != nullptr);
+
+    auto* loadedRenderer = host->GetComponent<RendererComponent>();
+    auto* loadedSprite = host->GetComponent<SpriteRendererComponent>();
+    auto* loadedCollider = host->GetComponent<ColliderComponent>();
+    auto* loadedBody2D = host->GetComponent<Rigidbody2DComponent>();
+    auto* loadedAudio = host->GetComponent<AudioSourceComponent>();
+    auto* loadedImage = host->GetComponent<UIImageComponent>();
+    auto* loadedText = host->GetComponent<UITextComponent>();
+    REQUIRE(loadedRenderer != nullptr);
+    REQUIRE(loadedSprite != nullptr);
+    REQUIRE(loadedCollider != nullptr);
+    REQUIRE(loadedBody2D != nullptr);
+    REQUIRE(loadedAudio != nullptr);
+    REQUIRE(loadedImage != nullptr);
+    REQUIRE(loadedText != nullptr);
+
+    REQUIRE(loadedRenderer->meshPath == "Models/Probe.obj");
+    REQUIRE(loadedRenderer->materialPath == "Materials/Probe.mat");
+    REQUIRE(loadedRenderer->mainTexturePath == "Textures/Probe.png");
+    REQUIRE(loadedSprite->spritePath == "Sprites/Probe.png");
+    REQUIRE(loadedSprite->materialPath == "Materials/Probe.mat");
+    REQUIRE(loadedCollider->meshPath == "Models/Probe.obj");
+    REQUIRE(loadedBody2D->materialPath == "PhysicsMaterials2D/Probe.physmat2d");
+    REQUIRE(loadedAudio->clipPath == "Audio/Probe.wav");
+    REQUIRE(loadedAudio->outputPath == "Master");
+    REQUIRE(loadedImage->texturePath == "Textures/Probe.png");
+    REQUIRE(loadedText->fontPath == "Fonts/Probe.ttf");
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
 }
 
 TEST_CASE("csharp", ScriptFieldParserCoversSupportedTypes)
@@ -646,6 +915,66 @@ TEST_CASE("simulation", DynamicStaticPositionCorrectionSeparates)
 
     REQUIRE(glm::length(after - before) > 0.0001f);
     REQUIRE(NearlyEqual(staticTransform->position.x, 0.25f));
+}
+
+TEST_CASE("simulation", Physics2DUsesRigidbodyMaterialAsset)
+{
+    fs::path base = fs::temp_directory_path() / "ditto_tests_physics_materials_2d";
+    fs::remove_all(base);
+    fs::create_directories(base);
+    fs::path materialPath = base / "Bouncy.physmat2d";
+
+    Ditto::PhysicsMaterial2DAsset material = Ditto::MakeDefaultPhysicsMaterial2D("Bouncy");
+    material.friction = 0.0f;
+    material.restitution = 1.0f;
+    REQUIRE(Ditto::SavePhysicsMaterial2DAsset(material, materialPath));
+
+    Scene scene;
+    scene.name = "Physics2DMaterial";
+    scene.rootGameObject->name = scene.name;
+    scene.rootGameObject->children.clear();
+
+    auto left = std::make_unique<GameObject>("Left");
+    auto* leftTransform = left->GetComponent<TransformComponent>();
+    leftTransform->position = glm::vec3(-0.2f, 0.0f, 0.0f);
+    leftTransform->UpdateTransform();
+    auto* leftRb = left->AddComponent<Rigidbody2DComponent>();
+    leftRb->type = Rigidbody2DComponent::Dynamic;
+    leftRb->useGravity = false;
+    leftRb->linearDamping = 0.0f;
+    leftRb->velocity = glm::vec2(1.0f, 0.0f);
+    leftRb->materialPath = materialPath.string();
+    auto* leftCollider = left->AddComponent<Collider2DComponent>(Collider2DComponent::Circle);
+    leftCollider->radius = 0.5f;
+    leftCollider->restitution = 0.0f;
+
+    auto right = std::make_unique<GameObject>("Right");
+    auto* rightTransform = right->GetComponent<TransformComponent>();
+    rightTransform->position = glm::vec3(0.2f, 0.0f, 0.0f);
+    rightTransform->UpdateTransform();
+    auto* rightRb = right->AddComponent<Rigidbody2DComponent>();
+    rightRb->type = Rigidbody2DComponent::Dynamic;
+    rightRb->useGravity = false;
+    rightRb->linearDamping = 0.0f;
+    rightRb->velocity = glm::vec2(-1.0f, 0.0f);
+    auto* rightCollider = right->AddComponent<Collider2DComponent>(Collider2DComponent::Circle);
+    rightCollider->radius = 0.5f;
+    rightCollider->restitution = 0.0f;
+
+    scene.rootGameObject->AddChild(std::move(left));
+    scene.rootGameObject->AddChild(std::move(right));
+
+    Physics2DWorld world;
+    world.gravity = glm::vec2(0.0f);
+    world.velocityIterations = 1;
+    world.positionIterations = 0;
+    world.StepFixed(&scene, 0.001f);
+
+    REQUIRE(leftRb->velocity.x < -0.5f);
+    REQUIRE(rightRb->velocity.x > 0.5f);
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
 }
 
 int main(int argc, char** argv)

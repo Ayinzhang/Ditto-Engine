@@ -16,11 +16,10 @@ struct Engine
 {
     enum State { Edit, Play, Pause, Stop, Exit } state = Edit;
 
-    // Render backend. Priority: Vulkan (default) > DirectX (opt-in) > OpenGL
-    // (fallback). Selected at startup via env DITTO_RHI (gl/vk/dx); a backend
-    // that fails to initialize falls back to OpenGL. GL and Vulkan cannot share
-    // a window, so this also drives window creation.
-    enum class Backend { OpenGL, Vulkan, DirectX };
+    // Render backend. Scope is intentionally limited to Vulkan + OpenGL:
+    // Vulkan is the default when compiled in, OpenGL is the fallback.
+    // DITTO_RHI=opengl forces GL; DITTO_RHI=vulkan requests Vulkan.
+    enum class Backend { OpenGL, Vulkan };
 #ifdef DITTO_ENABLE_VULKAN
     Backend backend = Backend::Vulkan;
 #else
@@ -44,8 +43,8 @@ struct Engine
     double lastX, lastY;
     std::unique_ptr<Physics> physics;
     std::unique_ptr<Physics2DWorld> physics2D;
-    // RHI: all rendering goes through this. GLRenderer today; a Vulkan backend
-    // can replace it without touching engine/editor code.
+    // RHI: all rendering goes through this. Startup selects Vulkan first when
+    // available, then falls back to OpenGL.
     std::unique_ptr<Ditto::IRenderer> renderer;
     Ditto::PipelineHandle shaderPipeline;   // main scene pipeline (owned by renderer)
     // Offscreen render targets for the editor's Scene/Game viewports (owned by
@@ -80,4 +79,9 @@ private:
     // `createEditor` builds the ImGui editor (edit mode only); `shaderBaseDir`
     // selects where shaders are resolved from ("" = executable-anchored).
     void InitCommon(bool createEditor, const std::string& shaderBaseDir);
+    void EnterPlayMode();
+    void ExitPlayMode();
+    void RebuildRuntimePhysics();
+    void PrepareScriptsForPlay();
+    void StartScriptsAndAwakeComponents();
 };

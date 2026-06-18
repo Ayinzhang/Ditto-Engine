@@ -7,11 +7,9 @@
 
 namespace Ditto
 {
-    // Vulkan implementation of the RHI. Skeleton stage: creates an instance,
-    // picks a physical device, and creates a logical device + graphics queue.
-    // Swapchain / pipelines / resources are filled in by later steps; the
-    // IRenderer methods are stubbed until then. Engine still uses GLRenderer;
-    // this only needs to compile + link against the Vulkan loader for now.
+    // Vulkan implementation of the RHI. This is the preferred backend when the
+    // build has Vulkan support; Engine falls back to GLRenderer if initialization
+    // fails at runtime.
     class VulkanRenderer : public IRenderer
     {
     public:
@@ -21,6 +19,7 @@ namespace Ditto
 
         // True once the instance + device were created successfully.
         bool IsValid() const { return m_device != VK_NULL_HANDLE; }
+        RendererBackend Backend() const override { return RendererBackend::Vulkan; }
 
         // ---- Frame ----
         void BeginFrame() override;
@@ -172,6 +171,7 @@ namespace Ditto
             VkDescriptorSetLayout setLayouts[2] = {};   // set0=UBO, set1=2 SSBOs
             VkShaderModule vs = VK_NULL_HANDLE;
             VkShaderModule fs = VK_NULL_HANDLE;
+            bool usesSceneResources = true;
         };
         std::vector<VkMeshRes> m_meshes;
         std::vector<VkStorageRes> m_storage;

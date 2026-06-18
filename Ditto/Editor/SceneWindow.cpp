@@ -1,4 +1,4 @@
-#ifndef NOMINMAX
+﻿#ifndef NOMINMAX
 #define NOMINMAX
 #endif
 
@@ -7,8 +7,8 @@
 #include "Editor.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/Input.h"
-#include "../Engine/Core/PathUtils.h"
 #include "../Engine/Graphics/Camera.h"
+#include "../Engine/Resources/AssetPath.h"
 
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/gtc/matrix_transform.hpp"
@@ -43,7 +43,7 @@ void SceneWindow::FrameObject(GameObject* obj)
     float radius = 2.5f;
     if (RendererComponent* renderer = obj->GetComponent<RendererComponent>())
     {
-        // Default framing radius — was previously based on a built-in sphere hint.
+        // Default framing radius; this used to depend on a built-in sphere hint.
         radius = 2.0f;
     }
     if (SpriteRendererComponent* sprite = obj->GetComponent<SpriteRendererComponent>())
@@ -135,9 +135,7 @@ MeshData* SceneWindow::GetColliderMesh(ColliderComponent* collider)
             meshPath = collider->meshPath;
         if (meshPath.empty()) return resource->cubeMesh.get();
 
-        std::filesystem::path resolved = meshPath;
-        if (!std::filesystem::exists(resolved))
-            resolved = PathUtils::ResolveAsset(meshPath);
+        std::filesystem::path resolved = Ditto::AssetPath::ResolveTypedAssetPath(meshPath, "Models");
         if (resolved.extension() != ".obj") return resource->cubeMesh.get();
 
         std::string key = resolved.string();

@@ -1,91 +1,54 @@
-# 问题总结和解决方案
+# Current Issues
 
-## 问题1：VS编译后还是显示 'o' 而不是图标
+This file tracks known short-term engineering issues. Keep it UTF-8 encoded.
 
-**原因**：
-- 代码已修改，但可能是图标加载失败
-- 或者VS缓存问题
+## Documentation
 
-**解决方案**：
-1. 强制Clean + Rebuild
-2. 检查图标路径是否正确
-3. 添加日志确认图标是否加载成功
+- Fixed: `README.md`, `README_zh.md`, and this file were rewritten as UTF-8 Markdown.
+- Keep build, test, and dependency instructions updated when project files change.
 
-## 问题2：Mesh/Sprite/Audio等组件没有使用新的选择器
+## Editor UI Consistency
 
-**发现**：
-- GameObject.cpp中已有自己的选择器系统：`DrawObjectFieldButton`
-- 这些组件使用的是GameObject.cpp中的函数
-- 但样式和图标与InspectorWindow.cpp中的不一致
+- In progress: shared inspector picker widgets now live in
+  `Editor/ComponentInspectorWidgets.*`.
+- In progress: project asset preview helpers now live in
+  `Editor/AssetPreviewUtils.*`.
+- Fixed: mesh, material, sprite, texture, audio clip, font, and Rigidbody2D
+  physics-material inspector pickers now use the shared asset object-field helper.
+- Fixed: Rigidbody2D now uses real `.physmat2d` assets for 2D friction and
+  restitution overrides.
+- Recommended next step: keep moving new inspector fields onto shared helpers
+  when new component asset references are added.
 
-**解决方案**：
-有两个选择：
+## Shader and Asset Paths
 
-### 方案A：统一到InspectorWindow.cpp的实现
-- 将`DrawFileObjectField`移到一个公共头文件
-- 让所有组件都使用它
-- **优点**：完全统一
-- **缺点**：需要重构较多代码
+- In progress: `Engine/Resources/AssetPath.*` centralizes project-relative,
+  `Assets/`-prefixed, absolute, typed, and preferred-root asset resolution.
+- Fixed: shader, material, texture, audio, mesh, physics mesh, and UI font/shader
+  loads now route through the shared path helpers in the touched code paths.
+- Fixed: file tests cover project-relative assets, `Assets/`-prefixed paths,
+  typed material/shader lookup, absolute path normalization, and preferred roots.
+- Fixed: component scene serialization normalizes asset references before writing,
+  so absolute project asset paths are saved as project-relative keys.
+- Fixed: material saving normalizes `mainTexture` references before writing `.mat`
+  files.
+- Fixed: `.physmat2d` assets are project-relative, have default project assets,
+  editor creation, inspector editing, scene serialization, and physics coverage.
+- Recommended next step: build a real asset database later: GUIDs, `.meta` files,
+  import cache, and stable cross-file references.
 
-### 方案B：改进GameObject.cpp中的实现
-- 修改`DrawObjectFieldButton`添加圆形按钮
-- 添加图标支持
-- 统一样式
-- **优点**：改动最小，保持现有结构
-- **缺点**：需要维护两套相似的代码
+## Runtime Lifecycle
 
-**推荐方案B**，因为：
-1. GameObject.cpp的选择器已经很完善（支持Built-in选项等）
-2. 只需要视觉上统一即可
-3. 改动最小，风险最低
+- Fixed: Play/Game mode startup now uses shared `Engine::EnterPlayMode()` logic for
+  script preparation, `Start()`, physics rebuild, and play-on-awake components.
+- Fixed: Stop now uses `Engine::ExitPlayMode()` for script teardown, physics clear,
+  audio stop, and authored rotation restoration.
+- Recommended next step: add dedicated tests around script `Start`/`Update` ordering
+  once the runtime can be exercised without a GLFW window.
 
-## 问题3：Shader load failed
+## Architecture Follow-Ups
 
-**原因**：
-- 材质文件中存储：`shader = "Shaders/Lit_Sprite.shader"`
-- shader文件确实存在：`MyProject/Assets/Shaders/Lit_Sprite.shader`
-- 但ResolveShaderPath可能解析错误
-
-**需要调试**：
-- 添加日志查看实际解析的路径
-- 检查路径分隔符是否正确
-- 确认ResolveShaderPath的逻辑
-
-## 下一步行动
-
-### 立即执行：
-1. ✅ 添加shader加载调试日志（已完成）
-2. ⏳ 修改GameObject.cpp的`DrawObjectFieldButton`添加圆形按钮和图标
-3. ⏳ 统一图标加载系统
-4. ⏳ 测试并修复shader加载问题
-
-### 需要用户操作：
-1. **Clean + Rebuild项目**
-2. **运行并查看日志**，确认：
-   - 图标是否加载成功
-   - Shader解析的实际路径是什么
-3. **提供日志输出**，以便进一步调试
-
-## 代码位置
-
-### InspectorWindow.cpp (Material Inspector)
-- `DrawFileObjectField` - 新的Unity风格选择器
-- `DrawMaterialFileInspector` - Material文件Inspector
-- 已实现：图标、圆形按钮、搜索
-
-### GameObject.cpp (组件Inspector)
-- `DrawObjectFieldButton` - 现有的选择器按钮
-- `DrawUnitySelectorHeader` - 现有的弹窗头部
-- 需要改进：添加圆形按钮、图标支持
-
-### 使用选择器的组件：
-- `RendererComponent::OnInspectorGUI()` - Mesh选择
-- `SpriteRendererComponent::OnInspectorGUI()` - Sprite选择
-- `AudioSourceComponent::OnInspectorGUI()` - Audio Clip选择
-
-## 临时解决方案
-
-如果想快速看到效果，可以：
-1. 先只修复Material Inspector的shader加载问题
-2. 暂时不统一其他组件的UI
-3. 等shader问题解决后，再统一UI样式
+- Continue extracting small editor/runtime utility modules from large files such as
+  `GameObject.cpp`, `Editor.cpp`, `ProjectWindow.cpp`, and `CSharpScript.cpp`.
+- Replace remaining global editor/scene state with explicit typed services over time.
+- Keep OpenGL as the stable rendering path while Vulkan reaches feature parity.

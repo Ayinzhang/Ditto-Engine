@@ -46,6 +46,9 @@ private:
     bool m_showCreateMaterialPopup = false;
     char m_newMaterialNameBuffer[64] = "New Material";
 
+    bool m_showCreatePhysicsMaterial2DPopup = false;
+    char m_newPhysicsMaterial2DNameBuffer[64] = "New Physics Material 2D";
+
     bool m_showCreateShaderPopup = false;
     char m_newShaderNameBuffer[64] = "New Shader";
     
@@ -111,6 +114,7 @@ private:
     // 创建新脚本文件
     void CreateNewScript(const std::string& name);
     void CreateNewMaterial(const std::string& name);
+    void CreateNewPhysicsMaterial2D(const std::string& name);
     void CreateNewShader(const std::string& name);
     // 创建新文件夹
     void CreateNewFolder(const std::string& name);

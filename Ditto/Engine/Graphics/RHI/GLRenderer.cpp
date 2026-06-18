@@ -397,6 +397,7 @@ namespace Ditto
         {
             glDisable(GL_BLEND);
         }
+        glPolygonMode(GL_FRONT_AND_BACK, p->state.wireframe ? GL_LINE : GL_FILL);
 
         if (p->state.cull == CullMode::Off)
         {

@@ -8,12 +8,13 @@
 #include "CSharpScript.h"
 #include "../Animation/AnimatorComponent.h"
 #include "../Graphics/ParticleSystemComponent.h"
+#include "../Resources/AssetPath.h"
 #ifndef DITTO_HEADLESS_TESTS
-#include "ProjectManager.h"
-#include "PathUtils.h"
 #include "../Graphics/Materials/MaterialAsset.h"
 #include "../Audio/AudioEngine.h"
+#include "../Physics/PhysicsMaterial2DAsset.h"
 #include "../../Editor/Editor.h"
+#include "../../Editor/ComponentInspectorWidgets.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #endif
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
@@ -34,6 +35,11 @@ static void WriteString(std::ostream& file, const std::string& str)
     file.write(str.c_str(), length);
 }
 
+static void WriteAssetPathString(std::ostream& file, const std::string& path)
+{
+    WriteString(file, Ditto::AssetPath::NormalizeAssetKey(path));
+}
+
 static std::string ReadString(std::istream& file)
 {
     uint32_t length = 0;
@@ -45,412 +51,7 @@ static std::string ReadString(std::istream& file)
 
 #ifdef DITTO_HEADLESS_TESTS
 Editor* g_editor = nullptr;
-#else
-// Bracket an ImGui value-editing widget so a whole drag counts as ONE undo
-// step, committed only if the value actually changed. Call immediately AFTER
-// the widget. Uses the global editor pointer.
-static void TrackUndoableEdit()
-{
-    if (!g_editor) return;
-    if (ImGui::IsItemActivated())            g_editor->BeginInspectorEdit();
-    if (ImGui::IsItemDeactivatedAfterEdit()) g_editor->EndInspectorEdit();
-}
-
-static void DrawComponentSelectionBackground(Component* component)
-{
-    if (!g_editor || g_editor->selectedComponent != component) return;
-    ImVec2 min = ImGui::GetCursorScreenPos();
-    ImVec2 max(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 8.0f, min.y + ImGui::GetFrameHeight());
-    ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(45, 105, 175, 95), 3.0f);
-}
-
-static void SelectComponentOnLastItem(Component* component)
-{
-    if (g_editor && ImGui::IsItemClicked())
-        g_editor->selectedComponent = component;
-}
-
-static void SelectComponentArea(Component* component, const ImVec2& start)
-{
-    if (!g_editor) return;
-
-    ImVec2 end(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 8.0f, ImGui::GetCursorScreenPos().y);
-    if (end.y < start.y + ImGui::GetFrameHeight())
-        end.y = start.y + ImGui::GetFrameHeight();
-
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsMouseHoveringRect(start, end, true))
-        g_editor->selectedComponent = component;
-
-    if (g_editor->selectedComponent == component)
-    {
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->AddRectFilled(start, end, IM_COL32(45, 105, 175, 24), 3.0f);
-        drawList->AddRect(start, end, IM_COL32(75, 145, 220, 150), 3.0f);
-    }
-}
-
-static void UnityLabel(const char* label)
-{
-    ImGui::TextUnformatted(label);
-    ImGui::SameLine(160.0f);
-}
-
-static void UnityCheckbox(const char* label, bool* value, const char* id)
-{
-    UnityLabel(label);
-    ImGui::Checkbox(id, value);
-    TrackUndoableEdit();
-}
-
-static void UnityDragFloat(const char* label, float* value, const char* id,
-    float speed = 0.1f, float min = 0.0f, float max = 0.0f)
-{
-    UnityLabel(label);
-    ImGui::DragFloat(id, value, speed, min, max);
-    TrackUndoableEdit();
-}
-
-static void UnityDragFloat2(const char* label, glm::vec2* value, const char* id,
-    float speed = 0.1f, float min = 0.0f, float max = 0.0f)
-{
-    UnityLabel(label);
-    ImGui::DragFloat2(id, &value->x, speed, min, max);
-    TrackUndoableEdit();
-}
-
-static void UnityDragFloat3(const char* label, glm::vec3* value, const char* id,
-    float speed = 0.1f, float min = 0.0f, float max = 0.0f)
-{
-    UnityLabel(label);
-    ImGui::DragFloat3(id, &value->x, speed, min, max);
-    TrackUndoableEdit();
-}
-
-static void UnityColor4(const char* label, glm::vec4* value, const char* id)
-{
-    UnityLabel(label);
-    ImGui::ColorEdit4(id, &value->x, ImGuiColorEditFlags_AlphaBar);
-    TrackUndoableEdit();
-}
-
-static void UnityColor3(const char* label, glm::vec3* value, const char* id)
-{
-    UnityLabel(label);
-    ImGui::ColorEdit3(id, &value->x);
-    TrackUndoableEdit();
-}
-
-// Extract filename from path
-static std::string FileNameFromPath(const std::string& path)
-{
-    size_t pos = path.find_last_of("/\\");
-    return pos == std::string::npos ? path : path.substr(pos + 1);
-}
-
-// Convert relative asset path to full path
-static std::string ToFullAssetPath(const std::string& relativePath)
-{
-    if (relativePath.empty()) return "";
-
-    namespace fs = std::filesystem;
-    Project* project = ProjectManager::GetInstance().GetCurrentProject();
-    if (!project) return relativePath;
-
-    // If already absolute, return as-is
-    fs::path p(relativePath);
-    if (p.is_absolute()) return relativePath;
-
-    // Construct full path: project/Assets/relativePath
-    fs::path fullPath = fs::path(project->path) / "Assets" / relativePath;
-    return fullPath.string();
-}
-
-// Remove extension from filename for display
-static std::string FileNameWithoutExtension(const std::string& path)
-{
-    std::string name = FileNameFromPath(path);
-    size_t dotPos = name.find_last_of('.');
-    if (dotPos != std::string::npos)
-        return name.substr(0, dotPos);
-    return name;
-}
-
-static bool UnityCombo(const char* label, int* value, const char* const* names, int count, const char* id)
-{
-    UnityLabel(label);
-    bool changed = ImGui::Combo(id, value, names, count);
-    TrackUndoableEdit();
-    return changed;
-}
-
-static bool DrawObjectFieldButton(const char* label, void* iconTexture, const std::string& value, const char* popupId,
-    std::string* droppedPath = nullptr, const std::string& fullPath = "")
-{
-    UnityLabel(label);
-
-    float availWidth = ImGui::GetContentRegionAvail().x;
-    float buttonHeight = ImGui::GetFrameHeight();
-    float circleButtonWidth = buttonHeight;
-    float mainButtonWidth = availWidth - circleButtonWidth - 2.0f;
-
-    // Main button
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f)); // Left align
-
-    ImVec2 buttonPos = ImGui::GetCursorScreenPos();
-    bool clicked = ImGui::Button(("##main" + std::string(popupId)).c_str(), ImVec2(mainButtonWidth, buttonHeight));
-    bool doubleClicked = ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0);
-
-    // Draw icon and text on top of button
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    ImVec2 textPos = buttonPos;
-    textPos.x += 4.0f;
-    textPos.y += (buttonHeight - ImGui::GetTextLineHeight()) * 0.5f;
-
-    if (iconTexture)
-    {
-        ImVec2 iconPos = buttonPos;
-        iconPos.x += 2.0f;
-        iconPos.y += (buttonHeight - 16.0f) * 0.5f;
-        drawList->AddImage(iconTexture, iconPos, ImVec2(iconPos.x + 16, iconPos.y + 16));
-        textPos.x += 18.0f;
-    }
-
-    drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), value.c_str());
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(3);
-
-    // Handle left button behavior
-    if (doubleClicked && !fullPath.empty() && g_editor)
-    {
-        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Double clicked: " << fullPath);
-        // Double click: switch Inspector to show this asset
-        g_editor->selectedFile.path = fullPath;
-        g_editor->selectedFile.name = value;
-        std::string ext;
-        size_t dotPos = fullPath.find_last_of('.');
-        if (dotPos != std::string::npos)
-            ext = fullPath.substr(dotPos);
-        g_editor->selectedFile.extension = ext;
-        g_editor->selectedObject = nullptr;
-    }
-    else if (clicked && !fullPath.empty() && g_editor)
-    {
-        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Single clicked: " << fullPath);
-        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Before: selectedObject=" << (g_editor->selectedObject ? "valid" : "null"));
-
-        // Single click: navigate Project window AND select the file
-        if (auto* projectWindow = g_editor->GetProjectWindow())
-        {
-            projectWindow->NavigateToFile(fullPath);
-        }
-
-        // CRITICAL: Clear selectedObject FIRST before setting selectedFile
-        g_editor->selectedObject = nullptr;
-
-        // Select the file in Inspector
-        g_editor->selectedFile.path = fullPath;
-        g_editor->selectedFile.name = value;
-        std::string ext;
-        size_t dotPos = fullPath.find_last_of('.');
-        if (dotPos != std::string::npos)
-            ext = fullPath.substr(dotPos);
-        g_editor->selectedFile.extension = ext;
-
-        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] After: selectedFile.path=" << g_editor->selectedFile.path << " selectedObject=" << (g_editor->selectedObject ? "valid" : "null"));
-    }
-
-    // Handle drag and drop
-    if (droppedPath && ImGui::BeginDragDropTarget())
-    {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PROJECT_FILE"))
-            *droppedPath = static_cast<const char*>(payload->Data);
-        ImGui::EndDragDropTarget();
-    }
-
-    // Circle picker button
-    ImGui::SameLine(0, 2.0f);
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.35f, 0.35f, 0.35f, 1.0f));
-
-    ImVec2 pickerButtonPos = ImGui::GetCursorScreenPos();
-    bool pickerClicked = ImGui::Button(("##picker" + std::string(popupId)).c_str(), ImVec2(circleButtonWidth, buttonHeight));
-
-    // Try to get ObjectPicker icon from editor
-    void* pickerIcon = g_editor ? g_editor->GetIconByExtension(".objectpicker") : nullptr;
-
-    if (pickerIcon)
-    {
-        // Draw picker icon centered in button
-        float iconSize = 16.0f;
-        ImVec2 iconPos = ImVec2(
-            pickerButtonPos.x + (circleButtonWidth - iconSize) * 0.5f,
-            pickerButtonPos.y + (buttonHeight - iconSize) * 0.5f
-        );
-        drawList->AddImage(pickerIcon, iconPos, ImVec2(iconPos.x + iconSize, iconPos.y + iconSize));
-    }
-    else
-    {
-        // Fallback: Draw circle with outer ring icon
-        ImVec2 center = ImVec2(pickerButtonPos.x + circleButtonWidth * 0.5f, pickerButtonPos.y + buttonHeight * 0.5f);
-        float innerRadius = 5.0f;
-        float outerRadius = 7.5f;
-        drawList->AddCircle(center, innerRadius, ImGui::GetColorU32(ImGuiCol_Text), 16, 1.5f);
-        drawList->AddCircle(center, outerRadius, ImGui::GetColorU32(ImGuiCol_Text), 16, 1.5f);
-    }
-
-    ImGui::PopStyleColor(3);
-
-    if (pickerClicked)
-        ImGui::OpenPopup(popupId);
-
-    return clicked || pickerClicked;
-}
-
-static bool DrawUnitySelectorHeader(const char* title, const char* searchId, char* searchBuffer, size_t searchBufferSize)
-{
-    ImGui::TextUnformatted(title);
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 18.0f);
-    bool close = ImGui::SmallButton("x");
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputText(searchId, searchBuffer, searchBufferSize);
-    ImGui::Separator();
-    return close;
-}
-
-static std::string ToAssetRelativePath(const std::string& path)
-{
-    Project* project = ProjectManager::GetInstance().GetCurrentProject();
-    if (!project) return path;
-
-    std::filesystem::path filePath = std::filesystem::absolute(path).lexically_normal();
-    std::filesystem::path assetsPath = std::filesystem::absolute(std::filesystem::path(project->path) / "Assets").lexically_normal();
-
-    // Try to make the path relative to Assets
-    std::filesystem::path relativePath = filePath.lexically_relative(assetsPath);
-    if (relativePath.empty() || relativePath.string().find("..") != std::string::npos)
-    {
-        return path;
-    }
-
-    // Convert to forward slashes
-    std::string result = relativePath.generic_string();
-    return result;
-}
-
-static std::string LowerExtension(const std::string& path)
-{
-    std::string ext = std::filesystem::path(path).extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
-}
-
-static bool ExtensionMatches(const std::string& path, std::initializer_list<const char*> extensions)
-{
-    std::string ext = LowerExtension(path);
-    for (const char* allowed : extensions)
-        if (ext == allowed)
-            return true;
-    return false;
-}
-
-static std::vector<std::string> FindProjectAssets(std::initializer_list<const char*> extensions)
-{
-    std::vector<std::string> results;
-    Project* project = ProjectManager::GetInstance().GetCurrentProject();
-    if (!project) return results;
-
-    std::filesystem::path assetsRoot = std::filesystem::path(project->path) / "Assets";
-    std::error_code ec;
-    if (!std::filesystem::exists(assetsRoot, ec)) return results;
-
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(assetsRoot, ec))
-    {
-        if (ec) break;
-        if (!entry.is_regular_file(ec)) continue;
-        std::string fullPath = entry.path().string();
-        if (ExtensionMatches(fullPath, extensions))
-            results.push_back(ToAssetRelativePath(fullPath));
-    }
-    std::sort(results.begin(), results.end(), [](const std::string& a, const std::string& b)
-    {
-        return FileNameFromPath(a) < FileNameFromPath(b);
-    });
-    return results;
-}
-
-static bool DrawAssetMenuItems(const std::vector<std::string>& assets, const std::string& currentPath, std::string& selectedPath)
-{
-    bool changed = false;
-    if (assets.empty())
-    {
-        ImGui::TextDisabled("No matching assets");
-        return false;
-    }
-
-    for (const std::string& asset : assets)
-    {
-        const std::string label = FileNameFromPath(asset) + "##" + asset;
-        if (ImGui::MenuItem(label.c_str(), nullptr, asset == currentPath))
-        {
-            selectedPath = asset;
-            changed = true;
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", asset.c_str());
-    }
-    return changed;
-}
-
-static bool SearchMatches(const std::string& text, const std::string& search)
-{
-    if (search.empty()) return true;
-    std::string lowerText = text;
-    std::string lowerSearch = search;
-    std::transform(lowerText.begin(), lowerText.end(), lowerText.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    std::transform(lowerSearch.begin(), lowerSearch.end(), lowerSearch.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return lowerText.find(lowerSearch) != std::string::npos;
-}
-
-static bool DrawFilteredAssetMenuItems(const std::vector<std::string>& assets,
-    const std::string& currentPath, const std::string& search, std::string& selectedPath)
-{
-    bool any = false;
-    bool changed = false;
-    for (const std::string& asset : assets)
-    {
-        std::string fileName = FileNameFromPath(asset);
-        if (!SearchMatches(fileName, search) && !SearchMatches(asset, search))
-            continue;
-        any = true;
-        const std::string label = fileName + "##" + asset;
-        if (ImGui::MenuItem(label.c_str(), nullptr, asset == currentPath))
-        {
-            selectedPath = asset;
-            changed = true;
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", asset.c_str());
-    }
-    if (!any)
-        ImGui::TextDisabled("No matching assets");
-    return changed;
-}
-
-static void DrawUnitySelectorGroupLabel(const char* label)
-{
-    ImGui::TextDisabled("%s", label);
-    ImGui::Separator();
-}
-
 #endif
-
 GameObject::GameObject(const std::string& _name)
 {
     name = _name;
@@ -854,12 +455,7 @@ void TransformComponent::OnInspectorGUI()
 #ifdef DITTO_HEADLESS_TESTS
     UpdateTransform();
 #else
-    DrawComponentSelectionBackground(this);
-    ImGui::Checkbox("##Enabled", &enabled);
-    ImGui::SameLine();
-    ImGui::TextUnformatted("Transform");
-    SelectComponentOnLastItem(this);
-    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    if (!DrawComponentHeader(this, "Transform", false)) return;
 
     ImGui::Indent(20.0f);
     UnityLabel("Position");
@@ -921,13 +517,7 @@ void LightComponent::OnInspectorGUI()
 #ifdef DITTO_HEADLESS_TESTS
     return;
 #else
-    DrawComponentSelectionBackground(this);
-    ImGui::Checkbox("##Enabled", &enabled);
-    ImGui::SameLine(); ImGui::TextUnformatted("Light");
-    SelectComponentOnLastItem(this);
-    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
-    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    if (!DrawComponentHeader(this, "Light")) return;
     ImGui::Indent(20.0f);
     const char* typeNames[] = { "Directional", "Point", "Spot", "Area" };
     int typeIndex = static_cast<int>(type);
@@ -1036,13 +626,7 @@ void CameraComponent::OnInspectorGUI()
 #ifdef DITTO_HEADLESS_TESTS
     return;
 #else
-    DrawComponentSelectionBackground(this);
-    ImGui::Checkbox("##Enabled", &enabled);
-    ImGui::SameLine(); ImGui::TextUnformatted("Camera");
-    SelectComponentOnLastItem(this);
-    ImGui::SameLine(ImGui::GetWindowWidth() - 30);
-    if (ImGui::SmallButton("X")) { if (g_editor) g_editor->PushUndoSnapshot(); gameObject->RemoveComponent(this); return; }
-    if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+    if (!DrawComponentHeader(this, "Camera")) return;
 
     ImGui::Indent(20.0f);
     UnityCheckbox("Main Camera", &mainCamera, "##CameraMain");
@@ -1190,41 +774,8 @@ void RendererComponent::OnInspectorGUI()
     SelectComponentOnLastItem(this);
     ImGui::Indent(20.0f);
 
-    std::string meshDisplay = meshPath.empty() ? "None (Mesh)" : FileNameWithoutExtension(meshPath);
-    std::string droppedMeshPath;
-    std::string fullMeshPath = ToFullAssetPath(meshPath);
-    DrawObjectFieldButton("Mesh", nullptr, meshDisplay, "RendererMeshObjectPopup", &droppedMeshPath, fullMeshPath);
-    if (!droppedMeshPath.empty())
-    {
-        std::string ext = LowerExtension(droppedMeshPath);
-        if (ext == ".obj" || ext == ".fbx" || ext == ".mesh")
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            meshPath = ToAssetRelativePath(droppedMeshPath);
-        }
-    }
-    if (ImGui::BeginPopup("RendererMeshObjectPopup"))
-    {
-        static char meshSearch[128] = "";
-        if (DrawUnitySelectorHeader("Select Mesh", "##RendererMeshSearch", meshSearch, sizeof(meshSearch)))
-        {
-            ImGui::CloseCurrentPopup();
-        }
-        std::string search(meshSearch);
-        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, meshPath.empty()))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            meshPath.clear();
-        }
-        ImGui::Separator();
-        std::string selectedMeshPath;
-        if (DrawFilteredAssetMenuItems(FindProjectAssets({ ".obj", ".fbx", ".mesh" }), meshPath, search, selectedMeshPath))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            meshPath = selectedMeshPath;
-        }
-        ImGui::EndPopup();
-    }
+    DrawAssetObjectField("Mesh", meshPath, "RendererMeshObjectPopup",
+        "Select Mesh", { ".obj", ".fbx", ".mesh" }, "None (Mesh)");
 
     ImGui::Unindent(20.0f);
     ImGui::Separator();
@@ -1241,41 +792,8 @@ void RendererComponent::OnInspectorGUI()
     ImGui::TextUnformatted("Materials");
     ImGui::Indent(12.0f);
 
-    std::string materialDisplay = materialPath.empty() ? "Default-Material" : FileNameWithoutExtension(materialPath);
-    std::string droppedMaterialPath;
-    std::string fullMaterialPath = ToFullAssetPath(materialPath);
-    DrawObjectFieldButton("Element 0", nullptr, materialDisplay, "RendererMaterialObjectPopup", &droppedMaterialPath, fullMaterialPath);
-    if (!droppedMaterialPath.empty())
-    {
-        std::string ext = LowerExtension(droppedMaterialPath);
-        if (ext == ".mat")
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            materialPath = ToAssetRelativePath(droppedMaterialPath);
-        }
-    }
-    if (ImGui::BeginPopup("RendererMaterialObjectPopup"))
-    {
-        static char materialSearch[128] = "";
-        if (DrawUnitySelectorHeader("Select Material", "##RendererMaterialSearch", materialSearch, sizeof(materialSearch)))
-        {
-            ImGui::CloseCurrentPopup();
-        }
-        std::string search(materialSearch);
-        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, materialPath.empty()))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            materialPath.clear();
-        }
-        ImGui::Separator();
-        std::string selectedMaterialPath;
-        if (DrawFilteredAssetMenuItems(FindProjectAssets({ ".mat" }), materialPath, search, selectedMaterialPath))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            materialPath = selectedMaterialPath;
-        }
-        ImGui::EndPopup();
-    }
+    DrawAssetObjectField("Element 0", materialPath, "RendererMaterialObjectPopup",
+        "Select Material", { ".mat" }, "Default-Material");
 
     if (!materialPath.empty() && !Ditto::LoadMaterialAsset(materialPath).ok)
         ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "Material load failed");
@@ -1320,10 +838,10 @@ void RendererComponent::OnInspectorGUI()
 void RendererComponent::Serialize(std::ostream& file) const
 {
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
-    WriteString(file, meshPath);
+    WriteAssetPathString(file, meshPath);
     WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
-    WriteString(file, mainTexturePath);
-    WriteString(file, materialPath);
+    WriteAssetPathString(file, mainTexturePath);
+    WriteAssetPathString(file, materialPath);
     int32_t shadowModeInt = static_cast<int32_t>(shadowCastingMode);
     file.write(reinterpret_cast<const char*>(&shadowModeInt), sizeof(shadowModeInt));
     file.write(reinterpret_cast<const char*>(&receiveShadows), sizeof(receiveShadows));
@@ -1384,40 +902,8 @@ void SpriteRendererComponent::OnInspectorGUI()
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
 
-    std::string spriteDisplay = spritePath.empty() ? "None (Sprite)" : FileNameWithoutExtension(spritePath);
-    std::string droppedSpritePath;
-    std::string fullSpritePath = ToFullAssetPath(spritePath);
-    DrawObjectFieldButton("Sprite", nullptr, spriteDisplay, "SpriteRendererSpriteObjectPopup", &droppedSpritePath, fullSpritePath);
-    if (!droppedSpritePath.empty())
-    {
-        std::string ext = LowerExtension(droppedSpritePath);
-        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr")
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            spritePath = ToAssetRelativePath(droppedSpritePath);
-        }
-    }
-    if (ImGui::BeginPopup("SpriteRendererSpriteObjectPopup"))
-    {
-        static char spriteSearch[128] = "";
-        if (DrawUnitySelectorHeader("Select Sprite", "##SpriteRendererSpriteSearch", spriteSearch, sizeof(spriteSearch)))
-            ImGui::CloseCurrentPopup();
-        std::string search(spriteSearch);
-        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, spritePath.empty()))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            spritePath.clear();
-        }
-        ImGui::Separator();
-        std::string selectedSpritePath;
-        if (DrawFilteredAssetMenuItems(FindProjectAssets({ ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr" }),
-            spritePath, search, selectedSpritePath))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            spritePath = selectedSpritePath;
-        }
-        ImGui::EndPopup();
-    }
+    DrawAssetObjectField("Sprite", spritePath, "SpriteRendererSpriteObjectPopup",
+        "Select Sprite", { ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr" }, "None (Sprite)");
 
     UnityColor4("Color", &color, "##SpriteRendererColor");
     UnityLabel("Flip");
@@ -1435,39 +921,8 @@ void SpriteRendererComponent::OnInspectorGUI()
     ImGui::TextUnformatted("Materials");
     ImGui::Indent(12.0f);
 
-    std::string materialDisplay = materialPath.empty() ? "Default-Sprite-Material" : FileNameWithoutExtension(materialPath);
-    std::string droppedMaterialPath;
-    std::string fullSpriteMaterialPath = ToFullAssetPath(materialPath);
-    DrawObjectFieldButton("Element 0", nullptr, materialDisplay, "SpriteRendererMaterialObjectPopup", &droppedMaterialPath, fullSpriteMaterialPath);
-    if (!droppedMaterialPath.empty())
-    {
-        std::string ext = LowerExtension(droppedMaterialPath);
-        if (ext == ".mat")
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            materialPath = ToAssetRelativePath(droppedMaterialPath);
-        }
-    }
-    if (ImGui::BeginPopup("SpriteRendererMaterialObjectPopup"))
-    {
-        static char materialSearch[128] = "";
-        if (DrawUnitySelectorHeader("Select Material", "##SpriteRendererMaterialSearch", materialSearch, sizeof(materialSearch)))
-            ImGui::CloseCurrentPopup();
-        std::string search(materialSearch);
-        if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, materialPath.empty()))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            materialPath.clear();
-        }
-        ImGui::Separator();
-        std::string selectedMaterialPath;
-        if (DrawFilteredAssetMenuItems(FindProjectAssets({ ".mat" }), materialPath, search, selectedMaterialPath))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            materialPath = selectedMaterialPath;
-        }
-        ImGui::EndPopup();
-    }
+    DrawAssetObjectField("Element 0", materialPath, "SpriteRendererMaterialObjectPopup",
+        "Select Material", { ".mat" }, "Default-Sprite-Material");
 
     if (!materialPath.empty() && !Ditto::LoadMaterialAsset(materialPath).ok)
         ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "Material load failed");
@@ -1494,8 +949,8 @@ void SpriteRendererComponent::OnInspectorGUI()
 void SpriteRendererComponent::Serialize(std::ostream& file) const
 {
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
-    WriteString(file, spritePath);
-    WriteString(file, materialPath);
+    WriteAssetPathString(file, spritePath);
+    WriteAssetPathString(file, materialPath);
     WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
     file.write(reinterpret_cast<const char*>(&flipX), sizeof(flipX));
     file.write(reinterpret_cast<const char*>(&flipY), sizeof(flipY));
@@ -1702,32 +1157,8 @@ void ColliderComponent::OnInspectorGUI()
 
     if (type == MeshConvex)
     {
-        std::string droppedMeshPath;
-        std::string fullColliderMeshPath = ToFullAssetPath(meshPath);
-        std::string meshDisplayName = meshPath.empty() ? "None (Mesh)" : FileNameWithoutExtension(meshPath);
-        DrawObjectFieldButton("Mesh", nullptr, meshDisplayName,
-            "ColliderMeshObjectPopup", &droppedMeshPath, fullColliderMeshPath);
-        if (!droppedMeshPath.empty() && ExtensionMatches(droppedMeshPath, { ".obj", ".fbx", ".mesh" }))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            meshPath = ToAssetRelativePath(droppedMeshPath);
-        }
-        if (ImGui::BeginPopup("ColliderMeshObjectPopup"))
-        {
-            if (ImGui::MenuItem("None", nullptr, meshPath.empty()))
-            {
-                if (g_editor) g_editor->PushUndoSnapshot();
-                meshPath.clear();
-            }
-            ImGui::Separator();
-            std::string selectedMeshPath;
-            if (DrawAssetMenuItems(FindProjectAssets({ ".obj", ".fbx", ".mesh" }), meshPath, selectedMeshPath))
-            {
-                if (g_editor) g_editor->PushUndoSnapshot();
-                meshPath = selectedMeshPath;
-            }
-            ImGui::EndPopup();
-        }
+        DrawAssetObjectField("Mesh", meshPath, "ColliderMeshObjectPopup",
+            "Select Mesh", { ".obj", ".fbx", ".mesh" }, "None (Mesh)");
         bool convex = true;
         UnityCheckbox("Convex", &convex, "##ColliderConvex");
     }
@@ -1756,7 +1187,7 @@ void ColliderComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&biasPosition), sizeof(glm::vec3));
     file.write(reinterpret_cast<const char*>(&biasRotation), sizeof(glm::vec3));
     file.write(reinterpret_cast<const char*>(&biasScale), sizeof(glm::vec3));
-    WriteString(file, meshPath);
+    WriteAssetPathString(file, meshPath);
 }
 
 void ColliderComponent::Deserialize(std::istream& file)
@@ -1850,15 +1281,10 @@ void Rigidbody2DComponent::OnInspectorGUI()
 
     if (type == Dynamic)
     {
-        std::string fullRigidbody2DMaterialPath = ToFullAssetPath(materialPath);
-        std::string materialDisplayName = materialPath.empty() ? "None (Physics Material 2D)" : FileNameWithoutExtension(materialPath);
-        DrawObjectFieldButton("Material", nullptr, materialDisplayName,
-            "Rigidbody2DMaterialObjectPopup", nullptr, fullRigidbody2DMaterialPath);
-        if (ImGui::BeginPopup("Rigidbody2DMaterialObjectPopup"))
-        {
-            if (ImGui::MenuItem("None", nullptr, materialPath.empty())) materialPath.clear();
-            ImGui::EndPopup();
-        }
+        DrawAssetObjectField("Material", materialPath, "Rigidbody2DMaterialObjectPopup",
+            "Select Physics Material 2D", { ".physmat2d" }, "None (Physics Material 2D)");
+        if (!materialPath.empty() && !Ditto::LoadPhysicsMaterial2DAsset(materialPath).ok)
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "Physics material 2D load failed");
         UnityCheckbox("Simulated", &simulated, "##Rigidbody2DSimulated");
         UnityCheckbox("Use Auto Mass", &useAutoMass, "##Rigidbody2DUseAutoMass");
         UnityDragFloat("Mass", &mass, "##Rigidbody2DMass", 0.1f, 0.001f, 100000.0f);
@@ -1888,7 +1314,7 @@ void Rigidbody2DComponent::Serialize(std::ostream& file) const
 {
     int32_t typeInt = static_cast<int32_t>(type);
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
-    WriteString(file, materialPath);
+    WriteAssetPathString(file, materialPath);
     file.write(reinterpret_cast<const char*>(&simulated), sizeof(simulated));
     file.write(reinterpret_cast<const char*>(&useAutoMass), sizeof(useAutoMass));
     file.write(reinterpret_cast<const char*>(&mass), sizeof(mass));
@@ -2057,9 +1483,7 @@ void AudioSourceComponent::Play()
 #ifndef DITTO_HEADLESS_TESTS
     if (clipPath.empty()) return;
     Stop();
-    std::filesystem::path resolved = clipPath;
-    if (!std::filesystem::exists(resolved))
-        resolved = PathUtils::ResolveAsset(clipPath);
+    std::filesystem::path resolved = Ditto::AssetPath::ResolveAssetPath(clipPath);
     soundHandle = AudioEngine::Play(resolved.string(), volume, loop);
 #endif
 }
@@ -2090,48 +1514,8 @@ void AudioSourceComponent::OnInspectorGUI()
 
     ImGui::Indent(20.0f);
 
-    std::string droppedClipPath;
-    std::string fullClipPath = ToFullAssetPath(clipPath);
-    std::string clipDisplayName = clipPath.empty() ? "None (Audio Clip)" : FileNameWithoutExtension(clipPath);
-    DrawObjectFieldButton("Audio Clip", nullptr, clipDisplayName,
-        "AudioClipObjectPopup", &droppedClipPath, fullClipPath);
-    if (!droppedClipPath.empty())
-    {
-        std::string ext = LowerExtension(droppedClipPath);
-        if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".flac")
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            clipPath = ToAssetRelativePath(droppedClipPath);
-        }
-    }
-    if (ImGui::BeginPopup("AudioClipObjectPopup"))
-    {
-        if (ImGui::MenuItem("None", nullptr, clipPath.empty()))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            clipPath.clear();
-        }
-        ImGui::Separator();
-        std::string selectedClipPath;
-        if (DrawAssetMenuItems(FindProjectAssets({ ".wav", ".mp3", ".ogg", ".flac" }), clipPath, selectedClipPath))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            clipPath = selectedClipPath;
-        }
-        ImGui::Separator();
-        char clipBuf[256];
-        strcpy_s(clipBuf, sizeof(clipBuf), clipPath.c_str());
-        ImGui::TextUnformatted("Clip Path");
-        if (ImGui::InputText("##AudioClipPath", clipBuf, sizeof(clipBuf)))
-            clipPath = clipBuf;
-        TrackUndoableEdit();
-        if (!clipPath.empty() && ImGui::SmallButton("Clear Clip"))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            clipPath.clear();
-        }
-        ImGui::EndPopup();
-    }
+    DrawAssetObjectField("Audio Clip", clipPath, "AudioClipObjectPopup",
+        "Select Audio Clip", { ".wav", ".mp3", ".ogg", ".flac" }, "None (Audio Clip)");
 
     UnityLabel("Output");
     ImGui::TextDisabled("None (Audio Mixer Group)");
@@ -2164,7 +1548,7 @@ void AudioSourceComponent::OnInspectorGUI()
 
 void AudioSourceComponent::Serialize(std::ostream& file) const
 {
-    WriteString(file, clipPath);
+    WriteAssetPathString(file, clipPath);
     WriteString(file, outputPath);
     file.write(reinterpret_cast<const char*>(&mute), sizeof(mute));
     file.write(reinterpret_cast<const char*>(&bypassEffects), sizeof(bypassEffects));
@@ -2223,21 +1607,6 @@ void AudioSourceComponent::Deserialize(std::istream& file)
 }
 
 // ---- UI components ----
-
-#ifndef DITTO_HEADLESS_TESTS
-static void DrawUIAnchorCombo(UIAnchor& anchor)
-{
-    static const char* kAnchorNames[] = {
-        "Top Left", "Top", "Top Right",
-        "Left", "Center", "Right",
-        "Bottom Left", "Bottom", "Bottom Right",
-    };
-    int idx = static_cast<int>(anchor);
-    ImGui::Text("Anchor  "); ImGui::SameLine();
-    if (ImGui::Combo("##UIAnchor", &idx, kAnchorNames, 9))
-        anchor = static_cast<UIAnchor>(idx);
-}
-#endif
 
 CanvasComponent::CanvasComponent()
 {
@@ -2381,49 +1750,8 @@ void UIImageComponent::OnInspectorGUI()
     if (!enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
     ImGui::Indent(20.0f);
 
-    std::string droppedTexturePath;
-    std::string fullTexturePath = ToFullAssetPath(texturePath);
-    std::string textureDisplayName = texturePath.empty() ? "None (Texture2D)" : FileNameWithoutExtension(texturePath);
-    DrawObjectFieldButton("Source Image", nullptr, textureDisplayName,
-        "UIImageTextureObjectPopup", &droppedTexturePath, fullTexturePath);
-    if (!droppedTexturePath.empty())
-    {
-        std::string ext = LowerExtension(droppedTexturePath);
-        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr")
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            texturePath = ToAssetRelativePath(droppedTexturePath);
-        }
-    }
-    if (ImGui::BeginPopup("UIImageTextureObjectPopup"))
-    {
-        if (ImGui::MenuItem("None", nullptr, texturePath.empty()))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            texturePath.clear();
-        }
-        ImGui::Separator();
-        std::string selectedTexturePath;
-        if (DrawAssetMenuItems(FindProjectAssets({ ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr" }),
-            texturePath, selectedTexturePath))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            texturePath = selectedTexturePath;
-        }
-        ImGui::Separator();
-        char texBuf[256];
-        strcpy_s(texBuf, sizeof(texBuf), texturePath.c_str());
-        ImGui::TextUnformatted("Texture Path");
-        if (ImGui::InputText("##UIImgTexture", texBuf, sizeof(texBuf)))
-            texturePath = texBuf;
-        TrackUndoableEdit();
-        if (!texturePath.empty() && ImGui::SmallButton("Clear Texture"))
-        {
-            if (g_editor) g_editor->PushUndoSnapshot();
-            texturePath.clear();
-        }
-        ImGui::EndPopup();
-    }
+    DrawAssetObjectField("Source Image", texturePath, "UIImageTextureObjectPopup",
+        "Select Texture", { ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".hdr" }, "None (Texture2D)");
     UnityColor4("Color", &color, "##UIImgColor");
     const char* imageTypeNames[] = { "Simple", "Sliced", "Tiled", "Filled" };
     int imageTypeIndex = static_cast<int>(type);
@@ -2450,7 +1778,7 @@ void UIImageComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&offset), sizeof(glm::vec2));
     file.write(reinterpret_cast<const char*>(&size), sizeof(glm::vec2));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
-    WriteString(file, texturePath);
+    WriteAssetPathString(file, texturePath);
     int32_t typeInt = static_cast<int32_t>(type);
     file.write(reinterpret_cast<const char*>(&typeInt), sizeof(typeInt));
     file.write(reinterpret_cast<const char*>(&raycastTarget), sizeof(raycastTarget));
@@ -2514,14 +1842,8 @@ void UITextComponent::OnInspectorGUI()
         text = textBuf;
     TrackUndoableEdit();
 
-    std::string fontDisplayName = fontPath.empty() ? "Default Font" : FileNameWithoutExtension(fontPath);
-    DrawObjectFieldButton("Font", nullptr, fontDisplayName,
-        "UITextFontObjectPopup", nullptr, ToFullAssetPath(fontPath));
-    if (ImGui::BeginPopup("UITextFontObjectPopup"))
-    {
-        if (ImGui::MenuItem("Default Font", nullptr, fontPath.empty())) fontPath.clear();
-        ImGui::EndPopup();
-    }
+    DrawAssetObjectField("Font", fontPath, "UITextFontObjectPopup",
+        "Select Font", { ".ttf", ".otf" }, "Default Font");
     const char* fontStyleNames[] = { "Normal", "Bold", "Italic", "Bold And Italic" };
     UnityCombo("Font Style", &fontStyle, fontStyleNames, 4, "##UITextFontStyle");
     UnityDragFloat("Font Size", &fontSize, "##UITextSize", 0.5f, 4.0f, 256.0f);
@@ -2549,7 +1871,7 @@ void UITextComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&fontSize), sizeof(fontSize));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
     WriteString(file, text);
-    WriteString(file, fontPath);
+    WriteAssetPathString(file, fontPath);
     file.write(reinterpret_cast<const char*>(&fontStyle), sizeof(fontStyle));
     file.write(reinterpret_cast<const char*>(&alignment), sizeof(alignment));
     file.write(reinterpret_cast<const char*>(&raycastTarget), sizeof(raycastTarget));

@@ -1,14 +1,13 @@
 #include "Scene.h"
 #ifndef DITTO_HEADLESS_SCENE
 #include "../../Engine/Resources/Resource.h"
-#include "ProjectManager.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
 #include "../Graphics/Materials/MaterialAsset.h"
 #include "../Graphics/UI/UIRenderer.h"
 #include "../Graphics/ParticleSystemComponent.h"
+#include "../Resources/AssetPath.h"
 #include "../../3rdParty/stb_image.h"
 #endif
-#include "PathUtils.h"
 #include "Logger.h"
 #include <iostream>
 #include <fstream>
@@ -295,9 +294,10 @@ void Scene::CollectRenderData()
                 }
 
                 std::string shaderName = material.shaderName.empty() ? SpriteRendererComponent::DefaultShaderName : material.shaderName;
+                std::string texturePath = material.mainTexturePath.empty() ? sprite->spritePath : material.mainTexturePath;
                 glm::vec4 finalColor = hasMaterial && material.ok ? glm::vec4(material.color) * sprite->color : sprite->color;
                 // Sprites use a built-in quad mesh — we just use a sentinel "sprite" meshPath
-                addBatchInstance("__sprite_quad__", shaderName, material.mainTexturePath,
+                addBatchInstance("__sprite_quad__", shaderName, texturePath,
                     finalColor, sprite->sortingOrder);
             }
 
@@ -443,7 +443,9 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
         // handled directly in the rendering pipeline (camera-facing quads).
         if (batch->meshPath == "__sprite_quad__" || batch->meshPath == "__particle_quad__")
         {
-            DrawBatch(renderer, BaseGeometry{}, batch);
+            auto geoIt = customGeometries.find(batch->meshPath);
+            if (geoIt == customGeometries.end()) continue;
+            DrawBatch(renderer, geoIt->second, batch);
             continue;
         }
 
@@ -550,12 +552,7 @@ Ditto::TextureHandle Scene::GetOrCreateMaterialTexture(const std::string& textur
     if (it != materialTextures.end())
         return it->second ? it->second : GetOrCreateMaterialTexture("");
 
-    std::filesystem::path resolved = texturePath;
-    if (!std::filesystem::exists(resolved))
-    {
-        Project* project = ProjectManager::GetInstance().GetCurrentProject();
-        resolved = PathUtils::ResolveAsset(texturePath, project ? std::filesystem::path(project->path) : std::filesystem::path{});
-    }
+    std::filesystem::path resolved = Ditto::AssetPath::ResolveAssetPath(texturePath);
 
     int width = 0, height = 0, channels = 0;
     stbi_set_flip_vertically_on_load(true);
@@ -598,7 +595,8 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
         const unsigned int quadIndices[] = { 0, 1, 2, 0, 2, 3 };
         customGeometries["__sprite_quad__"] =
             BaseGeometry{ renderer->CreateMesh(quadVerts, 32, 8, attribs, quadIndices, 6) };
-        customGeometries["__particle_quad__"] = customGeometries["__sprite_quad__"];
+        customGeometries["__particle_quad__"] =
+            BaseGeometry{ renderer->CreateMesh(quadVerts, 32, 8, attribs, quadIndices, 6) };
     }
 }
 
@@ -608,11 +606,7 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
     if (meshPath == "__sprite_quad__" || meshPath == "__particle_quad__") return;
     if (customGeometries.find(meshPath) != customGeometries.end()) return; // already built (or cached as failed)
 
-    // Resolve the path: accept an existing path as-is, else anchor it to the
-    // executable/project asset location like the built-in models.
-    std::string resolved = meshPath;
-    if (!std::filesystem::exists(resolved))
-        resolved = PathUtils::ResolveAsset(meshPath).string();
+    std::string resolved = Ditto::AssetPath::ResolveTypedAssetPath(meshPath, "Models").string();
 
     ModelData model(resolved);
     if (!renderer || model.vertexData.empty())
@@ -692,7 +686,7 @@ static void GetRaycastMeshForPath(const std::string& meshPath, Resource* resourc
         return;
     }
 
-    // Project mesh — try to load it.
+    // Project mesh: try to load it.
     static std::unordered_map<std::string, std::pair<std::vector<glm::vec3>, std::vector<unsigned int>>> s_raycastCache;
     auto it = s_raycastCache.find(meshPath);
     if (it != s_raycastCache.end())
@@ -702,9 +696,7 @@ static void GetRaycastMeshForPath(const std::string& meshPath, Resource* resourc
         return;
     }
 
-    std::string resolved = meshPath;
-    if (!std::filesystem::exists(resolved))
-        resolved = PathUtils::ResolveAsset(meshPath).string();
+    std::string resolved = Ditto::AssetPath::ResolveTypedAssetPath(meshPath, "Models").string();
 
     ModelData model(resolved);
     if (model.vertexData.empty())
@@ -715,7 +707,7 @@ static void GetRaycastMeshForPath(const std::string& meshPath, Resource* resourc
     }
 
     auto& entry = s_raycastCache[meshPath];
-    // ModelData is interleaved: pos(vec3)+normal(vec3)+uv(vec2) — extract positions.
+    // ModelData is interleaved: pos(vec3)+normal(vec3)+uv(vec2); extract positions.
     for (size_t i = 0; i + 2 < model.vertexData.size(); i += 8)
         entry.first.push_back(glm::vec3(model.vertexData[i], model.vertexData[i + 1], model.vertexData[i + 2]));
     entry.second = model.indices;

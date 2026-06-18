@@ -22,7 +22,10 @@
 #ifdef DITTO_ENABLE_VULKAN
 #include "../Graphics/RHI/Vulkan/VulkanRenderer.h"
 #endif
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
+#include <vector>
 
 using namespace std;
 using namespace glm;
@@ -75,6 +78,16 @@ static std::string ReadTextFile(const std::string& path)
     return ss.str();
 }
 
+static const char* BackendName(Engine::Backend backend)
+{
+    switch (backend)
+    {
+    case Engine::Backend::Vulkan: return "Vulkan";
+    case Engine::Backend::OpenGL: return "OpenGL";
+    }
+    return "Unknown";
+}
+
 template<typename Func>
 void ForEachGameObject(Scene* scene, Func&& func)
 {
@@ -102,43 +115,38 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     window_width = 1200; window_height = 900;
     keySpeed = 0.01f, mouseSpeed = 1.0f;
     editor = nullptr;
+    window = nullptr;
 
     if (!glfwInit()) throw runtime_error("GLFW init failed");
 
-    // ---- Backend selection: Vulkan first when built; OpenGL otherwise ----
+    std::vector<Backend> backendCandidates;
 #ifdef DITTO_ENABLE_VULKAN
-    backend = Backend::Vulkan;
+    backendCandidates = { Backend::Vulkan, Backend::OpenGL };
 #else
-    backend = Backend::OpenGL;
+    backendCandidates = { Backend::OpenGL };
 #endif
+
+    char* rhi = nullptr; size_t rhiLen = 0;
+    if (_dupenv_s(&rhi, &rhiLen, "DITTO_RHI") == 0 && rhi)
     {
-        char* rhi = nullptr; size_t rhiLen = 0;
-        if (_dupenv_s(&rhi, &rhiLen, "DITTO_RHI") == 0 && rhi)
+        std::string v = rhi;
+        free(rhi);
+        std::transform(v.begin(), v.end(), v.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        if (v == "gl" || v == "opengl")
+            backendCandidates = { Backend::OpenGL };
+        else if (v == "vk" || v == "vulkan")
         {
-            std::string v = rhi;
-            free(rhi);
-            if (v == "gl" || v == "opengl" || v == "OpenGL")
-                backend = Backend::OpenGL;
-            else if (v == "dx" || v == "dx12" || v == "directx")
-                backend = Backend::DirectX;
-            else if (v == "vk" || v == "vulkan" || v == "Vulkan")
 #ifdef DITTO_ENABLE_VULKAN
-                backend = Backend::Vulkan;
+            backendCandidates = { Backend::Vulkan, Backend::OpenGL };
 #else
-                Ditto::Logger::Get().Warning("[Engine] DITTO_RHI=vk ignored; this build was compiled without Vulkan SDK support.");
+            Ditto::Logger::Get().Warning("[Engine] DITTO_RHI=vulkan ignored; this build was compiled without Vulkan support.");
+            backendCandidates = { Backend::OpenGL };
 #endif
         }
-    }
-
-    // DirectX backend not implemented yet -> fall back to the best available backend.
-    if (backend == Backend::DirectX)
-    {
-        Ditto::Logger::Get().Warning("[Engine] DirectX backend not implemented yet; using available backend.");
-#ifdef DITTO_ENABLE_VULKAN
-        backend = Backend::Vulkan;
-#else
-        backend = Backend::OpenGL;
-#endif
+        else if (v == "dx" || v == "dx12" || v == "directx")
+            Ditto::Logger::Get().Warning("[Engine] DITTO_RHI requested DirectX, but this build only supports Vulkan/OpenGL.");
     }
 
     // Create the window + renderer for `backend`; returns false on failure so the
@@ -179,18 +187,23 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         return true;
     };
 
-    if (!makeWindowRenderer(backend))
+    bool initialized = false;
+    for (Backend candidate : backendCandidates)
     {
-        if (backend != Backend::OpenGL)
+        backend = candidate;
+        Ditto::Logger::Get().Info(std::string("[Engine] Trying RHI: ") + BackendName(candidate));
+        if (makeWindowRenderer(candidate))
         {
-            Ditto::Logger::Get().Warning("[Engine] backend init failed; falling back to OpenGL.");
-            renderer.reset();
-            if (window) { glfwDestroyWindow(window); window = nullptr; }
-            backend = Backend::OpenGL;
-            if (!makeWindowRenderer(Backend::OpenGL)) { glfwTerminate(); throw runtime_error("Window/renderer create failed"); }
+            Ditto::Logger::Get().Info(std::string("[Engine] Active RHI: ") + BackendName(candidate));
+            initialized = true;
+            break;
         }
-        else { glfwTerminate(); throw runtime_error("Window/renderer create failed"); }
+
+        Ditto::Logger::Get().Warning(std::string("[Engine] RHI init failed: ") + BackendName(candidate));
+        renderer.reset();
+        if (window) { glfwDestroyWindow(window); window = nullptr; }
     }
+    if (!initialized) { glfwTerminate(); throw runtime_error("Window/renderer create failed"); }
 
     resource = std::make_unique<Resource>();
     scene = std::make_unique<Scene>();
@@ -285,34 +298,6 @@ void Engine::Run()
             CSharpScriptSystem::SetDeltaTime(deltaTime);
             if (enteredPlay) CSharpScriptSystem::SetTime(0.0f);
             CSharpScriptSystem::SetTime(CSharpScriptSystem::GetTime() + deltaTime);
-
-            if (enteredPlay)
-            {
-                ForEachGameObject(scene.get(), [](GameObject* obj)
-                {
-                    ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
-                    {
-                        if (script->ShouldReload())
-                        {
-                            script->HotReloadScript();
-                        }
-                        else
-                        {
-                            script->scriptInstance.reset();
-                            script->started = false;
-                        }
-                    });
-                });
-
-                // Auto-start Animator/ParticleSystem components flagged playOnAwake.
-                ForEachGameObject(scene.get(), [](GameObject* obj)
-                {
-                    if (auto* anim = obj->GetComponent<AnimatorComponent>())
-                        if (anim->playOnAwake) anim->Play();
-                    if (auto* ps = obj->GetComponent<ParticleSystemComponent>())
-                        if (ps->playOnAwake) ps->Play();
-                });
-            }
 
             double physStart = glfwGetTime();
             if (physics2D)
@@ -624,31 +609,7 @@ void Engine::SetEngineState(State newState)
         case Play:
         {
             if (oldState == Edit)
-            {
-                // Single-ownership: physics only needs the root to traverse the
-                // whole tree.
-                if (scene && scene->rootGameObject)
-                {
-                    std::vector<GameObject*> rootObjects;
-                    rootObjects.push_back(scene->rootGameObject.get());
-                    physics->GenerateColliders(rootObjects);
-                    if (physics2D) physics2D->Rebuild(scene.get());
-                    physics2DAccumulator = 0.0f;
-                }
-
-                ForEachGameObject(scene.get(), [](GameObject* obj)
-                {
-                    ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
-                    {
-                        script->Start();
-                    });
-
-                    // Kick off play-on-awake audio sources.
-                    for (AudioSourceComponent* audio : obj->GetComponents<AudioSourceComponent>())
-                        if (audio->enabled && audio->playOnAwake)
-                            audio->Play();
-                });
-            }
+                EnterPlayMode();
             break;
         }
         case Pause:
@@ -657,31 +618,95 @@ void Engine::SetEngineState(State newState)
         }
         case Stop:
         {
-            ForEachGameObject(scene.get(), [](GameObject* obj)
-            {
-                ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
-                {
-                    script->OnDestroy();
-                    script->started = false;
-                });
-
-                // Drop back to euler-authored rotation so the next Play seeds the
-                // quaternion fresh from the (possibly restored) euler values.
-                if (TransformComponent* t = obj->GetComponent<TransformComponent>())
-                {
-                    t->useQuatRotation = false;
-                    t->localDirty = true;
-                }
-            });
-
-            physics->ClearColliders();
-            if (physics2D) physics2D->Clear();
-            physics2DAccumulator = 0.0f;
-            AudioEngine::StopAll();
+            ExitPlayMode();
             break;
         }
     }
     state = newState;
+}
+
+void Engine::RebuildRuntimePhysics()
+{
+    if (scene && scene->rootGameObject && physics)
+    {
+        std::vector<GameObject*> rootObjects;
+        rootObjects.push_back(scene->rootGameObject.get());
+        physics->GenerateColliders(rootObjects);
+    }
+    if (physics2D) physics2D->Rebuild(scene.get());
+    physics2DAccumulator = 0.0f;
+}
+
+void Engine::PrepareScriptsForPlay()
+{
+    ForEachGameObject(scene.get(), [](GameObject* obj)
+    {
+        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
+        {
+            if (script->ShouldReload())
+            {
+                script->HotReloadScript();
+            }
+            else
+            {
+                script->scriptInstance.reset();
+                script->started = false;
+            }
+        });
+    });
+}
+
+void Engine::StartScriptsAndAwakeComponents()
+{
+    ForEachGameObject(scene.get(), [](GameObject* obj)
+    {
+        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
+        {
+            script->Start();
+        });
+
+        for (AudioSourceComponent* audio : obj->GetComponents<AudioSourceComponent>())
+            if (audio->enabled && audio->playOnAwake)
+                audio->Play();
+
+        if (auto* anim = obj->GetComponent<AnimatorComponent>())
+            if (anim->playOnAwake) anim->Play();
+        if (auto* ps = obj->GetComponent<ParticleSystemComponent>())
+            if (ps->playOnAwake) ps->Play();
+    });
+}
+
+void Engine::EnterPlayMode()
+{
+    RebuildRuntimePhysics();
+    PrepareScriptsForPlay();
+    StartScriptsAndAwakeComponents();
+    CSharpScriptSystem::SetTime(0.0f);
+}
+
+void Engine::ExitPlayMode()
+{
+    ForEachGameObject(scene.get(), [](GameObject* obj)
+    {
+        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
+        {
+            script->OnDestroy();
+            script->started = false;
+        });
+
+        // Drop back to euler-authored rotation so the next Play seeds the
+        // quaternion fresh from the (possibly restored) euler values.
+        if (TransformComponent* t = obj->GetComponent<TransformComponent>())
+        {
+            t->useQuatRotation = false;
+            t->localDirty = true;
+        }
+    });
+
+    if (physics) physics->ClearColliders();
+    if (physics2D) physics2D->Clear();
+    physics2DAccumulator = 0.0f;
+    AudioEngine::StopAll();
 }
 
 void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)
@@ -739,27 +764,27 @@ void Engine::LoadGameScene()
 
     if (sceneName.empty()) sceneName = "Default";
 
-    std::string scenePath = gameProjectPath + "/Assets/Scenes/" + sceneName + ".bin";
-    DITTO_LOG_INFO_STREAM("[Engine] Loading scene: " << scenePath);
+    fs::path scenePath = fs::path(gameProjectPath) / "Assets" / "Scenes" / (sceneName + ".bin");
+    DITTO_LOG_INFO_STREAM("[Engine] Loading scene: " << scenePath.string());
     
     bool loaded = false;
     
     if (scene && fs::exists(scenePath))
     {
-        if (scene->LoadScene(scenePath.c_str()))
+        if (scene->LoadScene(scenePath.string().c_str()))
         {
             DITTO_LOG_INFO_STREAM("[Engine] Scene loaded: " << scene->name);
             loaded = true;
         }
         else
         {
-            DITTO_LOG_ERROR_STREAM("[Engine] Failed to load scene: " << scenePath);
+            DITTO_LOG_ERROR_STREAM("[Engine] Failed to load scene: " << scenePath.string());
         }
     }
     
     if (!loaded)
     {
-        std::string scenesDir = gameProjectPath + "/Assets/Scenes";
+        fs::path scenesDir = fs::path(gameProjectPath) / "Assets" / "Scenes";
         if (fs::exists(scenesDir))
         {
             for (const auto& entry : fs::directory_iterator(scenesDir))
@@ -784,30 +809,7 @@ void Engine::LoadGameScene()
         DITTO_LOG_ERROR("[Engine] No scene could be loaded!");
     }
 
-    if (scene && scene->rootGameObject)
-    {
-        // Single-ownership: physics only needs the root to traverse the
-        // whole tree.
-        std::vector<GameObject*> rootObjects;
-        rootObjects.push_back(scene->rootGameObject.get());
-        physics->GenerateColliders(rootObjects);
-        if (physics2D) physics2D->Rebuild(scene.get());
-        physics2DAccumulator = 0.0f;
-    }
-
-    ForEachGameObject(scene.get(), [](GameObject* obj)
-    {
-        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
-        {
-            script->Start();
-        });
-
-        // Kick off play-on-awake audio sources (mirrors SetEngineState(Play)).
-        for (AudioSourceComponent* audio : obj->GetComponents<AudioSourceComponent>())
-            if (audio->enabled && audio->playOnAwake)
-                audio->Play();
-    });
-
+    EnterPlayMode();
     state = Play;
     DITTO_LOG_INFO("[Engine] Game mode active, state = Play");
 }

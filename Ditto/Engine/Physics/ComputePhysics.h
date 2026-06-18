@@ -3,34 +3,34 @@
 #include "../../3rdParty/GLAD/glad.h"
 #include <vector>
 
-// GPU ¶ËÊı¾İ½á¹¹£¨±ØĞëÓë×ÅÉ«Æ÷ÖĞµÄ²¼¾ÖÑÏ¸ñÒ»ÖÂ£¬std430 ¶ÔÆë£©
+// GPU ç«¯æ•°æ®ç»“æ„ï¼ˆå¿…é¡»ä¸ç€è‰²å™¨ä¸­çš„å¸ƒå±€ä¸¥æ ¼ä¸€è‡´ï¼Œstd430 å¯¹é½ï¼‰
 struct RigidbodyGPU {
-    glm::vec4 velocity;          // (vx,vy,vz, Î´Ê¹ÓÃ)
-    glm::vec4 angularVelocity;    // (¦Øx,¦Øy,¦Øz, Î´Ê¹ÓÃ)
-    glm::mat3 invInertiaLocal;    // ¾Ö²¿¹ßĞÔÕÅÁ¿µÄÄæ
+    glm::vec4 velocity;          // (vx,vy,vz, æœªä½¿ç”¨)
+    glm::vec4 angularVelocity;    // (Ï‰x,Ï‰y,Ï‰z, æœªä½¿ç”¨)
+    glm::mat3 invInertiaLocal;    // å±€éƒ¨æƒ¯æ€§å¼ é‡çš„é€†
     int type;                     // 0=Static, 1=Dynamic
     float mass;
     float linearDamping;
     float angularDamping;
     int useGravity;
-    int _pad[2];                  // ±£³Ö 16 ×Ö½Ú¶ÔÆë
+    int _pad[2];                  // ä¿æŒ 16 å­—èŠ‚å¯¹é½
 };
 
 struct TransformGPU {
-    glm::vec4 position;           // (px,py,pz, Î´Ê¹ÓÃ)
-    glm::vec4 rotation;           // ËÄÔªÊı (x,y,z,w)
+    glm::vec4 position;           // (px,py,pz, æœªä½¿ç”¨)
+    glm::vec4 rotation;           // å››å…ƒæ•° (x,y,z,w)
 };
 
 struct ColliderGPU {
-    int transformIdx;             // ¶ÔÓ¦µÄ TransformGPU Ë÷Òı
-    int rigidbodyIdx;             // ¶ÔÓ¦µÄ RigidbodyGPU Ë÷Òı
-    int meshStart;                // ÔÚÈ«¾Ö¶¥µãÊı×éÖĞµÄÆğÊ¼Ë÷Òı
-    int meshCount;                // ¶¥µãÊıÁ¿
-    glm::vec4 localAABBMin;       // ¾Ö²¿ AABB ×îĞ¡Öµ (xyz)
-    glm::vec4 localAABBMax;       // ¾Ö²¿ AABB ×î´óÖµ (xyz)
-    glm::vec4 worldAABBMin;       // ÊÀ½ç AABB ×îĞ¡Öµ
-    glm::vec4 worldAABBMax;       // ÊÀ½ç AABB ×î´óÖµ
-    int isDirty;                  // ±ê¼ÇÊÇ·ñĞèÒª¸üĞÂÊÀ½ç AABB
+    int transformIdx;             // å¯¹åº”çš„ TransformGPU ç´¢å¼•
+    int rigidbodyIdx;             // å¯¹åº”çš„ RigidbodyGPU ç´¢å¼•
+    int meshStart;                // åœ¨å…¨å±€é¡¶ç‚¹æ•°ç»„ä¸­çš„èµ·å§‹ç´¢å¼•
+    int meshCount;                // é¡¶ç‚¹æ•°é‡
+    glm::vec4 localAABBMin;       // å±€éƒ¨ AABB æœ€å°å€¼ (xyz)
+    glm::vec4 localAABBMax;       // å±€éƒ¨ AABB æœ€å¤§å€¼ (xyz)
+    glm::vec4 worldAABBMin;       // ä¸–ç•Œ AABB æœ€å°å€¼
+    glm::vec4 worldAABBMax;       // ä¸–ç•Œ AABB æœ€å¤§å€¼
+    int isDirty;                  // æ ‡è®°æ˜¯å¦éœ€è¦æ›´æ–°ä¸–ç•Œ AABB
     int _pad[3];
 };
 
@@ -43,8 +43,8 @@ struct CollisionDataGPU {
     int colliderA;
     int colliderB;
     float depth;
-    glm::vec4 normal;             // (nx,ny,nz, Î´Ê¹ÓÃ)
-    glm::vec4 contactPointA;      // (x,y,z, Î´Ê¹ÓÃ)
+    glm::vec4 normal;             // (nx,ny,nz, æœªä½¿ç”¨)
+    glm::vec4 contactPointA;      // (x,y,z, æœªä½¿ç”¨)
     glm::vec4 contactPointB;
 };
 
@@ -53,22 +53,22 @@ public:
     ComputePhysics();
     virtual ~ComputePhysics();
 
-    // ÖØĞ´»ùÀàĞéº¯Êı
+    // é‡å†™åŸºç±»è™šå‡½æ•°
     virtual void GenerateColliders(const std::vector<GameObject*>& gameobjects) override;
     virtual void UpdatePhysics(float dt) override;
 
 protected:
-    // GPU »º³åÇø¶ÔÏó
+    // GPU ç¼“å†²åŒºå¯¹è±¡
     GLuint rigidbodySSBO;          // binding = 0
     GLuint transformSSBO;          // binding = 1
     GLuint colliderSSBO;           // binding = 2
-    GLuint meshVertexSSBO;         // binding = 3 (ËùÓĞÍø¸ñ¶¥µãÆ½ÆÌ)
-    GLuint pairSSBO;               // binding = 4 (Åö×²¶ÔÁĞ±í)
-    GLuint collisionDataSSBO;      // binding = 5 (Åö×²Êı¾İÁĞ±í)
-    GLuint atomicCounter;          // Ô­×Ó¼ÆÊıÆ÷ buffer binding = 0 (ÓÃÓÚÉú³ÉÅö×²¶Ô)
-    GLuint atomicCounterNarrow;    // ÁíÒ»¸öÔ­×Ó¼ÆÊıÆ÷ binding = 1 (ÓÃÓÚÉú³ÉÅö×²Êı¾İ)
+    GLuint meshVertexSSBO;         // binding = 3 (æ‰€æœ‰ç½‘æ ¼é¡¶ç‚¹å¹³é“º)
+    GLuint pairSSBO;               // binding = 4 (ç¢°æ’å¯¹åˆ—è¡¨)
+    GLuint collisionDataSSBO;      // binding = 5 (ç¢°æ’æ•°æ®åˆ—è¡¨)
+    GLuint atomicCounter;          // åŸå­è®¡æ•°å™¨ buffer binding = 0 (ç”¨äºç”Ÿæˆç¢°æ’å¯¹)
+    GLuint atomicCounterNarrow;    // å¦ä¸€ä¸ªåŸå­è®¡æ•°å™¨ binding = 1 (ç”¨äºç”Ÿæˆç¢°æ’æ•°æ®)
 
-    // ¼ÆËã×ÅÉ«Æ÷³ÌĞò
+    // è®¡ç®—ç€è‰²å™¨ç¨‹åº
     GLuint integrateForceProgram;
     GLuint updateAABBProgram;
     GLuint broadPhaseProgram;
@@ -76,23 +76,23 @@ protected:
     GLuint solveCollisionsProgram;
     GLuint positionCorrectionProgram;
 
-    int numColliders;              // µ±Ç°Åö×²ÌåÊıÁ¿
-    int maxPairs;                  // Ô¤¹À×î´óÅö×²¶ÔÊıÁ¿£¨¶¯Ì¬Ôö³¤£©
+    int numColliders;              // å½“å‰ç¢°æ’ä½“æ•°é‡
+    int maxPairs;                  // é¢„ä¼°æœ€å¤§ç¢°æ’å¯¹æ•°é‡ï¼ˆåŠ¨æ€å¢é•¿ï¼‰
 
-    // ¸¨Öúº¯Êı
+    // è¾…åŠ©å‡½æ•°
     void InitGPUResources();
     void CompileShaders();
-    void UploadColliderData();     // ½« CPU colliders Êı¾İ×ª»»Îª GPU ¸ñÊ½²¢ÉÏ´«
-    void ResizePairBuffers(int requiredPairs); // ÈôÅö×²¶ÔÊıÁ¿³¬¹ı maxPairs£¬ÖØĞÂ·ÖÅä»º³åÇø
+    void UploadColliderData();     // å°† CPU colliders æ•°æ®è½¬æ¢ä¸º GPU æ ¼å¼å¹¶ä¸Šä¼ 
+    void ResizePairBuffers(int requiredPairs); // è‹¥ç¢°æ’å¯¹æ•°é‡è¶…è¿‡ maxPairsï¼Œé‡æ–°åˆ†é…ç¼“å†²åŒº
 
-    // µ÷¶È¸÷¸öÎïÀí½×¶Î
+    // è°ƒåº¦å„ä¸ªç‰©ç†é˜¶æ®µ
     void DispatchIntegrateForce(float dt);
     void DispatchUpdateAABB();
     void DispatchBroadPhase();
-    void DispatchNarrowPhase(GLuint pairCount);  // ĞèÒª´«ÈëÊµ¼Ê¶ÔÊıÁ¿
+    void DispatchNarrowPhase(GLuint pairCount);  // éœ€è¦ä¼ å…¥å®é™…å¯¹æ•°é‡
     void DispatchSolveCollisions(int iteration);
     void DispatchPositionCorrection();
 
-    // ¿ÉÑ¡£º½« GPU ±ä»»Êı¾İ¶Á»Ø CPU£¨¹©äÖÈ¾Ê¹ÓÃ£©
+    // å¯é€‰ï¼šå°† GPU å˜æ¢æ•°æ®è¯»å› CPUï¼ˆä¾›æ¸²æŸ“ä½¿ç”¨ï¼‰
     void ReadbackTransforms();
 };
