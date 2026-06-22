@@ -86,6 +86,14 @@ inline void ForEachScriptComponent(GameObject* obj, Func&& func)
 // ==================== C# Script System ====================
 typedef void (*LogCallback)(const std::string& message);
 
+struct CSharpCompileResult
+{
+    bool ok = false;
+    std::string output;
+    int warningCount = 0;
+    int errorCount = 0;
+};
+
 struct CSharpScriptSystem
 {
     static void Initialize();
@@ -98,6 +106,7 @@ struct CSharpScriptSystem
     static void CallUpdate();
 
     static bool CompileScript(const std::string& csPath, std::string& outDllPath);
+    static CSharpCompileResult CompileScriptDetailed(const std::string& csPath, std::string& outDllPath);
     static bool HotReloadScript(CSharpScriptComponent* component);
 
     static bool IsInitialized() { return s_initialized; }

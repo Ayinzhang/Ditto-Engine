@@ -11,6 +11,7 @@
 #include "../Engine/Core/Logger.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
 #include "../Engine/Physics/PhysicsMaterial2DAsset.h"
+#include "../Engine/Resources/AssetDatabase.h"
 #include "../3rdParty/stb_image.h"
 #include <filesystem>
 #include <shlobj.h>
@@ -103,6 +104,10 @@ void ProjectWindow::ImportExternalFiles(const std::vector<std::string>& paths)
                 fs::copy(source, target, fs::copy_options::recursive);
             else
                 fs::copy_file(source, target);
+            if (fs::is_directory(target, ec))
+                Ditto::AssetDatabase::Get().ScanProjectAssets(project->path, true);
+            else if (!Ditto::AssetDatabase::IsMetaFile(target))
+                Ditto::AssetDatabase::Get().EnsureMetaForAsset(target);
             m_thumbnailCache.erase(target.string());
             DITTO_LOG_INFO_STREAM("[ProjectWindow] Imported external file: " << target.string());
         }
@@ -646,7 +651,12 @@ void ProjectWindow::Draw()
                         if (ImGui::MenuItem("Delete"))
                         {
                             try {
+                                fs::path metaPath = entry.path();
+                                metaPath += ".meta";
                                 fs::remove(entry.path());
+                                std::error_code ec;
+                                fs::remove(metaPath, ec);
+                                Ditto::AssetDatabase::Get().ForgetAsset(entry.path());
                                 if (m_editor && m_editor->selectedFile.path == entry.path().string())
                                     m_editor->selectedFile.Clear();
                             }
@@ -774,6 +784,7 @@ void ProjectWindow::CreateNewScript(const std::string& name)
         file << "    }\n";
         file << "}\n";
         file.close();
+        Ditto::AssetDatabase::Get().EnsureMetaForAsset(filePath);
         DITTO_LOG_INFO_STREAM("[ProjectWindow] Created script: " << filePath );
     }
 }
@@ -793,6 +804,7 @@ void ProjectWindow::CreateNewMaterial(const std::string& name)
     Ditto::MaterialAsset material = Ditto::MakeDefaultMaterial(filePath.stem().string());
     if (Ditto::SaveMaterialAsset(material, filePath))
     {
+        Ditto::AssetDatabase::Get().EnsureMetaForAsset(filePath);
         m_thumbnailCache.erase(filePath.string());
         DITTO_LOG_INFO_STREAM("[ProjectWindow] Created material: " << filePath.string());
     }
@@ -812,7 +824,10 @@ void ProjectWindow::CreateNewPhysicsMaterial2D(const std::string& name)
     fs::path filePath = MakeUniquePath(fs::path(targetFolder) / (name + ".physmat2d"));
     Ditto::PhysicsMaterial2DAsset material = Ditto::MakeDefaultPhysicsMaterial2D(filePath.stem().string());
     if (Ditto::SavePhysicsMaterial2DAsset(material, filePath))
+    {
+        Ditto::AssetDatabase::Get().EnsureMetaForAsset(filePath);
         DITTO_LOG_INFO_STREAM("[ProjectWindow] Created physics material 2D: " << filePath.string());
+    }
 }
 
 void ProjectWindow::CreateNewShader(const std::string& name)
@@ -879,6 +894,7 @@ void ProjectWindow::CreateNewShader(const std::string& name)
     file << "    }\n";
     file << "}\n";
     file.close();
+    Ditto::AssetDatabase::Get().EnsureMetaForAsset(filePath);
     DITTO_LOG_INFO_STREAM("[ProjectWindow] Created shader: " << filePath.string());
 }
 
@@ -939,6 +955,7 @@ void ProjectWindow::CreateNewScene(const std::string& name)
             uint64_t fileSize = 0;
             file.write(reinterpret_cast<const char*>(&fileSize), sizeof(fileSize));
             file.close();
+            Ditto::AssetDatabase::Get().EnsureMetaForAsset(scenePath);
             DITTO_LOG_INFO_STREAM("[ProjectWindow] Created scene: " << scenePath );
         }
     }
@@ -957,6 +974,15 @@ void ProjectWindow::RenameFile(const std::string& oldPath, const std::string& ne
         std::string newPath = parent + "/" + newName + ext;
         
         fs::rename(oldPath, newPath);
+        fs::path oldMeta = fs::path(oldPath);
+        oldMeta += ".meta";
+        fs::path newMeta = fs::path(newPath);
+        newMeta += ".meta";
+        std::error_code ec;
+        Ditto::AssetDatabase::Get().ForgetAsset(oldPath);
+        if (fs::exists(oldMeta, ec))
+            fs::rename(oldMeta, newMeta, ec);
+        Ditto::AssetDatabase::Get().EnsureMetaForAsset(newPath);
         DITTO_LOG_INFO_STREAM("[ProjectWindow] Renamed: " << oldPath << " -> " << newPath );
     }
     catch (const std::exception& e) {

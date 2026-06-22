@@ -8,6 +8,24 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
+function(ditto_disable_vcpkg_msbuild TARGET_NAME)
+    if(MSVC)
+        # The Visual Studio vcpkg integration appends installed\x64-windows\lib\*.lib
+        # to CMake-generated projects. Ditto links explicit local/SDK libraries, so
+        # the wildcard pulls unrelated release CRT libs into Debug builds and runs
+        # vcpkg's AppLocal pwsh step on machines without PowerShell Core.
+        set_property(TARGET ${TARGET_NAME} PROPERTY VS_GLOBAL_VcpkgEnabled false)
+    endif()
+endfunction()
+
+function(ditto_ignore_release_crt_defaultlib TARGET_NAME)
+    if(MSVC)
+        # Local third-party .lib files are release CRT builds. Keep Ditto Debug
+        # objects on /MDd, but ignore the release CRT defaultlib they advertise.
+        target_link_options(${TARGET_NAME} PRIVATE "$<$<CONFIG:Debug>:/NODEFAULTLIB:MSVCRT>")
+    endif()
+endfunction()
+
 # Automatically collect source files using GLOB
 file(GLOB_RECURSE SOURCES
     "3rdParty/GLAD/*.c"
@@ -45,6 +63,8 @@ endif()
 
 # Executable
 add_executable(Ditto ${SOURCES})
+ditto_disable_vcpkg_msbuild(Ditto)
+ditto_ignore_release_crt_defaultlib(Ditto)
 
 # Include directories
 target_include_directories(Ditto PRIVATE
@@ -111,6 +131,8 @@ add_executable(DittoTests
     Tests/TestMain.cpp
     Engine/Core/GameObject.cpp
     Engine/Core/Scene.cpp
+    Engine/Core/SceneRaycast.cpp
+    Engine/Core/SceneSerialization.cpp
     Engine/Core/PathUtils.cpp
     Engine/Core/Logger.cpp
     Engine/Core/ProjectManager.cpp
@@ -122,6 +144,8 @@ add_executable(DittoTests
     Engine/Physics/PhysicsMaterial2DAsset.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp
+    Engine/Resources/AssetDatabase.cpp
+    Engine/Resources/AssetReferenceIO.cpp
     Engine/Resources/AssetPath.cpp
     Engine/Resources/Resource.cpp
     Engine/Graphics/Materials/MaterialAsset.cpp
@@ -129,6 +153,7 @@ add_executable(DittoTests
     Engine/Animation/AnimatorComponent.cpp
     Engine/Graphics/ParticleSystemComponent.cpp
 )
+ditto_disable_vcpkg_msbuild(DittoTests)
 
 target_compile_definitions(DittoTests PRIVATE DITTO_HEADLESS_TESTS=1 DITTO_HEADLESS_SCENE=1)
 target_include_directories(DittoTests PRIVATE
@@ -152,6 +177,8 @@ add_executable(DittoRenderSmoke
     Tests/StbImage.cpp
     Engine/Core/GameObject.cpp
     Engine/Core/Scene.cpp
+    Engine/Core/SceneRaycast.cpp
+    Engine/Core/SceneSerialization.cpp
     Engine/Core/PathUtils.cpp
     Engine/Core/Logger.cpp
     Engine/Core/ProjectManager.cpp
@@ -163,6 +190,8 @@ add_executable(DittoRenderSmoke
     Engine/Physics/PhysicsMaterial2DAsset.cpp
     Engine/Physics/CollisionShape.cpp
     Engine/Physics/GJK.cpp
+    Engine/Resources/AssetDatabase.cpp
+    Engine/Resources/AssetReferenceIO.cpp
     Engine/Resources/AssetPath.cpp
     Engine/Resources/Resource.cpp
     Engine/Graphics/Materials/MaterialAsset.cpp
@@ -181,6 +210,17 @@ add_executable(DittoRenderSmoke
     3rdParty/ImGui/imgui_impl_glfw.cpp
     3rdParty/ImGui/imgui_impl_opengl3.cpp
 )
+ditto_disable_vcpkg_msbuild(DittoRenderSmoke)
+ditto_ignore_release_crt_defaultlib(DittoRenderSmoke)
+
+if(Vulkan_FOUND)
+    target_compile_definitions(DittoRenderSmoke PRIVATE DITTO_ENABLE_VULKAN=1)
+    target_sources(DittoRenderSmoke PRIVATE
+        Engine/Graphics/RHI/Vulkan/VulkanRenderer.cpp
+        3rdParty/ImGui/imgui_impl_vulkan.cpp
+    )
+    target_link_libraries(DittoRenderSmoke PRIVATE Vulkan::Vulkan)
+endif()
 
 target_compile_definitions(DittoRenderSmoke PRIVATE DITTO_HEADLESS_TESTS=1)
 target_include_directories(DittoRenderSmoke PRIVATE
@@ -202,8 +242,14 @@ if(TARGET DittoEngineCSharp)
     add_dependencies(DittoRenderSmoke DittoEngineCSharp)
 endif()
 
-add_test(NAME Ditto.Render COMMAND DittoRenderSmoke --out ${CMAKE_CURRENT_BINARY_DIR}/TestOutput/RenderSmoke)
-set_tests_properties(Ditto.Render PROPERTIES LABELS "render")
+add_test(NAME Ditto.Render.OpenGL
+    COMMAND DittoRenderSmoke --backend opengl --out ${CMAKE_CURRENT_BINARY_DIR}/TestOutput/RenderSmokeGL)
+set_tests_properties(Ditto.Render.OpenGL PROPERTIES LABELS "render;opengl")
+if(Vulkan_FOUND)
+    add_test(NAME Ditto.Render.Vulkan
+        COMMAND DittoRenderSmoke --backend vulkan --out ${CMAKE_CURRENT_BINARY_DIR}/TestOutput/RenderSmokeVK)
+    set_tests_properties(Ditto.Render.Vulkan PROPERTIES LABELS "render;vulkan")
+endif()
 
 add_test(NAME Ditto.Simulation COMMAND DittoTests --stage simulation)
 set_tests_properties(Ditto.Simulation PROPERTIES LABELS "simulation")
@@ -213,5 +259,6 @@ add_test(NAME Ditto.FullFlow
         ${CMAKE_CURRENT_SOURCE_DIR}/Tests/RunBuiltTests.ps1
         -TestsExe $<TARGET_FILE:DittoTests>
         -RenderExe $<TARGET_FILE:DittoRenderSmoke>
-        -RenderOut ${CMAKE_CURRENT_BINARY_DIR}/TestOutput/RenderSmoke)
+        -RenderOut ${CMAKE_CURRENT_BINARY_DIR}/TestOutput/RenderSmoke
+        -RunVulkan:$<BOOL:${Vulkan_FOUND}>)
 set_tests_properties(Ditto.FullFlow PROPERTIES LABELS "full")

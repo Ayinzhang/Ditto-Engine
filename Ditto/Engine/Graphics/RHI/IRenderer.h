@@ -132,6 +132,7 @@ namespace Ditto
         virtual void BeginRenderTarget(RenderTargetHandle) = 0;
         virtual void EndRenderTarget() = 0;
         virtual TextureHandle GetColorTexture(RenderTargetHandle) = 0;
+        virtual bool ReadRenderTargetPixels(RenderTargetHandle, std::vector<unsigned char>& rgba) { return false; }
         virtual void DestroyRenderTarget(RenderTargetHandle) = 0;
 
         // ---- Draw ----

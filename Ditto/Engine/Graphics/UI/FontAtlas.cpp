@@ -61,7 +61,7 @@ bool FontAtlas::Load(const std::string& ttfPath)
     std::memcpy(bakedChars.data(), chars.data(), CharCount * sizeof(stbtt_bakedchar));
 
     loaded = true;
-    DITTO_LOG_INFO_STREAM("[FontAtlas] Baked font atlas from: " << ttfPath);
+    DITTO_LOG_VERBOSE_STREAM("[FontAtlas] Baked font atlas from: " << ttfPath);
     return true;
 }
 

@@ -9,6 +9,7 @@
 #include "../Engine/Physics/Physics.h"
 #include "../Engine/Physics/Physics2D.h"
 #include "../Engine/Physics/PhysicsMaterial2DAsset.h"
+#include "../Engine/Resources/AssetDatabase.h"
 #include "../Engine/Resources/AssetPath.h"
 
 #include <cmath>
@@ -136,7 +137,7 @@ namespace
         cs << "    [HideInInspector] public float hidden = 99.0f;\n";
         cs << "    public static float staticValue = 1.0f;\n";
         cs << "    public float PropertyValue { get; set; }\n";
-        cs << "    public void Update() { Debug.Log(label); }\n";
+        cs << "    public override void Update() { Debug.Log(label + privateWeight.ToString()); }\n";
         cs << "}\n";
         return path;
     }
@@ -158,6 +159,27 @@ namespace
             }
         }
         return out;
+    }
+
+    std::string ReadMetaGuid(const fs::path& metaPath)
+    {
+        std::ifstream file(metaPath);
+        std::string line;
+        while (std::getline(file, line))
+        {
+            size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            std::string key = line.substr(0, eq);
+            key.erase(std::remove_if(key.begin(), key.end(),
+                [](unsigned char c) { return std::isspace(c); }), key.end());
+            if (key != "guid") continue;
+
+            std::string value = line.substr(eq + 1);
+            value.erase(std::remove_if(value.begin(), value.end(),
+                [](unsigned char c) { return std::isspace(c) || c == '"'; }), value.end());
+            return value;
+        }
+        return {};
     }
 
     const char* ComponentName(const Component* component)
@@ -233,6 +255,19 @@ namespace
                 return child.get();
         return nullptr;
     }
+
+    struct ScopedConsoleLogSilence
+    {
+        ScopedConsoleLogSilence()
+        {
+            Ditto::Logger::Get().SetConsoleMinLevel(Ditto::LogLevel::None);
+        }
+
+        ~ScopedConsoleLogSilence()
+        {
+            Ditto::Logger::Get().SetConsoleMinLevel(Ditto::LogLevel::Info);
+        }
+    };
 }
 
 #define TEST_CASE(stage, name) static void name(); static RegisterTest reg_##name(stage, #name, &name); static void name()
@@ -434,6 +469,45 @@ TEST_CASE("file", MaterialAssetSaveNormalizesTextureReference)
     fs::remove_all(projectsRoot, ec);
 }
 
+TEST_CASE("file", MaterialAssetTextureReferenceSurvivesRenameViaGuid)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_material_asset_refs";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("MaterialGuidRefs"));
+
+    fs::path projectPath = projectsRoot / "MaterialGuidRefs";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    fs::path texturePath = projectPath / "Assets" / "Textures" / "Original.png";
+    fs::path materialPath = projectPath / "Assets" / "Materials" / "UsesTexture.mat";
+    fs::create_directories(texturePath.parent_path());
+    fs::create_directories(materialPath.parent_path());
+    std::ofstream(texturePath, std::ios::binary) << "png";
+    std::string guid = Ditto::AssetDatabase::Get().EnsureMetaForAsset(texturePath);
+    REQUIRE(!guid.empty());
+
+    Ditto::MaterialAsset material = Ditto::MakeDefaultMaterial("UsesTexture");
+    material.shaderName = "Shaders/Lit_Toon.shader";
+    material.mainTexturePath = texturePath.string();
+    REQUIRE(Ditto::SaveMaterialAsset(material, materialPath));
+
+    fs::path movedPath = projectPath / "Assets" / "Textures" / "Renamed.png";
+    fs::rename(texturePath, movedPath);
+    fs::rename(texturePath.string() + ".meta", movedPath.string() + ".meta");
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+
+    Ditto::MaterialAsset loaded = Ditto::LoadMaterialAsset(materialPath.string());
+    REQUIRE(loaded.ok);
+    REQUIRE(loaded.mainTexturePath == "Textures/Renamed.png");
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
 TEST_CASE("file", ProjectDefaultsIncludeLitToonMaterial)
 {
     fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_project_defaults";
@@ -555,7 +629,40 @@ TEST_CASE("file", SceneSaveLoadAndCorruptFileHandling)
         corrupt << "not a ditto scene";
     }
     Scene failed;
-    REQUIRE(!failed.LoadScene(corruptPath.string()));
+    {
+        ScopedConsoleLogSilence silence;
+        REQUIRE(!failed.LoadScene(corruptPath.string()));
+    }
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("file", SceneRejectsOlderDevelopmentVersion)
+{
+    fs::path base = fs::temp_directory_path() / "ditto_tests_scene_version";
+    fs::remove_all(base);
+    fs::create_directories(base);
+    fs::path scenePath = base / "scene.bin";
+
+    Scene scene;
+    scene.name = "VersionProbe";
+    scene.rootGameObject->name = scene.name;
+    REQUIRE(scene.SaveScene(scenePath.string()));
+
+    {
+        std::fstream file(scenePath, std::ios::binary | std::ios::in | std::ios::out);
+        REQUIRE(file.is_open());
+        file.seekp(4);
+        const uint32_t oldVersion = 15;
+        file.write(reinterpret_cast<const char*>(&oldVersion), sizeof(oldVersion));
+    }
+
+    Scene loaded;
+    {
+        ScopedConsoleLogSilence silence;
+        REQUIRE(!loaded.LoadScene(scenePath.string()));
+    }
 
     std::error_code ec;
     fs::remove_all(base, ec);
@@ -617,6 +724,210 @@ TEST_CASE("file", AssetPathResolvesProjectRelativeAndTypedAssets)
     REQUIRE(Ditto::ResolveMaterialPath("Probe") == materialPath.lexically_normal());
     REQUIRE(Ditto::ResolvePhysicsMaterial2DPath("Probe") == physicsMaterialPath.lexically_normal());
     REQUIRE(Ditto::ResolveShaderPath("ProbeShader") == shaderPath.lexically_normal());
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", AssetDatabaseCreatesMetaAndResolvesGuidReferences)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_asset_database";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("AssetDatabaseProject"));
+
+    fs::path projectPath = projectsRoot / "AssetDatabaseProject";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    fs::path texturePath = projectPath / "Assets" / "Textures" / "GuidProbe.png";
+    fs::create_directories(texturePath.parent_path());
+    std::ofstream(texturePath, std::ios::binary) << "png";
+
+    std::string guid = Ditto::AssetDatabase::Get().EnsureMetaForAsset(texturePath);
+    REQUIRE(!guid.empty());
+    REQUIRE(fs::exists(texturePath.string() + ".meta"));
+    REQUIRE(ReadMetaGuid(texturePath.string() + ".meta") == guid);
+    REQUIRE(Ditto::AssetDatabase::Get().PathForGuid(guid) == texturePath.lexically_normal());
+    REQUIRE(Ditto::AssetPath::ResolveAssetPath("guid:" + guid) == texturePath.lexically_normal());
+    const Ditto::AssetRecord* record = Ditto::AssetDatabase::Get().RecordForGuid(guid);
+    REQUIRE(record != nullptr);
+    REQUIRE(record->relativePath == "Textures/GuidProbe.png");
+    REQUIRE(record->extension == ".png");
+    REQUIRE(record->sizeBytes == 3);
+    REQUIRE(!record->contentHash.empty());
+    REQUIRE(record->imported);
+    REQUIRE(fs::exists(projectPath / ".ditto" / "import-cache.txt"));
+    std::vector<Ditto::AssetRecord> cachedRecords;
+    REQUIRE(Ditto::AssetDatabase::Get().LoadImportCache(cachedRecords));
+    REQUIRE(std::find_if(cachedRecords.begin(), cachedRecords.end(), [&](const Ditto::AssetRecord& cached) {
+        return cached.guid == guid && cached.relativePath == "Textures/GuidProbe.png"
+            && cached.sizeBytes == 3 && !cached.contentHash.empty() && cached.imported;
+    }) != cachedRecords.end());
+
+    fs::path movedPath = projectPath / "Assets" / "Textures" / "MovedProbe.png";
+    fs::rename(texturePath, movedPath);
+    fs::rename(texturePath.string() + ".meta", movedPath.string() + ".meta");
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+    REQUIRE(Ditto::AssetDatabase::Get().RelativePathForGuid(guid) == "Textures/MovedProbe.png");
+    REQUIRE(Ditto::AssetPath::ResolveAssetPath("guid:" + guid) == movedPath.lexically_normal());
+    REQUIRE(ReadMetaGuid(movedPath.string() + ".meta") == guid);
+    {
+        std::ifstream meta(movedPath.string() + ".meta");
+        std::string text((std::istreambuf_iterator<char>(meta)), std::istreambuf_iterator<char>());
+        REQUIRE(text.find("asset = \"Textures/MovedProbe.png\"") != std::string::npos);
+    }
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", AssetDatabaseReportsMetaAndGuidDiagnostics)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_asset_database_diagnostics";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("DiagnosticsProject"));
+
+    fs::path projectPath = projectsRoot / "DiagnosticsProject";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+
+    fs::path missingMetaPath = projectPath / "Assets" / "Textures" / "NoMeta.png";
+    fs::path badMetaPath = projectPath / "Assets" / "Textures" / "BadMeta.png";
+    fs::path firstDupPath = projectPath / "Assets" / "Textures" / "DupA.png";
+    fs::path secondDupPath = projectPath / "Assets" / "Textures" / "DupB.png";
+    fs::create_directories(missingMetaPath.parent_path());
+    std::ofstream(missingMetaPath, std::ios::binary) << "png";
+    std::ofstream(badMetaPath, std::ios::binary) << "png";
+    std::ofstream(firstDupPath, std::ios::binary) << "png";
+    std::ofstream(secondDupPath, std::ios::binary) << "png";
+    std::ofstream(badMetaPath.string() + ".meta", std::ios::trunc)
+        << "DittoMeta 1\n"
+        << "guid = \"not-a-valid-guid\"\n"
+        << "asset = \"Textures/BadMeta.png\"\n";
+
+    const std::string duplicateGuid = "11111111111111111111111111111111";
+    std::ofstream(firstDupPath.string() + ".meta", std::ios::trunc)
+        << "DittoMeta 1\n"
+        << "guid = \"" << duplicateGuid << "\"\n"
+        << "asset = \"Textures/DupA.png\"\n";
+    std::ofstream(secondDupPath.string() + ".meta", std::ios::trunc)
+        << "DittoMeta 1\n"
+        << "guid = \"" << duplicateGuid << "\"\n"
+        << "asset = \"Textures/DupB.png\"\n";
+
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+    const auto& diagnostics = Ditto::AssetDatabase::Get().Diagnostics();
+    REQUIRE(std::find(diagnostics.missingMeta.begin(), diagnostics.missingMeta.end(), "Textures/NoMeta.png") != diagnostics.missingMeta.end());
+    REQUIRE(std::find(diagnostics.invalidMeta.begin(), diagnostics.invalidMeta.end(), "Textures/BadMeta.png") != diagnostics.invalidMeta.end());
+    REQUIRE(std::find(diagnostics.duplicateGuid.begin(), diagnostics.duplicateGuid.end(), duplicateGuid) != diagnostics.duplicateGuid.end());
+
+    auto missing = Ditto::AssetDatabase::Get().ValidateReferences({ "guid:22222222222222222222222222222222" });
+    REQUIRE(missing.size() == 1);
+    REQUIRE(missing[0] == "22222222222222222222222222222222");
+    REQUIRE(!Ditto::AssetDatabase::Get().Diagnostics().missingGuidReference.empty());
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", SceneAssetReferencesSurviveAssetRenameViaGuid)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_asset_database_scene";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("SceneGuidProject"));
+
+    fs::path projectPath = projectsRoot / "SceneGuidProject";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    fs::path spritePath = projectPath / "Assets" / "Sprites" / "Original.png";
+    fs::create_directories(spritePath.parent_path());
+    std::ofstream(spritePath, std::ios::binary) << "png";
+    std::string guid = Ditto::AssetDatabase::Get().EnsureMetaForAsset(spritePath);
+    REQUIRE(!guid.empty());
+
+    Scene scene;
+    scene.name = "GuidScene";
+    scene.rootGameObject->name = scene.name;
+    auto obj = std::make_unique<GameObject>("SpriteHost");
+    auto* sprite = obj->AddComponent<SpriteRendererComponent>();
+    sprite->spritePath = spritePath.string();
+    scene.rootGameObject->AddChild(std::move(obj));
+
+    std::string snapshot = scene.CaptureSnapshot();
+
+    fs::path movedPath = projectPath / "Assets" / "Sprites" / "Renamed.png";
+    fs::rename(spritePath, movedPath);
+    fs::rename(spritePath.string() + ".meta", movedPath.string() + ".meta");
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+
+    Scene loaded;
+    REQUIRE(loaded.RestoreSnapshot(snapshot));
+    GameObject* host = FindDirectChild(loaded.rootGameObject.get(), "SpriteHost");
+    REQUIRE(host != nullptr);
+    auto* loadedSprite = host->GetComponent<SpriteRendererComponent>();
+    REQUIRE(loadedSprite != nullptr);
+    REQUIRE(loadedSprite->spritePath == "Sprites/Renamed.png");
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", ScriptAssetReferenceSurvivesAssetRenameViaGuid)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_script_guid_scene";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("ScriptGuidProject"));
+
+    fs::path projectPath = projectsRoot / "ScriptGuidProject";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+    fs::path scriptPath = projectPath / "Assets" / "Scripts" / "Original.cs";
+    fs::create_directories(scriptPath.parent_path());
+    std::ofstream script(scriptPath, std::ios::trunc);
+    script << "using DittoEngine;\n";
+    script << "public class Original : MonoBehaviour { public float speed = 1.0f; }\n";
+    script.close();
+    std::string guid = Ditto::AssetDatabase::Get().EnsureMetaForAsset(scriptPath);
+    REQUIRE(!guid.empty());
+
+    Scene scene;
+    scene.name = "ScriptGuidScene";
+    scene.rootGameObject->name = scene.name;
+    auto obj = std::make_unique<GameObject>("ScriptHost");
+    auto* scriptComp = obj->AddComponent<CSharpScriptComponent>();
+    scriptComp->scriptName = "Original";
+    scriptComp->scriptPath = scriptPath.string();
+    scene.rootGameObject->AddChild(std::move(obj));
+
+    std::string snapshot = scene.CaptureSnapshot();
+
+    fs::path movedPath = projectPath / "Assets" / "Scripts" / "Renamed.cs";
+    fs::rename(scriptPath, movedPath);
+    fs::rename(scriptPath.string() + ".meta", movedPath.string() + ".meta");
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+
+    Scene loaded;
+    REQUIRE(loaded.RestoreSnapshot(snapshot));
+    GameObject* host = FindDirectChild(loaded.rootGameObject.get(), "ScriptHost");
+    REQUIRE(host != nullptr);
+    auto* loadedScript = host->GetComponent<CSharpScriptComponent>();
+    REQUIRE(loadedScript != nullptr);
+    REQUIRE(loadedScript->scriptPath == "Scripts/Renamed.cs");
 
     pm.CloseProject();
     std::error_code ec;
@@ -775,7 +1086,7 @@ TEST_CASE("csharp", ScriptComponentSerializeRoundTripPreservesEditedValues)
     loaded.Deserialize(iss);
 
     REQUIRE(loaded.scriptName == "ScriptProbe");
-    REQUIRE(loaded.scriptPath == scriptPath.string());
+    REQUIRE(fs::path(loaded.scriptPath).lexically_normal() == scriptPath.lexically_normal());
     const ScriptField* loadedSpeed = FindField(loaded, "speed");
     REQUIRE(loadedSpeed != nullptr);
     REQUIRE(NearlyEqual(std::get<float>(loadedSpeed->value), 12.0f));
@@ -801,8 +1112,54 @@ TEST_CASE("csharp", ScriptCompileSmokeUsesCurrentDittoEngineApi)
     fs::path scriptPath = WriteCSharpFixture("ScriptProbeCompile.cs");
     fs::path outDll = fs::temp_directory_path() / "ditto_tests_csharp" / "ScriptProbeCompile.dll";
     std::string out = outDll.string();
-    REQUIRE(CSharpScriptSystem::CompileScript(scriptPath.string(), out));
+    CSharpCompileResult result = CSharpScriptSystem::CompileScriptDetailed(scriptPath.string(), out);
+    REQUIRE(result.ok);
+    REQUIRE(result.warningCount == 0);
+    REQUIRE(result.errorCount == 0);
     REQUIRE(fs::exists(outDll));
+}
+
+TEST_CASE("csharp", ScriptCompileDetailedReportsErrors)
+{
+    fs::path dir = fs::temp_directory_path() / "ditto_tests_csharp" / "Assets" / "Scripts";
+    fs::create_directories(dir);
+    fs::path scriptPath = dir / "BrokenScript.cs";
+    std::ofstream cs(scriptPath, std::ios::trunc);
+    cs << "using DittoEngine;\n";
+    cs << "public class BrokenScript : MonoBehaviour\n";
+    cs << "{\n";
+    cs << "    public override void Update() { MissingSymbol(); }\n";
+    cs << "}\n";
+    cs.close();
+
+    fs::path outDll = fs::temp_directory_path() / "ditto_tests_csharp" / "BrokenScript.dll";
+    std::string out = outDll.string();
+    CSharpCompileResult result = CSharpScriptSystem::CompileScriptDetailed(scriptPath.string(), out);
+    REQUIRE(!result.ok);
+    REQUIRE(result.errorCount >= 1);
+    REQUIRE(result.output.find("error CS") != std::string::npos);
+}
+
+TEST_CASE("csharp", ScriptLifecycleIsIdempotentWithoutRuntimeInstance)
+{
+    GameObject obj("ScriptLifecycleHost");
+    CSharpScriptComponent* script = obj.AddComponent<CSharpScriptComponent>();
+    script->scriptName = "MissingRuntimeScript";
+    script->enabled = true;
+    REQUIRE(!script->started);
+
+    script->Start();
+    REQUIRE(script->started);
+    script->Start();
+    REQUIRE(script->started);
+    script->Update();
+    script->FixedUpdate();
+    script->OnDestroy();
+
+    script->enabled = false;
+    script->started = false;
+    script->Start();
+    REQUIRE(!script->started);
 }
 
 TEST_CASE("simulation", DynamicBodyGravityIntegratesOnce)
@@ -1011,6 +1368,7 @@ int main(int argc, char** argv)
             ++stageSelected;
             try
             {
+                std::cout << "[RUN][" << test.stage << "] " << test.name << "\n";
                 test.fn();
                 std::cout << "[PASS][" << test.stage << "] " << test.name << "\n";
             }

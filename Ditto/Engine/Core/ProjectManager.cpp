@@ -1,6 +1,7 @@
 #include "ProjectManager.h"
 #include "Logger.h"
 #include "PathUtils.h"
+#include "../Resources/AssetDatabase.h"
 #include <fstream>
 #include <iostream>
 
@@ -34,7 +35,7 @@ static void CopyDefaultAsset(const std::string& assetRelativePath, const fs::pat
         fs::path dst = projectAssetsPath / fs::path(assetRelativePath);
         fs::create_directories(dst.parent_path());
         fs::copy_file(src, dst, fs::copy_options::overwrite_existing);
-        DITTO_LOG_INFO_STREAM("[Project] Copied default asset: " << dst.string());
+        DITTO_LOG_VERBOSE_STREAM("[Project] Copied default asset: " << dst.string());
     }
     catch (const std::exception& e)
     {
@@ -133,6 +134,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     CopyDefaultAsset("Sprites/Square.png", projectAssetsPath);
     CopyDefaultAsset("Sprites/Circle.png", projectAssetsPath);
     CopyDefaultAsset("PhysicsMaterials2D/Default.physmat2d", projectAssetsPath);
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
     
     // Create default scene file
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";
@@ -159,7 +161,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     file << "}\n";
     file.close();
     
-    DITTO_LOG_INFO_STREAM("Project created: " << projectPath );
+    DITTO_LOG_VERBOSE_STREAM("Project created: " << projectPath );
     return true;
 }
 
@@ -199,7 +201,7 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
         }
     }
     
-    DITTO_LOG_INFO_STREAM("Project opened: " << currentProject->name );
+    DITTO_LOG_VERBOSE_STREAM("Project opened: " << currentProject->name );
 
     fs::path projectAssetsPath = fs::path(projectPath) / "Assets";
     EnsureDefaultAsset("Shaders/Lit_Toon.shader", projectAssetsPath);
@@ -209,11 +211,13 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
     EnsureDefaultAsset("Sprites/Square.png", projectAssetsPath);
     EnsureDefaultAsset("Sprites/Circle.png", projectAssetsPath);
     EnsureDefaultAsset("PhysicsMaterials2D/Default.physmat2d", projectAssetsPath);
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
     return true;
 }
 
 void ProjectManager::CloseProject()
 {
+    Ditto::AssetDatabase::Get().Clear();
     currentProject.reset();
 }
 

@@ -86,8 +86,15 @@ namespace Ditto
     {
         GLbitfield mask = 0;
         if (flags & ClearColor) { glClearColor(color.r, color.g, color.b, color.a); mask |= GL_COLOR_BUFFER_BIT; }
-        if (flags & ClearDepth) mask |= GL_DEPTH_BUFFER_BIT;
+        GLboolean previousDepthMask = GL_TRUE;
+        if (flags & ClearDepth)
+        {
+            glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+            glDepthMask(GL_TRUE);
+            mask |= GL_DEPTH_BUFFER_BIT;
+        }
         if (mask) glClear(mask);
+        if (flags & ClearDepth) glDepthMask(previousDepthMask);
     }
 
     void GLRenderer::SetDepthState(bool enabled, DepthFunc func)
@@ -357,6 +364,20 @@ namespace Ditto
     {
         GLRenderTargetRes* rt = GetSlot(m_renderTargets, h.id);
         return rt ? rt->color : TextureHandle{};
+    }
+
+    bool GLRenderer::ReadRenderTargetPixels(RenderTargetHandle h, std::vector<unsigned char>& rgba)
+    {
+        GLRenderTargetRes* rt = GetSlot(m_renderTargets, h.id);
+        if (!rt || !rt->fbo || rt->w <= 0 || rt->h <= 0) return false;
+
+        rgba.resize(static_cast<size_t>(rt->w * rt->h * 4));
+        GLint previousFbo = 0;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
+        glReadPixels(0, 0, rt->w, rt->h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFbo));
+        return true;
     }
 
     void GLRenderer::DestroyRenderTarget(RenderTargetHandle h)

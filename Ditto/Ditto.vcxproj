@@ -336,6 +336,7 @@
     <ClInclude Include="Engine\Core\CSharpScript.h" />
     <ClInclude Include="Engine\Core\MonoRuntime.h" />
     <ClInclude Include="Engine\Core\Engine.h" />
+    <ClInclude Include="Engine\Core\Component.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
     <ClInclude Include="Engine\Core\Input.h" />
     <ClInclude Include="Engine\Audio\AudioEngine.h" />
@@ -365,6 +366,8 @@
     <ClInclude Include="Engine\Physics\Physics2D.h" />
     <ClInclude Include="Engine\Physics\PhysicsMaterial2DAsset.h" />
     <ClInclude Include="Engine\Physics\ThreadPool.h" />
+    <ClInclude Include="Engine\Resources\AssetDatabase.h" />
+    <ClInclude Include="Engine\Resources\AssetReferenceIO.h" />
     <ClInclude Include="Engine\Resources\AssetPath.h" />
     <ClInclude Include="Engine\Resources\Resource.h" />
     <ClInclude Include="resource.h" />
@@ -559,6 +562,8 @@
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />
     <ClCompile Include="Engine\Core\PathUtils.cpp" />
     <ClCompile Include="Engine\Core\Scene.cpp" />
+    <ClCompile Include="Engine\Core\SceneRaycast.cpp" />
+    <ClCompile Include="Engine\Core\SceneSerialization.cpp" />
     <ClCompile Include="Engine\Core\ScriptFileWatcher.cpp" />
     <ClCompile Include="Engine\Graphics\Camera.cpp" />
     <ClCompile Include="Engine\Graphics\Materials\MaterialAsset.cpp" />
@@ -576,6 +581,8 @@
     <ClCompile Include="Engine\Physics\Physics2D.cpp" />
     <ClCompile Include="Engine\Physics\PhysicsMaterial2DAsset.cpp" />
     <ClCompile Include="Engine\Physics\ThreadPool.cpp" />
+    <ClCompile Include="Engine\Resources\AssetDatabase.cpp" />
+    <ClCompile Include="Engine\Resources\AssetReferenceIO.cpp" />
     <ClCompile Include="Engine\Resources\AssetPath.cpp" />
     <ClCompile Include="Engine\Resources\Resource.cpp" />
     <ClCompile Include="Engine\Animation\AnimatorComponent.cpp" />

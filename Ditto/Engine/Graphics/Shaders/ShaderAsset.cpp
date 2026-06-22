@@ -42,7 +42,7 @@ namespace Ditto
     fs::path ResolveShaderPath(const std::string& shaderName, const fs::path& preferredRoot)
     {
         std::string name = shaderName.empty() ? "Lit_Toon" : shaderName;
-        Logger::Get().Info("[ShaderAsset] Resolving shader: " + name);
+        Logger::Get().Verbose("[ShaderAsset] Resolving shader: " + name);
 
         std::vector<std::string> candidates;
         candidates.push_back(name);
@@ -57,23 +57,23 @@ namespace Ditto
             fs::path direct(candidate);
             if (direct.is_absolute() && fs::exists(direct))
             {
-                Logger::Get().Info("[ShaderAsset] Found (absolute): " + direct.string());
+                Logger::Get().Verbose("[ShaderAsset] Found (absolute): " + direct.string());
                 return direct;
             }
 
             fs::path resolved = AssetPath::ResolveAssetPath(candidate, preferredRoot);
-            Logger::Get().Info("[ShaderAsset] Trying: " + resolved.string());
+            Logger::Get().Verbose("[ShaderAsset] Trying: " + resolved.string());
             if (fs::exists(resolved))
             {
-                Logger::Get().Info("[ShaderAsset] Found (asset): " + resolved.string());
+                Logger::Get().Verbose("[ShaderAsset] Found (asset): " + resolved.string());
                 return resolved;
             }
 
             resolved = AssetPath::ResolveTypedAssetPath(candidate, "Shaders", nullptr, preferredRoot);
-            Logger::Get().Info("[ShaderAsset] Trying: " + resolved.string());
+            Logger::Get().Verbose("[ShaderAsset] Trying: " + resolved.string());
             if (fs::exists(resolved))
             {
-                Logger::Get().Info("[ShaderAsset] Found (asset/Shaders): " + resolved.string());
+                Logger::Get().Verbose("[ShaderAsset] Found (asset/Shaders): " + resolved.string());
                 return resolved;
             }
         }
@@ -601,6 +601,14 @@ float4 PSMain(v2f i) : SV_Target
         std::string name;
     };
 
+    struct VertexLayoutUsage
+    {
+        bool known = false;
+        bool position = false;
+        bool normal = false;
+        bool texcoord0 = false;
+    };
+
     static FunctionParam ExtractFirstParameter(const std::string& program, const std::string& functionName)
     {
         std::regex functionRe("[_A-Za-z]\\w*(?:\\s*<[^>]+>)?\\s+" + functionName +
@@ -609,6 +617,269 @@ float4 PSMain(v2f i) : SV_Target
         if (std::regex_search(program, match, functionRe))
             return FunctionParam{ match[1].str(), match[2].str() };
         return {};
+    }
+
+    static bool ExtractFunctionRanges(const std::string& program, const std::string& functionName,
+        size_t& paramsBegin, size_t& paramsEnd, size_t& bodyBegin, size_t& bodyEnd)
+    {
+        std::regex functionRe("[_A-Za-z]\\w*(?:\\s*<[^>]+>)?\\s+" + functionName + R"(\s*\()");
+        std::smatch match;
+        if (!std::regex_search(program, match, functionRe))
+            return false;
+
+        const size_t openParen = static_cast<size_t>(match.position(0) + match.length(0) - 1);
+        int parenDepth = 1;
+        size_t closeParen = std::string::npos;
+        for (size_t i = openParen + 1; i < program.size(); ++i)
+        {
+            if (program[i] == '(') ++parenDepth;
+            else if (program[i] == ')' && --parenDepth == 0)
+            {
+                closeParen = i;
+                break;
+            }
+        }
+        if (closeParen == std::string::npos)
+            return false;
+
+        const size_t openBrace = program.find('{', closeParen + 1);
+        if (openBrace == std::string::npos)
+            return false;
+
+        int braceDepth = 1;
+        size_t closeBrace = std::string::npos;
+        for (size_t i = openBrace + 1; i < program.size(); ++i)
+        {
+            if (program[i] == '{') ++braceDepth;
+            else if (program[i] == '}' && --braceDepth == 0)
+            {
+                closeBrace = i;
+                break;
+            }
+        }
+        if (closeBrace == std::string::npos)
+            return false;
+
+        paramsBegin = openParen + 1;
+        paramsEnd = closeParen;
+        bodyBegin = openBrace + 1;
+        bodyEnd = closeBrace;
+        return true;
+    }
+
+    static std::string ExtractStructBody(const std::string& program, const std::string& structName)
+    {
+        if (structName.empty()) return {};
+        std::regex structRe("struct\\s+" + structName + R"(\s*\{)");
+        std::smatch match;
+        if (!std::regex_search(program, match, structRe))
+            return {};
+
+        size_t openBrace = static_cast<size_t>(match.position(0) + match.length(0) - 1);
+        int depth = 1;
+        for (size_t i = openBrace + 1; i < program.size(); ++i)
+        {
+            if (program[i] == '{') ++depth;
+            else if (program[i] == '}' && --depth == 0)
+                return program.substr(openBrace + 1, i - openBrace - 1);
+        }
+        return {};
+    }
+
+    static std::vector<std::string> KnownFieldsForSemantic(const std::string& structName, const std::string& semantic)
+    {
+        const std::string sem = ToLower(semantic);
+        if (sem == "position")
+        {
+            if (structName == "appdata_base" || structName == "appdata_tan" ||
+                structName == "appdata_full" || structName == "appdata_img")
+                return { "vertex" };
+        }
+        else if (sem == "normal")
+        {
+            if (structName == "appdata_base" || structName == "appdata_tan" || structName == "appdata_full")
+                return { "normal" };
+        }
+        else if (sem == "texcoord0")
+        {
+            if (structName == "appdata_tan" || structName == "appdata_full" || structName == "appdata_img")
+                return { "texcoord" };
+        }
+        return {};
+    }
+
+    static bool SemanticMatches(const std::string& actual, const std::string& wanted)
+    {
+        const std::string a = ToLower(actual);
+        const std::string w = ToLower(wanted);
+        if (w == "texcoord0")
+            return a == "texcoord" || a == "texcoord0";
+        return a == w;
+    }
+
+    static std::vector<std::string> StructFieldsForSemantic(const std::string& program,
+        const std::string& structName, const std::string& semantic)
+    {
+        std::vector<std::string> fields;
+        const std::string body = ExtractStructBody(program, structName);
+        if (body.empty())
+            return KnownFieldsForSemantic(structName, semantic);
+
+        std::regex fieldRe(R"(\b[_A-Za-z]\w*(?:\s*<[^>]+>)?\s+([_A-Za-z]\w*)\s*:\s*([_A-Za-z]\w*)\b)");
+        for (std::sregex_iterator it(body.begin(), body.end(), fieldRe), end; it != end; ++it)
+        {
+            if (SemanticMatches((*it)[2].str(), semantic))
+                fields.push_back((*it)[1].str());
+        }
+        return fields;
+    }
+
+    static bool BodyUsesToken(const std::string& body, const std::string& token)
+    {
+        if (token.empty()) return false;
+        std::regex tokenRe("\\b" + token + "\\b");
+        return std::regex_search(body, tokenRe);
+    }
+
+    static bool BodyUsesField(const std::string& body, const std::string& paramName, const std::string& fieldName)
+    {
+        if (paramName.empty() || fieldName.empty()) return false;
+        std::regex fieldRe("\\b" + paramName + R"(\s*\.\s*)" + fieldName + "\\b");
+        return std::regex_search(body, fieldRe);
+    }
+
+    static bool BodyUsesAnyField(const std::string& body, const std::string& paramName,
+        const std::vector<std::string>& fieldNames)
+    {
+        for (const std::string& field : fieldNames)
+            if (BodyUsesField(body, paramName, field))
+                return true;
+        return false;
+    }
+
+    static bool BodyUsesParamWithoutField(const std::string& body, const std::string& paramName)
+    {
+        if (paramName.empty()) return false;
+        std::regex tokenRe("\\b" + paramName + "\\b");
+        std::smatch match;
+        std::string::const_iterator searchBegin = body.begin();
+        while (std::regex_search(searchBegin, body.cend(), match, tokenRe))
+        {
+            size_t pos = static_cast<size_t>(std::distance(body.cbegin(), searchBegin + match.position(0) + match.length(0)));
+            while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos])))
+                ++pos;
+            if (pos >= body.size() || body[pos] != '.')
+                return true;
+            searchBegin += match.position(0) + match.length(0);
+        }
+        return false;
+    }
+
+    static VertexLayoutUsage AnalyzeSignatureVertexLayout(const std::string& program, const std::string& functionName)
+    {
+        size_t paramsBegin = 0, paramsEnd = 0, bodyBegin = 0, bodyEnd = 0;
+        if (!ExtractFunctionRanges(program, functionName, paramsBegin, paramsEnd, bodyBegin, bodyEnd))
+            return {};
+
+        const std::string params = program.substr(paramsBegin, paramsEnd - paramsBegin);
+        const std::string body = program.substr(bodyBegin, bodyEnd - bodyBegin);
+        VertexLayoutUsage usage;
+
+        std::regex paramRe(R"(\b[_A-Za-z]\w*(?:\s*<[^>]+>)?\s+([_A-Za-z]\w*)\s*:\s*([_A-Za-z]\w*)\b)");
+        for (std::sregex_iterator it(params.begin(), params.end(), paramRe), end; it != end; ++it)
+        {
+            const std::string paramName = (*it)[1].str();
+            const std::string semantic = (*it)[2].str();
+            if (!BodyUsesToken(body, paramName))
+                continue;
+
+            if (SemanticMatches(semantic, "POSITION"))
+            {
+                usage.position = true;
+                usage.known = true;
+            }
+            else if (SemanticMatches(semantic, "NORMAL"))
+            {
+                usage.normal = true;
+                usage.known = true;
+            }
+            else if (SemanticMatches(semantic, "TEXCOORD0"))
+            {
+                usage.texcoord0 = true;
+                usage.known = true;
+            }
+        }
+        return usage;
+    }
+
+    static VertexLayoutUsage AnalyzeStructVertexLayout(const std::string& program, const std::string& functionName)
+    {
+        FunctionParam vertexParam = ExtractFirstParameter(program, functionName);
+        if (vertexParam.name.empty())
+            return {};
+
+        size_t paramsBegin = 0, paramsEnd = 0, bodyBegin = 0, bodyEnd = 0;
+        if (!ExtractFunctionRanges(program, functionName, paramsBegin, paramsEnd, bodyBegin, bodyEnd))
+            return {};
+
+        const std::string body = program.substr(bodyBegin, bodyEnd - bodyBegin);
+        const std::vector<std::string> positionFields = StructFieldsForSemantic(program, vertexParam.type, "POSITION");
+        const std::vector<std::string> normalFields = StructFieldsForSemantic(program, vertexParam.type, "NORMAL");
+        const std::vector<std::string> texcoordFields = StructFieldsForSemantic(program, vertexParam.type, "TEXCOORD0");
+
+        const bool ambiguousParamUse = BodyUsesParamWithoutField(body, vertexParam.name);
+        VertexLayoutUsage usage;
+        usage.position = !positionFields.empty() && (ambiguousParamUse || BodyUsesAnyField(body, vertexParam.name, positionFields));
+        usage.normal = !normalFields.empty() && (ambiguousParamUse || BodyUsesAnyField(body, vertexParam.name, normalFields));
+        usage.texcoord0 = !texcoordFields.empty() && (ambiguousParamUse || BodyUsesAnyField(body, vertexParam.name, texcoordFields));
+        usage.known = !positionFields.empty() || !normalFields.empty() || !texcoordFields.empty();
+        return usage;
+    }
+
+    static VertexLayoutUsage AnalyzeFunctionVertexLayout(const std::string& program, const std::string& functionName)
+    {
+        VertexLayoutUsage signatureUsage = AnalyzeSignatureVertexLayout(program, functionName);
+        if (signatureUsage.known)
+            return signatureUsage;
+        return AnalyzeStructVertexLayout(program, functionName);
+    }
+
+    static VertexLayoutUsage AnalyzeSourceVertexLayout(const std::string& source)
+    {
+        std::string program = ExtractProgramBlock(source);
+        if (!program.empty())
+        {
+            const std::string vertexEntry = ExtractPragmaEntry(program, "vertex", "vert");
+            program = StripEntryPragmas(program);
+            VertexLayoutUsage usage = AnalyzeFunctionVertexLayout(program, vertexEntry);
+            if (usage.known)
+                return usage;
+        }
+
+        VertexLayoutUsage usage = AnalyzeFunctionVertexLayout(source, "VSMain");
+        if (usage.known)
+            return usage;
+
+        // Matches GenerateDefaultProgram().
+        usage.known = true;
+        usage.position = true;
+        usage.normal = true;
+        return usage;
+    }
+
+    static void ApplyVertexLayoutUsage(PipelineState& state, const VertexLayoutUsage& usage)
+    {
+        if (!usage.known)
+            return;
+
+        state.vertexStrideFloats = 8;
+        state.vertexAttributes.clear();
+        if (usage.position)
+            state.vertexAttributes.push_back({ 0, 3, 0 });
+        if (usage.normal)
+            state.vertexAttributes.push_back({ 1, 3, 3 });
+        if (usage.texcoord0)
+            state.vertexAttributes.push_back({ 2, 2, 6 });
     }
 
     static std::string InjectHiddenInstanceID(std::string program, const std::string& appdataType)
@@ -645,24 +916,11 @@ float4 PSMain(v2f i) : SV_Target
             if (fieldName == "__dittoInstanceID") return structName == "appdata_base" || structName == "appdata_tan" || structName == "appdata_full" || structName == "appdata_img";
             return false;
         };
-        std::regex structRe("struct\\s+" + structName + R"(\s*\{)");
-        std::smatch match;
-        if (!std::regex_search(program, match, structRe))
+        std::string body = ExtractStructBody(program, structName);
+        if (body.empty())
             return knownField();
-
-        size_t openBrace = static_cast<size_t>(match.position(0) + match.length(0) - 1);
-        int depth = 1;
-        for (size_t i = openBrace + 1; i < program.size(); ++i)
-        {
-            if (program[i] == '{') ++depth;
-            else if (program[i] == '}' && --depth == 0)
-            {
-                std::string body = program.substr(openBrace + 1, i - openBrace - 1);
-                std::regex fieldRe("\\b" + fieldName + "\\b");
-                return std::regex_search(body, fieldRe);
-            }
-        }
-        return false;
+        std::regex fieldRe("\\b" + fieldName + "\\b");
+        return std::regex_search(body, fieldRe);
     }
 
     static std::string BuildEngineHLSL(const std::string& source, const ShaderAsset& asset)
@@ -819,6 +1077,7 @@ v2f VSMain(appdata v)
 
         ParseProperties(source, asset);
         ParseRenderState(source, asset);
+        ApplyVertexLayoutUsage(asset.pipelineState, AnalyzeSourceVertexLayout(source));
         asset.engineHLSL = BuildEngineHLSL(source, asset);
         asset.ok = !asset.engineHLSL.empty();
         return asset;

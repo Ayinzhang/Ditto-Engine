@@ -13,10 +13,13 @@ namespace Ditto
     {
         // Mirror to the standard streams first so headless / game-mode runs and
         // existing redirection keep working exactly as before.
-        if (level == LogLevel::Error)
-            std::cerr << message << std::endl;
-        else
-            std::cout << message << std::endl;
+        if (static_cast<int>(level) >= static_cast<int>(m_consoleMinLevel))
+        {
+            if (level == LogLevel::Error)
+                std::cerr << message << std::endl;
+            else
+                std::cout << message << std::endl;
+        }
 
         std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -35,6 +38,7 @@ namespace Ditto
 
         switch (level)
         {
+            case LogLevel::Verbose: break;
             case LogLevel::Info:    ++m_infoCount;    break;
             case LogLevel::Warning: ++m_warningCount; break;
             case LogLevel::Error:   ++m_errorCount;   break;
@@ -48,6 +52,7 @@ namespace Ditto
             {
                 switch (m_entries[i].level)
                 {
+                    case LogLevel::Verbose: break;
                     case LogLevel::Info:    if (m_infoCount > 0)    --m_infoCount;    break;
                     case LogLevel::Warning: if (m_warningCount > 0) --m_warningCount; break;
                     case LogLevel::Error:   if (m_errorCount > 0)   --m_errorCount;   break;

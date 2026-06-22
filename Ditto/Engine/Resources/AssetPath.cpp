@@ -1,4 +1,5 @@
 #include "AssetPath.h"
+#include "AssetDatabase.h"
 #include "../Core/PathUtils.h"
 #include "../Core/ProjectManager.h"
 
@@ -87,6 +88,12 @@ namespace Ditto::AssetPath
     fs::path ResolveAssetPath(const std::string& assetPath, const fs::path& preferredRoot)
     {
         if (assetPath.empty()) return {};
+
+        if (Ditto::AssetDatabase::IsGuidReference(assetPath))
+        {
+            fs::path guidPath = Ditto::AssetDatabase::Get().PathForGuid(assetPath);
+            if (!guidPath.empty()) return guidPath;
+        }
 
         fs::path input(assetPath);
         if (input.is_absolute())

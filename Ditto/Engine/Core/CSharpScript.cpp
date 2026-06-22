@@ -8,6 +8,7 @@
 #include "GameObject.h"
 #include "Scene.h"
 #include "Logger.h"
+#include "../Resources/AssetReferenceIO.h"
 #ifndef DITTO_HEADLESS_TESTS
 #include "../../Editor/Editor.h"
 #include "../../3rdParty/ImGui/imgui.h"
@@ -562,13 +563,8 @@ void CSharpScriptComponent::OnDestroy()
 
 void CSharpScriptComponent::Serialize(std::ostream& file) const
 {
-    uint32_t nameLen = static_cast<uint32_t>(scriptName.length());
-    file.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
-    file.write(scriptName.c_str(), nameLen);
-
-    uint32_t pathLen = static_cast<uint32_t>(scriptPath.length());
-    file.write(reinterpret_cast<const char*>(&pathLen), sizeof(pathLen));
-    file.write(scriptPath.c_str(), pathLen);
+    Ditto::AssetReferenceIO::WriteString(file, scriptName);
+    Ditto::AssetReferenceIO::WriteAssetReference(file, scriptPath);
 
     file.write(reinterpret_cast<const char*>(&enabled), sizeof(enabled));
 
@@ -636,15 +632,9 @@ void CSharpScriptComponent::Serialize(std::ostream& file) const
 
 void CSharpScriptComponent::Deserialize(std::istream& file)
 {
-    uint32_t nameLen;
-    file.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
-    scriptName.resize(nameLen);
-    file.read(&scriptName[0], nameLen);
-
-    uint32_t pathLen;
-    file.read(reinterpret_cast<char*>(&pathLen), sizeof(pathLen));
-    scriptPath.resize(pathLen);
-    file.read(&scriptPath[0], pathLen);
+    scriptName = Ditto::AssetReferenceIO::ReadString(file);
+    std::uint32_t assetReferenceVersion = g_sceneLoadingVersion == 0 ? 16 : g_sceneLoadingVersion;
+    scriptPath = Ditto::AssetReferenceIO::ReadAssetReference(file, assetReferenceVersion);
 
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
 
@@ -1155,9 +1145,15 @@ void CSharpScriptComponent::HotReloadScript()
     }
 }
 
-bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& outDllPath)
+CSharpCompileResult CSharpScriptSystem::CompileScriptDetailed(const std::string& csPath, std::string& outDllPath)
 {
-    if (!fs::exists(csPath)) return false;
+    CSharpCompileResult compileResult;
+    if (!fs::exists(csPath))
+    {
+        compileResult.output = "Script file not found: " + csPath;
+        compileResult.errorCount = 1;
+        return compileResult;
+    }
 
     fs::path scriptPath(csPath);
     fs::path absScriptPath = fs::absolute(scriptPath);
@@ -1168,7 +1164,12 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
     }
 
     std::string dittoEngineDll = FindDittoEngineDll();
-    if (dittoEngineDll.empty()) return false;
+    if (dittoEngineDll.empty())
+    {
+        compileResult.output = "DittoEngine.dll not found";
+        compileResult.errorCount = 1;
+        return compileResult;
+    }
 
     std::string monoMscorlib;
     {
@@ -1190,16 +1191,36 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
         }
     }
 
-    if (monoMscorlib.empty()) return false;
+    if (monoMscorlib.empty())
+    {
+        compileResult.output = "Mono mscorlib.dll not found";
+        compileResult.errorCount = 1;
+        return compileResult;
+    }
 
     std::string netstandardDll = FindNetStandardDll();
-    if (netstandardDll.empty()) return false;
+    if (netstandardDll.empty())
+    {
+        compileResult.output = "netstandard.dll not found";
+        compileResult.errorCount = 1;
+        return compileResult;
+    }
 
     std::string roslynPath = FindMSBuildPath();
-    if (roslynPath.empty()) return false;
+    if (roslynPath.empty())
+    {
+        compileResult.output = "Roslyn compiler path not found";
+        compileResult.errorCount = 1;
+        return compileResult;
+    }
 
     std::string cscPath = roslynPath + "\\csc.exe";
-    if (!fs::exists(cscPath)) return false;
+    if (!fs::exists(cscPath))
+    {
+        compileResult.output = "csc.exe not found: " + cscPath;
+        compileResult.errorCount = 1;
+        return compileResult;
+    }
 
     if (fs::exists(outDllPath))
     {
@@ -1211,6 +1232,7 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
         }
     }
 
+    fs::path logPath = fs::temp_directory_path() / (absScriptPath.stem().string() + "_csc.log");
     std::string cmd = "cmd /c \"\"" + cscPath + "\""
         + " /target:library"
         + " /nostdlib+"
@@ -1219,12 +1241,40 @@ bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& o
         + " /reference:\"" + dittoEngineDll + "\""
         + " /out:\"" + outDllPath + "\""
         + " \"" + absScriptPath.string() + "\""
-        + " 2>&1\"";
+        + " >\"" + logPath.string() + "\" 2>&1\"";
 
     int result = system(cmd.c_str());
-    if (result != 0 || !fs::exists(outDllPath)) return false;
+    {
+        std::ifstream log(logPath, std::ios::binary);
+        if (log)
+            compileResult.output.assign(std::istreambuf_iterator<char>(log), std::istreambuf_iterator<char>());
+        std::error_code ec;
+        fs::remove(logPath, ec);
+    }
 
-    return true;
+    size_t pos = 0;
+    while ((pos = compileResult.output.find("warning CS", pos)) != std::string::npos)
+    {
+        ++compileResult.warningCount;
+        pos += 10;
+    }
+    pos = 0;
+    while ((pos = compileResult.output.find("error CS", pos)) != std::string::npos)
+    {
+        ++compileResult.errorCount;
+        pos += 8;
+    }
+
+    compileResult.ok = result == 0 && fs::exists(outDllPath);
+    if (!compileResult.ok && compileResult.errorCount == 0)
+        compileResult.errorCount = 1;
+
+    return compileResult;
+}
+
+bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& outDllPath)
+{
+    return CompileScriptDetailed(csPath, outDllPath).ok;
 }
 
 bool CSharpScriptSystem::HotReloadScript(CSharpScriptComponent* component)

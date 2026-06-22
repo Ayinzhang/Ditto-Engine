@@ -58,6 +58,7 @@ namespace Ditto
         void BeginRenderTarget(RenderTargetHandle) override;
         void EndRenderTarget() override;
         TextureHandle GetColorTexture(RenderTargetHandle) override;
+        bool ReadRenderTargetPixels(RenderTargetHandle, std::vector<unsigned char>& rgba) override;
         void DestroyRenderTarget(RenderTargetHandle) override;
 
         // ---- Draw ----

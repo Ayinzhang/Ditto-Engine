@@ -5,6 +5,29 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Normalize-ProcessPathEnvironment {
+    $pathEntries = [System.Environment]::GetEnvironmentVariables("Process").GetEnumerator() |
+        Where-Object { $_.Key -ieq "Path" }
+
+    if ($pathEntries.Count -le 1) {
+        return
+    }
+
+    $pathValue = $env:Path
+    if ([string]::IsNullOrEmpty($pathValue)) {
+        $pathValue = ($pathEntries | Select-Object -First 1).Value
+    }
+
+    foreach ($entry in $pathEntries) {
+        if ($entry.Key -cne "Path") {
+            [System.Environment]::SetEnvironmentVariable($entry.Key, $null, "Process")
+        }
+    }
+
+    [System.Environment]::SetEnvironmentVariable("Path", $pathValue, "Process")
+    $env:Path = $pathValue
+}
+
 function Invoke-Native {
     param(
         [Parameter(Mandatory=$true)][string]$Command,
@@ -16,6 +39,8 @@ function Invoke-Native {
         exit $LASTEXITCODE
     }
 }
+
+Normalize-ProcessPathEnvironment
 
 Write-Host "[DittoTests] Configure"
 Invoke-Native cmake -S Ditto -B $BuildDir
@@ -35,7 +60,12 @@ if (!(Test-Path $renderExe)) {
 
 $renderOut = Join-Path $BuildDir "TestOutput\RenderSmoke"
 $builtFlow = Join-Path $PSScriptRoot "RunBuiltTests.ps1"
-& $builtFlow -TestsExe $testsExe -RenderExe $renderExe -RenderOut $renderOut
+$cmakeCache = Join-Path $BuildDir "CMakeCache.txt"
+$runVulkan = $false
+if (Test-Path $cmakeCache) {
+    $runVulkan = Select-String -Path $cmakeCache -Pattern "^Vulkan_LIBRARY:FILEPATH=.+vulkan-1\.lib$" -Quiet
+}
+& $builtFlow -TestsExe $testsExe -RenderExe $renderExe -RenderOut $renderOut -RunVulkan:$runVulkan
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

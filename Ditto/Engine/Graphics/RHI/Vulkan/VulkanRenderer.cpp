@@ -74,7 +74,7 @@ namespace Ditto
         if (!CreateUboDescriptors()) return;
 
         m_ready = true;
-        Logger::Get().Info("[Vulkan] Renderer initialized (swapchain + depth + frame resources ready).");
+        Logger::Get().Verbose("[Vulkan] Renderer initialized (swapchain + depth + frame resources ready).");
     }
 
     VulkanRenderer::~VulkanRenderer()
@@ -251,7 +251,7 @@ namespace Ditto
             if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
             {
                 m_physicalDevice = dev; m_graphicsQueueFamily = gfx; m_presentQueueFamily = present;
-                Logger::Get().Info(std::string("[Vulkan] GPU: ") + props.deviceName);
+                Logger::Get().Verbose(std::string("[Vulkan] GPU: ") + props.deviceName);
                 return true;
             }
             if (fallback == VK_NULL_HANDLE) { fallback = dev; fbGfx = gfx; fbPresent = present; }
@@ -262,7 +262,7 @@ namespace Ditto
             m_physicalDevice = fallback; m_graphicsQueueFamily = fbGfx; m_presentQueueFamily = fbPresent;
             VkPhysicalDeviceProperties props;
             vkGetPhysicalDeviceProperties(fallback, &props);
-            Logger::Get().Info(std::string("[Vulkan] GPU (fallback): ") + props.deviceName);
+            Logger::Get().Verbose(std::string("[Vulkan] GPU (fallback): ") + props.deviceName);
             return true;
         }
         Logger::Get().Error("[Vulkan] no device with graphics + present queues");
@@ -1449,8 +1449,8 @@ namespace Ditto
 
     RenderTargetHandle VulkanRenderer::CreateRenderTarget(int w, int h)
     {
-        // Needs the ImGui pool/sampler so the color texture is ImGui-displayable.
-        if (!m_ready || !m_imguiInit || w <= 0 || h <= 0) return {};
+        if (!m_ready || w <= 0 || h <= 0) return {};
+        EnsureSampler();
         if (!EnsureRenderTargetPasses()) return {};
 
         VkRenderTargetRes rt;
@@ -1467,7 +1467,7 @@ namespace Ditto
             ici.format = m_swapchainFormat;
             ici.tiling = VK_IMAGE_TILING_OPTIMAL;
             ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             ici.samples = VK_SAMPLE_COUNT_1_BIT;
             ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             VmaAllocationCreateInfo aci{};
@@ -1484,7 +1484,8 @@ namespace Ditto
             vci.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
             vkCreateImageView(m_device, &vci, nullptr, &color.view);
 
-            color.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, color.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            if (m_imguiInit)
+                color.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, color.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
         m_textures.push_back(color);
         rt.color = TextureHandle{ (uint32_t)m_textures.size() };
@@ -1602,6 +1603,60 @@ namespace Ditto
     {
         if (h.id == 0 || h.id > m_renderTargets.size()) return {};
         return m_renderTargets[h.id - 1].color;
+    }
+
+    bool VulkanRenderer::ReadRenderTargetPixels(RenderTargetHandle h, std::vector<unsigned char>& rgba)
+    {
+        if (!m_ready || m_frameActive || m_rtActive) return false;
+        if (h.id == 0 || h.id > m_renderTargets.size()) return false;
+        const VkRenderTargetRes& rt = m_renderTargets[h.id - 1];
+        if (!rt.color || rt.color.id > m_textures.size() || rt.w <= 0 || rt.h <= 0) return false;
+        const VkTextureRes& color = m_textures[rt.color.id - 1];
+        if (!color.image) return false;
+
+        vkDeviceWaitIdle(m_device);
+
+        const VkDeviceSize size = static_cast<VkDeviceSize>(rt.w) * rt.h * 4;
+        VkBuffer staging = VK_NULL_HANDLE;
+        VmaAllocation stagingAlloc = nullptr;
+        void* mapped = nullptr;
+        if (!CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT, /*hostVisible=*/true,
+            staging, stagingAlloc, &mapped))
+        {
+            return false;
+        }
+
+        VkCommandBuffer cmd = BeginSingleTime();
+
+        VkImageMemoryBarrier b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.image = color.image;
+        b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        b.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &b);
+
+        VkBufferImageCopy region{};
+        region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+        region.imageExtent = { static_cast<uint32_t>(rt.w), static_cast<uint32_t>(rt.h), 1 };
+        vkCmdCopyImageToBuffer(cmd, color.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &region);
+
+        b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        b.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &b);
+
+        EndSingleTime(cmd);
+
+        rgba.resize(static_cast<size_t>(size));
+        std::memcpy(rgba.data(), mapped, static_cast<size_t>(size));
+        vmaDestroyBuffer(m_allocator, staging, stagingAlloc);
+        return true;
     }
 
     void VulkanRenderer::DestroyRenderTarget(RenderTargetHandle h)

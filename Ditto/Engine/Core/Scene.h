@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <functional>
 #include <memory>
+#include <utility>
 #include "GameObject.h"
 #include "../Physics/Physics.h"
 #include "../Graphics/RHI/IRenderer.h"
@@ -54,6 +55,7 @@ struct Scene
     std::unordered_map<std::string, Ditto::PipelineHandle> shaderPipelines;
     std::unordered_map<std::string, Ditto::PipelineState> shaderPipelineStates;
     std::unordered_map<std::string, Ditto::TextureHandle> materialTextures;
+    std::unordered_map<std::string, std::pair<std::vector<glm::vec3>, std::vector<unsigned int>>> raycastMeshCache;
     Ditto::TextureHandle whiteTexture;
 
     Resource* resource = nullptr;

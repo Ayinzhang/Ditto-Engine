@@ -9,6 +9,7 @@
 #include "../Animation/AnimatorComponent.h"
 #include "../Graphics/ParticleSystemComponent.h"
 #include "../Resources/AssetPath.h"
+#include "../Resources/AssetReferenceIO.h"
 #ifndef DITTO_HEADLESS_TESTS
 #include "../Graphics/Materials/MaterialAsset.h"
 #include "../Audio/AudioEngine.h"
@@ -27,26 +28,16 @@
 // Component index definitions live in GameObject.h (namespace ComponentIndex)
 // so engine-side code can share them. Local aliases keep the switch below terse.
 namespace CI = ComponentIndex;
-
-static void WriteString(std::ostream& file, const std::string& str)
-{
-    uint32_t length = static_cast<uint32_t>(str.length());
-    file.write(reinterpret_cast<const char*>(&length), sizeof(length));
-    file.write(str.c_str(), length);
-}
+namespace AssetIO = Ditto::AssetReferenceIO;
 
 static void WriteAssetPathString(std::ostream& file, const std::string& path)
 {
-    WriteString(file, Ditto::AssetPath::NormalizeAssetKey(path));
+    Ditto::AssetReferenceIO::WriteAssetReference(file, path);
 }
 
-static std::string ReadString(std::istream& file)
+static std::string ReadAssetPathString(std::istream& file)
 {
-    uint32_t length = 0;
-    file.read(reinterpret_cast<char*>(&length), sizeof(length));
-    std::string str(length, '\0');
-    file.read(&str[0], length);
-    return str;
+    return Ditto::AssetReferenceIO::ReadAssetReference(file, g_sceneLoadingVersion);
 }
 
 #ifdef DITTO_HEADLESS_TESTS
@@ -256,11 +247,11 @@ void GameObject::OnInspectorGUI()
 
 void GameObject::Serialize(std::ostream& file) const
 {
-    DITTO_LOG_INFO_STREAM("[GameObject::Serialize] Serializing: " << name << ", components: " << components.size() << ", children: " << children.size() );
+    DITTO_LOG_VERBOSE_STREAM("[GameObject::Serialize] Serializing: " << name << ", components: " << components.size() << ", children: " << children.size() );
     
     file.write(reinterpret_cast<const char*>(&enabled), sizeof(enabled));
     file.write(reinterpret_cast<const char*>(&locked), sizeof(locked));
-    WriteString(file, name);
+    AssetIO::WriteString(file, name);
     file.write(reinterpret_cast<const char*>(&compMask), sizeof(compMask));
 
     uint32_t componentCount = static_cast<uint32_t>(components.size());
@@ -274,7 +265,7 @@ void GameObject::Serialize(std::ostream& file) const
 
     uint32_t childCount = static_cast<uint32_t>(children.size());
     file.write(reinterpret_cast<const char*>(&childCount), sizeof(childCount));
-    DITTO_LOG_INFO_STREAM("[GameObject::Serialize] Writing childCount: " << childCount << " for " << name );
+    DITTO_LOG_VERBOSE_STREAM("[GameObject::Serialize] Writing childCount: " << childCount << " for " << name );
     for (const auto& child : children)
         child->Serialize(file);
 }
@@ -283,16 +274,16 @@ void GameObject::Deserialize(std::istream& file)
 {
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
     file.read(reinterpret_cast<char*>(&locked), sizeof(locked));
-    name = ReadString(file);
+    name = AssetIO::ReadString(file);
     file.read(reinterpret_cast<char*>(&compMask), sizeof(compMask));
     
-    DITTO_LOG_INFO_STREAM("[GameObject::Deserialize] Deserializing: " << name );
+    DITTO_LOG_VERBOSE_STREAM("[GameObject::Deserialize] Deserializing: " << name );
 
     components.clear();
 
     uint32_t componentCount = 0;
     file.read(reinterpret_cast<char*>(&componentCount), sizeof(componentCount));
-    DITTO_LOG_INFO_STREAM("[GameObject::Deserialize] Reading componentCount: " << componentCount << " for " << name );
+    DITTO_LOG_VERBOSE_STREAM("[GameObject::Deserialize] Reading componentCount: " << componentCount << " for " << name );
     for (uint32_t i = 0; i < componentCount; i++)
     {
         int index = 0;
@@ -342,7 +333,7 @@ void GameObject::Deserialize(std::istream& file)
 
     uint32_t childCount = 0;
     file.read(reinterpret_cast<char*>(&childCount), sizeof(childCount));
-    DITTO_LOG_INFO_STREAM("[GameObject::Deserialize] Reading childCount: " << childCount << " for " << name );
+    DITTO_LOG_VERBOSE_STREAM("[GameObject::Deserialize] Reading childCount: " << childCount << " for " << name );
     for (uint32_t i = 0; i < childCount; i++)
     {
         auto child = std::make_unique<GameObject>(false);
@@ -839,7 +830,7 @@ void RendererComponent::Serialize(std::ostream& file) const
 {
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
     WriteAssetPathString(file, meshPath);
-    WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
+    AssetIO::WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
     WriteAssetPathString(file, mainTexturePath);
     WriteAssetPathString(file, materialPath);
     int32_t shadowModeInt = static_cast<int32_t>(shadowCastingMode);
@@ -856,11 +847,11 @@ void RendererComponent::Serialize(std::ostream& file) const
 void RendererComponent::Deserialize(std::istream& file)
 {
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
-    meshPath = ReadString(file);
-    shaderName = ReadString(file);
+    meshPath = ReadAssetPathString(file);
+    shaderName = AssetIO::ReadString(file);
     if (shaderName.empty()) shaderName = DefaultShaderName;
-    mainTexturePath = ReadString(file);
-    materialPath = ReadString(file);
+    mainTexturePath = ReadAssetPathString(file);
+    materialPath = ReadAssetPathString(file);
     int32_t shadowModeInt = 0;
     file.read(reinterpret_cast<char*>(&shadowModeInt), sizeof(shadowModeInt));
     shadowCastingMode = static_cast<ShadowCastingMode>(shadowModeInt);
@@ -951,7 +942,7 @@ void SpriteRendererComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
     WriteAssetPathString(file, spritePath);
     WriteAssetPathString(file, materialPath);
-    WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
+    AssetIO::WriteString(file, shaderName.empty() ? DefaultShaderName : shaderName);
     file.write(reinterpret_cast<const char*>(&flipX), sizeof(flipX));
     file.write(reinterpret_cast<const char*>(&flipY), sizeof(flipY));
     int32_t drawModeInt = static_cast<int32_t>(drawMode);
@@ -968,9 +959,9 @@ void SpriteRendererComponent::Serialize(std::ostream& file) const
 void SpriteRendererComponent::Deserialize(std::istream& file)
 {
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
-    spritePath = ReadString(file);
-    materialPath = ReadString(file);
-    shaderName = ReadString(file);
+    spritePath = ReadAssetPathString(file);
+    materialPath = ReadAssetPathString(file);
+    shaderName = AssetIO::ReadString(file);
     if (shaderName.empty()) shaderName = DefaultShaderName;
     file.read(reinterpret_cast<char*>(&flipX), sizeof(flipX));
     file.read(reinterpret_cast<char*>(&flipY), sizeof(flipY));
@@ -1215,7 +1206,7 @@ void ColliderComponent::Deserialize(std::istream& file)
         biasRotation = glm::vec3(0.0f);
         biasScale = glm::vec3(1.0f);
     }
-    meshPath = ReadString(file);
+    meshPath = ReadAssetPathString(file);
 }
 
 Rigidbody2DComponent::Rigidbody2DComponent()
@@ -1339,7 +1330,7 @@ void Rigidbody2DComponent::Deserialize(std::istream& file)
     type = static_cast<Type>(typeInt);
     if (g_sceneLoadingVersion >= 13)
     {
-        materialPath = ReadString(file);
+        materialPath = ReadAssetPathString(file);
         file.read(reinterpret_cast<char*>(&simulated), sizeof(simulated));
         file.read(reinterpret_cast<char*>(&useAutoMass), sizeof(useAutoMass));
     }
@@ -1549,7 +1540,7 @@ void AudioSourceComponent::OnInspectorGUI()
 void AudioSourceComponent::Serialize(std::ostream& file) const
 {
     WriteAssetPathString(file, clipPath);
-    WriteString(file, outputPath);
+    AssetIO::WriteString(file, outputPath);
     file.write(reinterpret_cast<const char*>(&mute), sizeof(mute));
     file.write(reinterpret_cast<const char*>(&bypassEffects), sizeof(bypassEffects));
     file.write(reinterpret_cast<const char*>(&bypassListenerEffects), sizeof(bypassListenerEffects));
@@ -1566,10 +1557,10 @@ void AudioSourceComponent::Serialize(std::ostream& file) const
 
 void AudioSourceComponent::Deserialize(std::istream& file)
 {
-    clipPath = ReadString(file);
+    clipPath = ReadAssetPathString(file);
     if (g_sceneLoadingVersion >= 13)
     {
-        outputPath = ReadString(file);
+        outputPath = AssetIO::ReadString(file);
         file.read(reinterpret_cast<char*>(&mute), sizeof(mute));
         file.read(reinterpret_cast<char*>(&bypassEffects), sizeof(bypassEffects));
         file.read(reinterpret_cast<char*>(&bypassListenerEffects), sizeof(bypassListenerEffects));
@@ -1793,7 +1784,7 @@ void UIImageComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&offset), sizeof(glm::vec2));
     file.read(reinterpret_cast<char*>(&size), sizeof(glm::vec2));
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
-    texturePath = ReadString(file);
+    texturePath = ReadAssetPathString(file);
     if (g_sceneLoadingVersion >= 13)
     {
         int32_t typeInt = 0;
@@ -1870,7 +1861,7 @@ void UITextComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&offset), sizeof(glm::vec2));
     file.write(reinterpret_cast<const char*>(&fontSize), sizeof(fontSize));
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
-    WriteString(file, text);
+    AssetIO::WriteString(file, text);
     WriteAssetPathString(file, fontPath);
     file.write(reinterpret_cast<const char*>(&fontStyle), sizeof(fontStyle));
     file.write(reinterpret_cast<const char*>(&alignment), sizeof(alignment));
@@ -1886,10 +1877,10 @@ void UITextComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&offset), sizeof(glm::vec2));
     file.read(reinterpret_cast<char*>(&fontSize), sizeof(fontSize));
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
-    text = ReadString(file);
+    text = AssetIO::ReadString(file);
     if (g_sceneLoadingVersion >= 13)
     {
-        fontPath = ReadString(file);
+        fontPath = ReadAssetPathString(file);
         file.read(reinterpret_cast<char*>(&fontStyle), sizeof(fontStyle));
         file.read(reinterpret_cast<char*>(&alignment), sizeof(alignment));
         file.read(reinterpret_cast<char*>(&raycastTarget), sizeof(raycastTarget));
@@ -1970,7 +1961,7 @@ void UIButtonComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&color), sizeof(glm::vec4));
     file.write(reinterpret_cast<const char*>(&hoverColor), sizeof(glm::vec4));
     file.write(reinterpret_cast<const char*>(&pressedColor), sizeof(glm::vec4));
-    WriteString(file, label);
+    AssetIO::WriteString(file, label);
     file.write(reinterpret_cast<const char*>(&fontSize), sizeof(fontSize));
     file.write(reinterpret_cast<const char*>(&labelColor), sizeof(glm::vec4));
     file.write(reinterpret_cast<const char*>(&interactable), sizeof(interactable));
@@ -1990,7 +1981,7 @@ void UIButtonComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
     file.read(reinterpret_cast<char*>(&hoverColor), sizeof(glm::vec4));
     file.read(reinterpret_cast<char*>(&pressedColor), sizeof(glm::vec4));
-    label = ReadString(file);
+    label = AssetIO::ReadString(file);
     file.read(reinterpret_cast<char*>(&fontSize), sizeof(fontSize));
     file.read(reinterpret_cast<char*>(&labelColor), sizeof(glm::vec4));
     if (g_sceneLoadingVersion >= 13)

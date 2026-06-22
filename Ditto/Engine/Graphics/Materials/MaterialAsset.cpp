@@ -1,5 +1,6 @@
 #include "MaterialAsset.h"
 #include "../../Core/Logger.h"
+#include "../../Resources/AssetDatabase.h"
 #include "../../Resources/AssetPath.h"
 #include <algorithm>
 #include <cctype>
@@ -93,6 +94,8 @@ namespace Ditto
         material.ok = true;
 
         std::string line;
+        std::string shaderGuid;
+        std::string textureGuid;
         while (std::getline(file, line))
         {
             line = Trim(line);
@@ -110,9 +113,17 @@ namespace Ditto
             {
                 material.shaderName = StripQuotes(value);
             }
+            else if (key == "shaderGuid")
+            {
+                shaderGuid = StripQuotes(value);
+            }
             else if (key == "mainTexture")
             {
                 material.mainTexturePath = StripQuotes(value);
+            }
+            else if (key == "mainTextureGuid")
+            {
+                textureGuid = StripQuotes(value);
             }
             else if (key == "color")
             {
@@ -121,6 +132,13 @@ namespace Ditto
                 ss >> material.color.r >> material.color.g >> material.color.b >> material.color.a;
             }
         }
+
+        std::string shaderFromGuid = AssetDatabase::Get().RelativePathForGuid(shaderGuid);
+        if (!shaderFromGuid.empty())
+            material.shaderName = shaderFromGuid;
+        std::string textureFromGuid = AssetDatabase::Get().RelativePathForGuid(textureGuid);
+        if (!textureFromGuid.empty())
+            material.mainTexturePath = textureFromGuid;
 
         if (material.shaderName.empty())
             material.shaderName = "Lit_Toon";
@@ -141,12 +159,16 @@ namespace Ditto
 
         std::string shaderName = material.shaderName.empty() ? "Lit_Toon" : material.shaderName;
         std::string mainTexturePath = AssetPath::NormalizeAssetKey(material.mainTexturePath);
+        std::string shaderGuid = AssetDatabase::Get().GuidForPath(shaderName);
+        std::string mainTextureGuid = AssetDatabase::Get().GuidForPath(mainTexturePath);
 
         file << "DittoMaterial 1\n";
         file << "shader = \"" << shaderName << "\"\n";
+        file << "shaderGuid = \"" << shaderGuid << "\"\n";
         file << "color = " << material.color.r << ", " << material.color.g << ", "
              << material.color.b << ", " << material.color.a << "\n";
         file << "mainTexture = \"" << mainTexturePath << "\"\n";
+        file << "mainTextureGuid = \"" << mainTextureGuid << "\"\n";
         return true;
     }
 }

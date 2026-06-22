@@ -1032,10 +1032,19 @@
     <ClInclude Include="Engine\Core\GameObject.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Core\Component.h">
+      <Filter>头文件\Engine\Core</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Core\Logger.h">
       <Filter>头文件\Engine\Core</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Resources\Resource.h">
+      <Filter>头文件\Engine\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Resources\AssetDatabase.h">
+      <Filter>头文件\Engine\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Resources\AssetReferenceIO.h">
       <Filter>头文件\Engine\Resources</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Resources\AssetPath.h">
@@ -1632,6 +1641,12 @@
     <ClCompile Include="Engine\Core\Scene.cpp">
       <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Core\SceneRaycast.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Core\SceneSerialization.cpp">
+      <Filter>源文件\Engine\Core</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Graphics\Camera.cpp">
       <Filter>源文件\Engine\Graphics</Filter>
     </ClCompile>
@@ -1663,6 +1678,12 @@
       <Filter>源文件\Engine\Core</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Resources\Resource.cpp">
+      <Filter>源文件\Engine\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Resources\AssetDatabase.cpp">
+      <Filter>源文件\Engine\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Resources\AssetReferenceIO.cpp">
       <Filter>源文件\Engine\Resources</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Resources\AssetPath.cpp">
