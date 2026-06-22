@@ -17,6 +17,8 @@ namespace Ditto
         std::uintmax_t sizeBytes = 0;
         std::string contentHash;
         bool imported = false;
+        std::vector<std::string> artifactPaths;
+        std::vector<std::string> dependencies;
     };
 
     struct AssetDatabaseDiagnostics

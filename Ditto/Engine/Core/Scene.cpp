@@ -1,4 +1,5 @@
 #include "Scene.h"
+#include "RuntimeContext.h"
 #ifndef DITTO_HEADLESS_SCENE
 #include "../../Engine/Resources/Resource.h"
 #include "../Graphics/Shaders/ShaderAsset.h"
@@ -40,6 +41,7 @@ Scene::Scene()
 {
     name = "Default";
     g_currentScene = this;
+    Ditto::RuntimeContext::SetCurrentScene(this);
 
     rootGameObject = std::make_unique<GameObject>(name);
     rootGameObject->name = name;
@@ -48,6 +50,11 @@ Scene::Scene()
 
 Scene::~Scene()
 {
+    if (Ditto::RuntimeContext::CurrentScene() == this)
+        Ditto::RuntimeContext::SetCurrentScene(nullptr);
+    if (g_currentScene == this)
+        g_currentScene = nullptr;
+
     DestroyAllObjects();
 
     // Release all GPU resources through the renderer (sole owner). The renderer

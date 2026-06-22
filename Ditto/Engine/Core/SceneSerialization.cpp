@@ -1,5 +1,6 @@
 #include "Scene.h"
 #include "Logger.h"
+#include "RuntimeContext.h"
 #include "../Resources/AssetReferenceIO.h"
 
 #include <cstdint>
@@ -12,20 +13,21 @@ std::uint32_t g_sceneLoadingVersion = 0;
 
 namespace
 {
-    struct SceneLoadingVersionScope
+    struct LegacySceneLoadingVersionScope
     {
-        explicit SceneLoadingVersionScope(std::uint32_t version)
-            : previous(g_sceneLoadingVersion)
+        explicit LegacySceneLoadingVersionScope(std::uint32_t version)
+            : previous(g_sceneLoadingVersion), contextScope(version)
         {
             g_sceneLoadingVersion = version;
         }
 
-        ~SceneLoadingVersionScope()
+        ~LegacySceneLoadingVersionScope()
         {
             g_sceneLoadingVersion = previous;
         }
 
         std::uint32_t previous;
+        Ditto::RuntimeContext::SceneLoadingVersionScope contextScope;
     };
 
     struct SceneHeader
@@ -140,7 +142,7 @@ bool Scene::ReadFromStream(std::istream& file)
         }
 
         // Expose the loading version only while component deserializers run.
-        SceneLoadingVersionScope loadingVersion(header.version);
+        LegacySceneLoadingVersionScope loadingVersion(header.version);
 
         name = Ditto::AssetReferenceIO::ReadString(file);
         DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Scene name: " << name);

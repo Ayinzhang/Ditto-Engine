@@ -67,6 +67,7 @@ project.nuget.cache
 /Ditto/Temp/
 imgui.ini
 *.layout.backup
+.claude/
 
 # --- OS junk ---
 Thumbs.db

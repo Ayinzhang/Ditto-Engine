@@ -1,5 +1,6 @@
 #include "Core/Engine.h"
 #include "Core/Logger.h"
+#include "Core/JsonConfig.h"
 
 #include <iostream>
 #include <fstream>
@@ -7,7 +8,6 @@
 #include <vector>
 #include <memory>
 #include <optional>
-#include <regex>
 #include <filesystem>
 
 #ifdef _WIN32
@@ -77,38 +77,6 @@ public:
             << "\n"
             << "If a game.config file exists next to the executable, Game mode is\n"
             << "entered automatically. CLI flags override the file.");
-    }
-};
-
-class ConfigParser
-{
-public:
-    struct Config
-    {
-        string startupScene;
-        bool found = false;
-    };
-
-    static optional<Config> ParseFile(const fs::path& path)
-    {
-        ifstream file(path);
-        if (!file.is_open()) return nullopt;
-
-        regex re(R"~(^[^/\n]*"startupScene"\s*:\s*"([^"]*)")~", regex::ECMAScript | regex::optimize);
-
-        string line;
-        Config cfg;
-        while (getline(file, line))
-        {
-            smatch m;
-            if (regex_search(line, m, re))
-            {
-                cfg.startupScene = m[1].str();
-                cfg.found        = true;
-                break;
-            }
-        }
-        return cfg;
     }
 };
 
@@ -196,20 +164,20 @@ int main(int argc, char* argv[])
     {
         args.gameMode = true;
 
-        auto cfg = ConfigParser::ParseFile(gameConfigPath);
-        if (!cfg)
+        GameConfig cfg;
+        if (!Ditto::JsonConfig::ReadGameConfig(gameConfigPath, cfg))
         {
             DITTO_LOG_WARN_STREAM("[Ditto] could not read " << gameConfigPath);
         }
         else
         {
-            if (!cfg->found)
+            if (cfg.startupScene.empty())
             {
                 DITTO_LOG_WARN("[Ditto] game.config has no 'startupScene' key");
             }
             projectPath = exeDir;
-            if (!cfg->startupScene.empty())
-                startupScene = cfg->startupScene;
+            if (!cfg.startupScene.empty())
+                startupScene = cfg.startupScene;
 
             DITTO_LOG_INFO("[Ditto] Game mode (game.config detected)");
             DITTO_LOG_INFO_STREAM("[Ditto] Project path: " << projectPath);

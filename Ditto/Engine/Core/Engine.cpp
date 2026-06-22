@@ -14,6 +14,7 @@
 #include "Input.h"
 #include "PathUtils.h"
 #include "Logger.h"
+#include "JsonConfig.h"
 #include "../Animation/AnimatorComponent.h"
 #include "../Graphics/ParticleSystemComponent.h"
 #include "../Audio/AudioEngine.h"
@@ -735,30 +736,11 @@ void Engine::LoadGameScene()
     if (sceneName.empty())
     {
         fs::path configFile = fs::path(gameProjectPath) / "game.config";
-        if (fs::exists(configFile))
+        GameConfig config;
+        if (Ditto::JsonConfig::ReadGameConfig(configFile, config) && !config.startupScene.empty())
         {
-            std::ifstream file(configFile);
-            if (file.is_open())
-            {
-                std::string line;
-                while (std::getline(file, line))
-                {
-                    size_t pos = line.find("\"startupScene\"");
-                    if (pos != std::string::npos)
-                    {
-                        size_t colonPos = line.find(':', pos);
-                        if (colonPos == std::string::npos) continue;
-                        size_t start = line.find('"', colonPos);
-                        if (start == std::string::npos) continue;
-                        size_t end = line.find('"', start + 1);
-                        if (end == std::string::npos) continue;
-                        sceneName = line.substr(start + 1, end - start - 1);
-                        DITTO_LOG_INFO_STREAM("[Engine] Startup scene from config: " << sceneName);
-                        break;
-                    }
-                }
-                file.close();
-            }
+            sceneName = config.startupScene;
+            DITTO_LOG_INFO_STREAM("[Engine] Startup scene from config: " << sceneName);
         }
     }
 

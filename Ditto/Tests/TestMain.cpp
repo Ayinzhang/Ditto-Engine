@@ -1,6 +1,8 @@
 #include "../Engine/Core/GameObject.h"
+#include "../Engine/Core/JsonConfig.h"
 #include "../Engine/Core/Scene.h"
 #include "../Engine/Core/PathUtils.h"
+#include "../Engine/Core/RuntimeContext.h"
 #include "../Engine/Core/CSharpScript.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Graphics/Camera.h"
@@ -759,12 +761,20 @@ TEST_CASE("file", AssetDatabaseCreatesMetaAndResolvesGuidReferences)
     REQUIRE(record->sizeBytes == 3);
     REQUIRE(!record->contentHash.empty());
     REQUIRE(record->imported);
+    REQUIRE(std::find(record->artifactPaths.begin(), record->artifactPaths.end(),
+        ".ditto/artifacts/" + guid + ".artifact") != record->artifactPaths.end());
+    REQUIRE(std::find(record->dependencies.begin(), record->dependencies.end(),
+        "Textures/GuidProbe.png") != record->dependencies.end());
     REQUIRE(fs::exists(projectPath / ".ditto" / "import-cache.txt"));
     std::vector<Ditto::AssetRecord> cachedRecords;
     REQUIRE(Ditto::AssetDatabase::Get().LoadImportCache(cachedRecords));
     REQUIRE(std::find_if(cachedRecords.begin(), cachedRecords.end(), [&](const Ditto::AssetRecord& cached) {
         return cached.guid == guid && cached.relativePath == "Textures/GuidProbe.png"
-            && cached.sizeBytes == 3 && !cached.contentHash.empty() && cached.imported;
+            && cached.sizeBytes == 3 && !cached.contentHash.empty() && cached.imported
+            && std::find(cached.artifactPaths.begin(), cached.artifactPaths.end(),
+                ".ditto/artifacts/" + guid + ".artifact") != cached.artifactPaths.end()
+            && std::find(cached.dependencies.begin(), cached.dependencies.end(),
+                "Textures/GuidProbe.png") != cached.dependencies.end();
     }) != cachedRecords.end());
 
     fs::path movedPath = projectPath / "Assets" / "Textures" / "MovedProbe.png";
@@ -783,6 +793,74 @@ TEST_CASE("file", AssetDatabaseCreatesMetaAndResolvesGuidReferences)
     pm.CloseProject();
     std::error_code ec;
     fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", JsonConfigRoundTripsProjectAndGameConfig)
+{
+    fs::path dir = fs::temp_directory_path() / "ditto_tests_json_config";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+
+    ProjectConfig project;
+    project.name = "Config Project";
+    project.version = "1.2";
+    project.engineVersion = "3.4";
+    project.lastScene = "Assets/Scenes/A.bin";
+    fs::path projectConfigPath = dir / "project.json";
+    REQUIRE(Ditto::JsonConfig::WriteProjectConfig(projectConfigPath, project));
+
+    ProjectConfig loadedProject;
+    REQUIRE(Ditto::JsonConfig::ReadProjectConfig(projectConfigPath, loadedProject));
+    REQUIRE(loadedProject.name == "Config Project");
+    REQUIRE(loadedProject.version == "1.2");
+    REQUIRE(loadedProject.engineVersion == "3.4");
+    REQUIRE(loadedProject.lastScene == "Assets/Scenes/A.bin");
+    REQUIRE(Ditto::JsonConfig::UpdateProjectLastScene(projectConfigPath, "Assets/Scenes/B.bin"));
+    REQUIRE(Ditto::JsonConfig::ReadProjectConfig(projectConfigPath, loadedProject));
+    REQUIRE(loadedProject.lastScene == "Assets/Scenes/B.bin");
+
+    GameConfig game;
+    game.productName = "Ditto Test";
+    game.companyName = "Ditto";
+    game.version = "5.6";
+    game.startupScene = "Default";
+    game.scenes = { "Default", "Arena" };
+    game.developmentBuild = true;
+    game.enableScriptDebugging = true;
+    fs::path gameConfigPath = dir / "game.config";
+    REQUIRE(Ditto::JsonConfig::WriteGameConfig(gameConfigPath, game));
+
+    GameConfig loadedGame;
+    REQUIRE(Ditto::JsonConfig::ReadGameConfig(gameConfigPath, loadedGame));
+    REQUIRE(loadedGame.productName == "Ditto Test");
+    REQUIRE(loadedGame.startupScene == "Default");
+    REQUIRE(loadedGame.scenes.size() == 2);
+    REQUIRE(loadedGame.scenes[0] == "Default");
+    REQUIRE(loadedGame.scenes[1] == "Arena");
+    REQUIRE(loadedGame.developmentBuild);
+    REQUIRE(loadedGame.enableScriptDebugging);
+
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+TEST_CASE("file", RuntimeContextTracksCurrentSceneAndLoadingVersion)
+{
+    REQUIRE(Ditto::RuntimeContext::SceneLoadingVersion() == 0);
+    {
+        Ditto::RuntimeContext::SceneLoadingVersionScope scope(42);
+        REQUIRE(Ditto::RuntimeContext::SceneLoadingVersion() == 42);
+    }
+    REQUIRE(Ditto::RuntimeContext::SceneLoadingVersion() == 0);
+
+    Scene* previous = Ditto::RuntimeContext::CurrentScene();
+    {
+        Scene scene;
+        REQUIRE(Ditto::RuntimeContext::CurrentScene() == &scene);
+    }
+    REQUIRE(Ditto::RuntimeContext::CurrentScene() == nullptr);
+    if (previous)
+        Ditto::RuntimeContext::SetCurrentScene(previous);
 }
 
 TEST_CASE("file", AssetDatabaseReportsMetaAndGuidDiagnostics)

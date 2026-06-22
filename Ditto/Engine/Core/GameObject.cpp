@@ -6,6 +6,7 @@
 #include "GameObject.h"
 #include "Logger.h"
 #include "CSharpScript.h"
+#include "RuntimeContext.h"
 #include "../Animation/AnimatorComponent.h"
 #include "../Graphics/ParticleSystemComponent.h"
 #include "../Resources/AssetPath.h"
@@ -37,7 +38,9 @@ static void WriteAssetPathString(std::ostream& file, const std::string& path)
 
 static std::string ReadAssetPathString(std::istream& file)
 {
-    return Ditto::AssetReferenceIO::ReadAssetReference(file, g_sceneLoadingVersion);
+    std::uint32_t version = Ditto::RuntimeContext::SceneLoadingVersion();
+    if (version == 0) version = g_sceneLoadingVersion;
+    return Ditto::AssetReferenceIO::ReadAssetReference(file, version);
 }
 
 #ifdef DITTO_HEADLESS_TESTS

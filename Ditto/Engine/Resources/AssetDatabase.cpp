@@ -125,6 +125,57 @@ namespace Ditto
             }
             return fields;
         }
+
+        std::string JoinList(const std::vector<std::string>& values)
+        {
+            std::string out;
+            for (size_t i = 0; i < values.size(); ++i)
+            {
+                if (i) out += ';';
+                std::string escaped = EscapeField(values[i]);
+                std::string listEscaped;
+                for (char c : escaped)
+                {
+                    if (c == ';') listEscaped += "\\;";
+                    else listEscaped += c;
+                }
+                out += listEscaped;
+            }
+            return out;
+        }
+
+        std::vector<std::string> SplitList(const std::string& value)
+        {
+            std::vector<std::string> out;
+            std::string item;
+            for (size_t i = 0; i < value.size(); ++i)
+            {
+                char c = value[i];
+                if (c == '\\' && i + 1 < value.size() && value[i + 1] == ';')
+                {
+                    item += "\\;";
+                    ++i;
+                    continue;
+                }
+                if (c == ';')
+                {
+                    std::string decoded = UnescapeField(item);
+                    if (!decoded.empty()) out.push_back(decoded);
+                    item.clear();
+                    continue;
+                }
+                item += c;
+            }
+            std::string decoded = UnescapeField(item);
+            if (!decoded.empty()) out.push_back(decoded);
+            return out;
+        }
+
+        std::string DefaultArtifactPath(const AssetRecord& record)
+        {
+            if (record.guid.empty()) return {};
+            return ".ditto/artifacts/" + record.guid + ".artifact";
+        }
     }
 
     AssetDatabase& AssetDatabase::Get()
@@ -283,7 +334,7 @@ namespace Ditto
         if (!file.is_open())
             return false;
 
-        file << "DittoImportCache 1\n";
+        file << "DittoImportCache 2\n";
         for (const AssetRecord& record : Records())
         {
             file << EscapeField(record.guid) << "\t"
@@ -291,7 +342,9 @@ namespace Ditto
                  << EscapeField(record.extension) << "\t"
                  << record.sizeBytes << "\t"
                  << EscapeField(record.contentHash) << "\t"
-                 << (record.imported ? "1" : "0") << "\n";
+                 << (record.imported ? "1" : "0") << "\t"
+                 << JoinList(record.artifactPaths) << "\t"
+                 << JoinList(record.dependencies) << "\n";
         }
         return true;
     }
@@ -307,7 +360,10 @@ namespace Ditto
 
         std::string header;
         std::getline(file, header);
-        if (Trim(header) != "DittoImportCache 1")
+        const std::string trimmedHeader = Trim(header);
+        const bool v1 = trimmedHeader == "DittoImportCache 1";
+        const bool v2 = trimmedHeader == "DittoImportCache 2";
+        if (!v1 && !v2)
             return false;
 
         std::string line;
@@ -325,6 +381,19 @@ namespace Ditto
             catch (...) { record.sizeBytes = 0; }
             record.contentHash = UnescapeField(fields[4]);
             record.imported = fields[5] == "1";
+            if (v2 && fields.size() >= 8)
+            {
+                record.artifactPaths = SplitList(fields[6]);
+                record.dependencies = SplitList(fields[7]);
+            }
+            else
+            {
+                std::string artifact = DefaultArtifactPath(record);
+                if (!artifact.empty())
+                    record.artifactPaths.push_back(artifact);
+                if (!record.relativePath.empty())
+                    record.dependencies.push_back(record.relativePath);
+            }
             if (!assetsRoot.empty())
                 record.path = (assetsRoot / fs::path(record.relativePath)).lexically_normal();
             recordsOut.push_back(record);
@@ -405,6 +474,8 @@ namespace Ditto
         if (ec) record.sizeBytes = 0;
         record.contentHash = ContentHashForAsset(normalized);
         record.imported = true;
+        record.artifactPaths.push_back(DefaultArtifactPath(record));
+        record.dependencies.push_back(record.relativePath);
 
         byGuid[guid] = record;
         guidByNormalizedPath[NormalizePathKey(normalized)] = guid;

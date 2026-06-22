@@ -1,6 +1,7 @@
 #include "ProjectManager.h"
 #include "Logger.h"
 #include "PathUtils.h"
+#include "JsonConfig.h"
 #include "../Resources/AssetDatabase.h"
 #include <fstream>
 #include <iostream>
@@ -66,25 +67,12 @@ std::vector<Project> ProjectManager::GetAllProjects()
                     project.name = entry.path().filename().string();
                     project.path = entry.path().string();
                     
-                    // Read project configuration file
-                    std::string projectFile = project.path + "/project.json";
-                    if (fs::exists(projectFile))
+                    ProjectConfig config;
+                    if (Ditto::JsonConfig::ReadProjectConfig(fs::path(project.path) / "project.json", config))
                     {
-                        // Simple parse - read lastScene
-                        std::ifstream file(projectFile);
-                        std::string line;
-                        while (std::getline(file, line))
-                        {
-                            if (line.find("\"lastScene\"") != std::string::npos)
-                            {
-                                size_t start = line.find(": \"") + 3;
-                                size_t end = line.find("\"", start);
-                                if (start != std::string::npos && end != std::string::npos)
-                                {
-                                    project.lastScene = line.substr(start, end - start);
-                                }
-                            }
-                        }
+                        if (!config.name.empty())
+                            project.name = config.name;
+                        project.lastScene = config.lastScene;
                     }
                     
                     projects.push_back(project);
@@ -144,22 +132,14 @@ bool ProjectManager::CreateProject(const std::string& name)
         tempScene.SaveScene(defaultScenePath);
     }
     
-    // Create project configuration file
-    std::string projectFile = projectPath + "/project.json";
-    std::ofstream file(projectFile);
-    if (!file.is_open())
+    ProjectConfig config;
+    config.name = name;
+    config.lastScene = "Assets/Scenes/Default.bin";
+    if (!Ditto::JsonConfig::WriteProjectConfig(fs::path(projectPath) / "project.json", config))
     {
-        DITTO_LOG_ERROR_STREAM("Failed to create project file: " << projectFile );
+        DITTO_LOG_ERROR_STREAM("Failed to create project file: " << (fs::path(projectPath) / "project.json").string());
         return false;
     }
-    
-    file << "{\n";
-    file << "  \"name\": \"" << name << "\",\n";
-    file << "  \"version\": \"1.0\",\n";
-    file << "  \"engineVersion\": \"1.0\",\n";
-    file << "  \"lastScene\": \"Assets/Scenes/Default.bin\"\n";
-    file << "}\n";
-    file.close();
     
     DITTO_LOG_VERBOSE_STREAM("Project created: " << projectPath );
     return true;
@@ -181,24 +161,12 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
     currentProject->path = projectPath;
     currentProject->name = fs::path(projectPath).filename().string();
     
-    // Read project configuration
-    std::string projectFile = projectPath + "/project.json";
-    if (fs::exists(projectFile))
+    ProjectConfig config;
+    if (Ditto::JsonConfig::ReadProjectConfig(fs::path(projectPath) / "project.json", config))
     {
-        std::ifstream file(projectFile);
-        std::string line;
-        while (std::getline(file, line))
-        {
-            if (line.find("\"lastScene\"") != std::string::npos)
-            {
-                size_t start = line.find(": \"") + 3;
-                size_t end = line.find("\"", start);
-                if (start != std::string::npos && end != std::string::npos)
-                {
-                    currentProject->lastScene = line.substr(start, end - start);
-                }
-            }
-        }
+        if (!config.name.empty())
+            currentProject->name = config.name;
+        currentProject->lastScene = config.lastScene;
     }
     
     DITTO_LOG_VERBOSE_STREAM("Project opened: " << currentProject->name );

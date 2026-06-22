@@ -338,6 +338,7 @@
     <ClInclude Include="Engine\Core\Engine.h" />
     <ClInclude Include="Engine\Core\Component.h" />
     <ClInclude Include="Engine\Core\GameObject.h" />
+    <ClInclude Include="Engine\Core\JsonConfig.h" />
     <ClInclude Include="Engine\Core\Input.h" />
     <ClInclude Include="Engine\Audio\AudioEngine.h" />
     <ClInclude Include="Engine\Graphics\UI\FontAtlas.h" />
@@ -345,6 +346,7 @@
     <ClInclude Include="Engine\Core\Logger.h" />
     <ClInclude Include="Engine\Core\ProjectManager.h" />
     <ClInclude Include="Engine\Core\PathUtils.h" />
+    <ClInclude Include="Engine\Core\RuntimeContext.h" />
     <ClInclude Include="Engine\Core\Scene.h" />
     <ClInclude Include="Engine\Core\ScriptFileWatcher.h" />
     <ClInclude Include="Engine\Graphics\Camera.h" />
@@ -358,10 +360,8 @@
     <ClInclude Include="Engine\Animation\AnimatorComponent.h" />
     <ClInclude Include="Engine\Graphics\ParticleSystemComponent.h" />
     <ClInclude Include="Engine\Physics\CollisionShape.h" />
-    <ClInclude Include="Engine\Physics\ComputePhysics.h" />
     <ClInclude Include="Engine\Physics\GJK.h" />
     <ClInclude Include="Engine\Physics\ParallelPhysics.h" />
-    <ClInclude Include="Engine\Physics\ParallelPhysicsBarrier.h" />
     <ClInclude Include="Engine\Physics\Physics.h" />
     <ClInclude Include="Engine\Physics\Physics2D.h" />
     <ClInclude Include="Engine\Physics\PhysicsMaterial2DAsset.h" />
@@ -554,6 +554,7 @@
     <ClCompile Include="Engine\Core\MonoRuntime.cpp" />
     <ClCompile Include="Engine\Core\Engine.cpp" />
     <ClCompile Include="Engine\Core\GameObject.cpp" />
+    <ClCompile Include="Engine\Core\JsonConfig.cpp" />
     <ClCompile Include="Engine\Core\Input.cpp" />
     <ClCompile Include="Engine\Audio\AudioEngine.cpp" />
     <ClCompile Include="Engine\Graphics\UI\FontAtlas.cpp" />
@@ -561,6 +562,7 @@
     <ClCompile Include="Engine\Core\Logger.cpp" />
     <ClCompile Include="Engine\Core\ProjectManager.cpp" />
     <ClCompile Include="Engine\Core\PathUtils.cpp" />
+    <ClCompile Include="Engine\Core\RuntimeContext.cpp" />
     <ClCompile Include="Engine\Core\Scene.cpp" />
     <ClCompile Include="Engine\Core\SceneRaycast.cpp" />
     <ClCompile Include="Engine\Core\SceneSerialization.cpp" />
@@ -573,10 +575,8 @@
     <ClCompile Include="Engine\Graphics\Shaders\ShaderCompiler.cpp" />
     <ClCompile Include="Engine\Main.cpp" />
     <ClCompile Include="Engine\Physics\CollisionShape.cpp" />
-    <ClCompile Include="Engine\Physics\ComputePhysics.cpp" />
     <ClCompile Include="Engine\Physics\GJK.cpp" />
     <ClCompile Include="Engine\Physics\ParallelPhysics.cpp" />
-    <ClCompile Include="Engine\Physics\ParallelPhysicsBarrier.cpp" />
     <ClCompile Include="Engine\Physics\Physics.cpp" />
     <ClCompile Include="Engine\Physics\Physics2D.cpp" />
     <ClCompile Include="Engine\Physics\PhysicsMaterial2DAsset.cpp" />

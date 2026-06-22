@@ -127,13 +127,14 @@ if(DOTNET_EXECUTABLE)
         COMMENT "Building DittoEngine C# API")
 endif()
 
-add_executable(DittoTests
-    Tests/TestMain.cpp
+set(DITTO_HEADLESS_CORE_SOURCES
     Engine/Core/GameObject.cpp
     Engine/Core/Scene.cpp
     Engine/Core/SceneRaycast.cpp
     Engine/Core/SceneSerialization.cpp
     Engine/Core/PathUtils.cpp
+    Engine/Core/JsonConfig.cpp
+    Engine/Core/RuntimeContext.cpp
     Engine/Core/Logger.cpp
     Engine/Core/ProjectManager.cpp
     Engine/Core/CSharpScript.cpp
@@ -152,6 +153,11 @@ add_executable(DittoTests
     Engine/Graphics/Shaders/ShaderAsset.cpp
     Engine/Animation/AnimatorComponent.cpp
     Engine/Graphics/ParticleSystemComponent.cpp
+)
+
+add_executable(DittoTests
+    Tests/TestMain.cpp
+    ${DITTO_HEADLESS_CORE_SOURCES}
 )
 ditto_disable_vcpkg_msbuild(DittoTests)
 
@@ -175,30 +181,8 @@ set_tests_properties(Ditto.CSharp PROPERTIES LABELS "csharp")
 add_executable(DittoRenderSmoke
     Tests/RenderSmoke.cpp
     Tests/StbImage.cpp
-    Engine/Core/GameObject.cpp
-    Engine/Core/Scene.cpp
-    Engine/Core/SceneRaycast.cpp
-    Engine/Core/SceneSerialization.cpp
-    Engine/Core/PathUtils.cpp
-    Engine/Core/Logger.cpp
-    Engine/Core/ProjectManager.cpp
-    Engine/Core/CSharpScript.cpp
-    Engine/Core/MonoRuntime.cpp
-    Engine/Graphics/Camera.cpp
-    Engine/Physics/Physics.cpp
-    Engine/Physics/Physics2D.cpp
-    Engine/Physics/PhysicsMaterial2DAsset.cpp
-    Engine/Physics/CollisionShape.cpp
-    Engine/Physics/GJK.cpp
-    Engine/Resources/AssetDatabase.cpp
-    Engine/Resources/AssetReferenceIO.cpp
-    Engine/Resources/AssetPath.cpp
-    Engine/Resources/Resource.cpp
-    Engine/Graphics/Materials/MaterialAsset.cpp
-    Engine/Animation/AnimatorComponent.cpp
-    Engine/Graphics/ParticleSystemComponent.cpp
+    ${DITTO_HEADLESS_CORE_SOURCES}
     Engine/Graphics/RHI/GLRenderer.cpp
-    Engine/Graphics/Shaders/ShaderAsset.cpp
     Engine/Graphics/Shaders/ShaderCompiler.cpp
     Engine/Graphics/UI/FontAtlas.cpp
     Engine/Graphics/UI/UIRenderer.cpp

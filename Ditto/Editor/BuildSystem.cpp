@@ -1,4 +1,5 @@
 #include "BuildSystem.h"
+#include "../Engine/Core/JsonConfig.h"
 #include "../Engine/Core/Logger.h"
 #include "../Engine/Core/PathUtils.h"
 #include <iostream>
@@ -751,38 +752,24 @@ bool BuildSystem::GenerateGameConfig(const BuildSettings& settings, const std::s
 {
     try
     {
+        GameConfig config;
+        config.productName = settings.productName;
+        config.companyName = settings.companyName;
+        config.version = settings.version;
+        config.startupScene = ExtractSceneName(settings.startupScene);
+        config.developmentBuild = settings.developmentBuild;
+        config.enableScriptDebugging = settings.enableScriptDebugging;
+        for (const std::string& scene : settings.scenes)
+            config.scenes.push_back(ExtractSceneName(scene));
+
         std::string configPath = outputPath + "/game.config";
-        std::ofstream configFile(configPath);
-        
-        if (!configFile.is_open())
+        if (!Ditto::JsonConfig::WriteGameConfig(configPath, config))
         {
-            DITTO_LOG_ERROR_STREAM("[Build] Failed to create game.config" );
+            DITTO_LOG_ERROR_STREAM("[Build] Failed to create game.config");
             return false;
         }
-        
-        std::string startupSceneName = ExtractSceneName(settings.startupScene);
-        
-        configFile << "{\n";
-        configFile << "  \"productName\": \"" << settings.productName << "\",\n";
-        configFile << "  \"companyName\": \"" << settings.companyName << "\",\n";
-        configFile << "  \"version\": \"" << settings.version << "\",\n";
-        configFile << "  \"startupScene\": \"" << startupSceneName << "\",\n";
-        configFile << "  \"scenes\": [\n";
-        
-        for (size_t i = 0; i < settings.scenes.size(); i++)
-        {
-            std::string sceneName = ExtractSceneName(settings.scenes[i]);
-            configFile << "    \"" << sceneName << "\"";
-            if (i < settings.scenes.size() - 1) configFile << ",";
-            configFile << "\n";
-        }
-        
-        configFile << "  ],\n";
-        configFile << "  \"developmentBuild\": " << (settings.developmentBuild ? "true" : "false") << ",\n";
-        configFile << "  \"enableScriptDebugging\": " << (settings.enableScriptDebugging ? "true" : "false") << "\n";
-        configFile << "}\n";
-        
-        configFile.close();
+
+        std::string startupSceneName = config.startupScene;
         DITTO_LOG_INFO_STREAM("[Build] Generated game.config with startupScene: " << startupSceneName );
         return true;
     }

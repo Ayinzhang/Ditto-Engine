@@ -15,7 +15,7 @@ struct GameObject;
 struct Scene;
 struct Editor;  // Forward declaration
 
-// Global Editor pointer (for GameObject to access Editor functionality)
+// Legacy observer symbol. New code should prefer Ditto::RuntimeContext.
 extern Editor* g_editor;
 
 struct GameObject
@@ -100,7 +100,7 @@ struct GameObject
 };
 
 
-// Global current scene pointer (used to mark dirty when components are modified)
+// Legacy observer symbol. New code should prefer Ditto::RuntimeContext.
 extern Scene* g_currentScene;
 
 // Version of the scene file currently being deserialized. Set by

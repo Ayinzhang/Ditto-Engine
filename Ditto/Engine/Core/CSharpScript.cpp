@@ -4,6 +4,7 @@
 #include <sstream>
 #include <cctype>
 #include "CSharpScript.h"
+#include "RuntimeContext.h"
 #include "MonoRuntime.h"
 #include "GameObject.h"
 #include "Scene.h"
@@ -633,7 +634,9 @@ void CSharpScriptComponent::Serialize(std::ostream& file) const
 void CSharpScriptComponent::Deserialize(std::istream& file)
 {
     scriptName = Ditto::AssetReferenceIO::ReadString(file);
-    std::uint32_t assetReferenceVersion = g_sceneLoadingVersion == 0 ? 16 : g_sceneLoadingVersion;
+    std::uint32_t assetReferenceVersion = Ditto::RuntimeContext::SceneLoadingVersion();
+    if (assetReferenceVersion == 0)
+        assetReferenceVersion = g_sceneLoadingVersion == 0 ? 16 : g_sceneLoadingVersion;
     scriptPath = Ditto::AssetReferenceIO::ReadAssetReference(file, assetReferenceVersion);
 
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
@@ -1704,27 +1707,31 @@ void Internal_UIButton_SetLabel(void* uiButton, void* label)
 
 void* Internal_Object_Instantiate(void* gameObject)
 {
-    if (!gameObject || !g_currentScene || !g_currentScene->rootGameObject) return nullptr;
+    Scene* scene = Ditto::RuntimeContext::CurrentScene();
+    if (!scene) scene = g_currentScene;
+    if (!gameObject || !scene || !scene->rootGameObject) return nullptr;
     GameObject* source = static_cast<GameObject*>(gameObject);
     auto clone = std::make_unique<GameObject>(source);
     clone->name = source->name + " (Clone)";
     GameObject* result = clone.get();
-    g_currentScene->rootGameObject->AddChild(std::move(clone));
-    g_currentScene->gameObjects.push_back(result);
-    g_currentScene->MarkDirty();
+    scene->rootGameObject->AddChild(std::move(clone));
+    scene->gameObjects.push_back(result);
+    scene->MarkDirty();
     return result;
 }
 
 void Internal_Object_Destroy(void* gameObject)
 {
-    if (!gameObject || !g_currentScene || !g_currentScene->rootGameObject) return;
+    Scene* scene = Ditto::RuntimeContext::CurrentScene();
+    if (!scene) scene = g_currentScene;
+    if (!gameObject || !scene || !scene->rootGameObject) return;
     GameObject* obj = static_cast<GameObject*>(gameObject);
-    if (obj == g_currentScene->rootGameObject.get()) return;
+    if (obj == scene->rootGameObject.get()) return;
     GameObject* parent = obj->parent;
     if (!parent) return;
-    g_currentScene->UnregisterSubtree(obj);
+    scene->UnregisterSubtree(obj);
     parent->DetachChild(obj);
-    g_currentScene->MarkDirty();
+    scene->MarkDirty();
 }
 
 void Internal_AudioSource_Play(void* audioSource)

@@ -8,6 +8,8 @@
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/gtc/matrix_transform.hpp"
 #include "Editor.h"
+#include "../Engine/Core/JsonConfig.h"
+#include "../Engine/Core/RuntimeContext.h"
 #include "LayoutManager.h"
 #include "ProjectWindow.h"
 #include "InspectorWindow.h"
@@ -316,6 +318,7 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
 {
     // Set global Editor pointer
     g_editor = this;
+    Ditto::RuntimeContext::SetCurrentEditor(this);
     
     // Initialize selection state
     activeSelection = nullptr;
@@ -390,6 +393,11 @@ void Editor::ImportExternalFilesToProject(const std::vector<std::string>& paths)
 
 Editor::~Editor()
 {
+    if (Ditto::RuntimeContext::CurrentEditor() == this)
+        Ditto::RuntimeContext::SetCurrentEditor(nullptr);
+    if (g_editor == this)
+        g_editor = nullptr;
+
     CleanupModelPreview();
     CleanupFileIcons();
 
@@ -2223,9 +2231,8 @@ void Editor::LoadSceneFromProject(const std::string& scenePath)
             {
                 proj->lastScene = scenePath.substr(pos + 1);
 
-                // Save to project.json
-                std::string projectFile = proj->path + "/project.json";
-                // TODO: Update lastScene in project.json
+                if (!Ditto::JsonConfig::UpdateProjectLastScene(fs::path(proj->path) / "project.json", proj->lastScene))
+                    DITTO_LOG_WARN_STREAM("[Editor] Failed to update project lastScene: " << proj->lastScene);
             }
         }
     }
