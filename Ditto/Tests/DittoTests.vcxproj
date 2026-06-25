@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{4F51B759-B583-4E50-8F96-6A3BD73D6F01}</ProjectGuid>
+    <RootNamespace>DittoTests</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+    <VcpkgEnabled>false</VcpkgEnabled>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros">
+    <AssimpRoot>$(MSBuildThisFileDirectory)..\3rdParty\Assimp</AssimpRoot>
+    <EnableAssimp Condition="'$(EnableAssimp)'=='' and Exists('$(AssimpRoot)\include\assimp\Importer.hpp') and Exists('$(AssimpRoot)\lib\assimp-vc143-mt.lib')">true</EnableAssimp>
+    <EnableAssimp Condition="'$(EnableAssimp)'==''">false</EnableAssimp>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)x64\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)x64\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;DITTO_HEADLESS_TESTS=1;DITTO_HEADLESS_SCENE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <SupportJustMyCode>false</SupportJustMyCode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\3rdParty;$(MSBuildThisFileDirectory)..\3rdParty\GLAD;$(MSBuildThisFileDirectory)..\3rdParty\GLFW;$(MSBuildThisFileDirectory)..\3rdParty\GLM;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>advapi32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <PreBuildEvent>
+      <Command>setlocal
+set "DOTNET=dotnet"
+if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
+set "DOTNET_CLI_UI_LANGUAGE=en"
+set "DOTNET_NOLOGO=true"
+cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;DITTO_HEADLESS_TESTS=1;DITTO_HEADLESS_SCENE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\3rdParty;$(MSBuildThisFileDirectory)..\3rdParty\GLAD;$(MSBuildThisFileDirectory)..\3rdParty\GLFW;$(MSBuildThisFileDirectory)..\3rdParty\GLM;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>advapi32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <PreBuildEvent>
+      <Command>setlocal
+set "DOTNET=dotnet"
+if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
+set "DOTNET_CLI_UI_LANGUAGE=en"
+set "DOTNET_NOLOGO=true"
+cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="TestMain.cpp" />
+    <ClCompile Include="..\Engine\Core\GameObject.cpp" />
+    <ClCompile Include="..\Engine\Core\Scene.cpp" />
+    <ClCompile Include="..\Engine\Core\SceneRaycast.cpp" />
+    <ClCompile Include="..\Engine\Core\SceneSerialization.cpp" />
+    <ClCompile Include="..\Engine\Core\PathUtils.cpp" />
+    <ClCompile Include="..\Engine\Core\JsonValue.cpp" />
+    <ClCompile Include="..\Engine\Core\JsonSceneSchema.cpp" />
+    <ClCompile Include="..\Engine\Core\GameObjectJson.cpp" />
+    <ClCompile Include="..\Engine\Core\JsonConfig.cpp" />
+    <ClCompile Include="..\Engine\Core\RuntimeContext.cpp" />
+    <ClCompile Include="..\Engine\Core\EngineLifecycle.cpp" />
+    <ClCompile Include="..\Engine\Core\Logger.cpp" />
+    <ClCompile Include="..\Engine\Core\ProjectManager.cpp" />
+    <ClCompile Include="..\Engine\Core\PrefabAsset.cpp" />
+    <ClCompile Include="..\Engine\Core\CSharpScript.cpp" />
+    <ClCompile Include="..\Engine\Core\CSharpScriptCompiler.cpp" />
+    <ClCompile Include="..\Engine\Core\MonoRuntime.cpp" />
+    <ClCompile Include="..\Engine\Graphics\Camera.cpp" />
+    <ClCompile Include="..\Engine\Physics\Physics.cpp" />
+    <ClCompile Include="..\Engine\Physics\Physics2D.cpp" />
+    <ClCompile Include="..\Engine\Physics\PhysicsMaterial2DAsset.cpp" />
+    <ClCompile Include="..\Engine\Physics\CollisionShape.cpp" />
+    <ClCompile Include="..\Engine\Physics\GJK.cpp" />
+    <ClCompile Include="..\Engine\Resources\AssetDatabase.cpp" />
+    <ClCompile Include="..\Engine\Resources\AssetReferenceIO.cpp" />
+    <ClCompile Include="..\Engine\Resources\AssetPath.cpp" />
+    <ClCompile Include="..\Engine\Resources\Resource.cpp" />
+    <ClCompile Include="..\Engine\Graphics\Materials\MaterialAsset.cpp" />
+    <ClCompile Include="..\Engine\Graphics\Shaders\ShaderAsset.cpp" />
+    <ClCompile Include="..\Engine\Animation\AnimatorComponent.cpp" />
+    <ClCompile Include="..\Engine\Graphics\ParticleSystemComponent.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

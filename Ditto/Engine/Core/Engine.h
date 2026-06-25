@@ -1,16 +1,15 @@
 #pragma once
-#define GLFW_INCLUDE_NONE
 #include <memory>
 #include "Scene.h"
-#include "../../Editor/Editor.h"
 #include "../../Engine/Graphics/RHI/IRenderer.h"
 #include "../../Engine/Graphics/Camera.h"
 #include "../Physics/ParallelPhysics.h"
 #include "../Physics/Physics2D.h"
 #include "../../Engine/Resources/Resource.h"
-#include "../../3rdParty/GLFW/glfw3.h"
-#include "../../3rdParty/ImGui/imgui.h"
-#include "../../3rdParty/ImGui/imgui_internal.h"
+
+struct Editor;
+
+namespace Ditto { class IWindow; }
 
 struct Engine
 {
@@ -26,7 +25,7 @@ struct Engine
     Backend backend = Backend::OpenGL;
 #endif
 
-    GLFWwindow* window;   // owned by GLFW (glfwDestroyWindow in ~Engine)
+    std::unique_ptr<Ditto::IWindow> window;
     int window_width, window_height;
     // All subsystems are owned via unique_ptr (RAII). The editor UI keeps
     // working with raw observer pointers obtained via .get()/->.
@@ -46,7 +45,6 @@ struct Engine
     // RHI: all rendering goes through this. Startup selects Vulkan first when
     // available, then falls back to OpenGL.
     std::unique_ptr<Ditto::IRenderer> renderer;
-    Ditto::PipelineHandle shaderPipeline;   // main scene pipeline (owned by renderer)
     // Offscreen render targets for the editor's Scene/Game viewports (owned by
     // the renderer; recreated on viewport resize by RenderSceneToTexture).
     Ditto::RenderTargetHandle sceneViewRT, gameViewRT;
@@ -72,13 +70,23 @@ struct Engine
     void SetEngineState(State state);
     void SetProjectPath(const std::string& path);
     void LoadGameScene();
-    static void MouseCallBack(GLFWwindow* window, double xpos, double ypos);
 
 private:
+    State previousFrameState = Edit;
+
     // Shared construction path for both the editor and game-mode constructors.
     // `createEditor` builds the ImGui editor (edit mode only); `shaderBaseDir`
     // selects where shaders are resolved from ("" = executable-anchored).
     void InitCommon(bool createEditor, const std::string& shaderBaseDir);
+    bool BeginRuntimeFrame();
+    void UpdatePlayModeFrame(bool enteredPlay);
+    void StepPhysics2D();
+    void DispatchCollisionEvents();
+    void UpdateUIButtonInteractions();
+    void UpdateScriptComponents();
+    void UpdateRuntimeComponents();
+    bool BeginRenderFrame();
+    void RenderMainFrame();
     void EnterPlayMode();
     void ExitPlayMode();
     void RebuildRuntimePhysics();

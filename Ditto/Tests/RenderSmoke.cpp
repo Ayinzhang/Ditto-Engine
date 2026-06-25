@@ -2,6 +2,7 @@
 #include "../Engine/Core/Scene.h"
 #include "../Engine/Core/PathUtils.h"
 #include "../Engine/Core/Logger.h"
+#include "../Engine/Core/GlfwWindow.h"
 #include "../Engine/Resources/Resource.h"
 #include "../Engine/Graphics/RHI/GLRenderer.h"
 #ifdef DITTO_ENABLE_VULKAN
@@ -11,8 +12,6 @@
 #include "../Engine/Graphics/Shaders/ShaderAsset.h"
 
 #include "../3rdParty/GLAD/glad.h"
-#define GLFW_INCLUDE_NONE
-#include "../3rdParty/GLFW/glfw3.h"
 #include "../3rdParty/GLM/ext/matrix_clip_space.hpp"
 #include "../3rdParty/GLM/gtc/matrix_transform.hpp"
 
@@ -27,6 +26,13 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    Ditto::IWindow* g_glLoaderWindow = nullptr;
+
+    void* LoadGLProcAddress(const char* name)
+    {
+        return g_glLoaderWindow ? g_glLoaderWindow->GetProcAddress(name) : nullptr;
+    }
+
     struct Options
     {
         std::string shader;
@@ -35,6 +41,7 @@ namespace
         int height = 256;
         std::string backend = "opengl";
         int stress = 3;
+        int resizeStress = 0;
     };
 
     Options ParseArgs(int argc, char** argv)
@@ -47,6 +54,7 @@ namespace
             else if (arg == "--out" && i + 1 < argc) opt.outDir = argv[++i];
             else if (arg == "--backend" && i + 1 < argc) opt.backend = argv[++i];
             else if (arg == "--stress" && i + 1 < argc) opt.stress = std::max(0, std::stoi(argv[++i]));
+            else if (arg == "--resize-stress" && i + 1 < argc) opt.resizeStress = std::max(0, std::stoi(argv[++i]));
             else if (arg == "--size" && i + 1 < argc)
             {
                 opt.width = opt.height = std::stoi(argv[++i]);
@@ -191,47 +199,49 @@ int main(int argc, char** argv)
     if (runOpt.shader.empty())
         runOpt.shader = WriteDefaultUnlitShader(runOpt.outDir).string();
 
-    if (!glfwInit())
+    if (!Ditto::InitializeWindowSystem())
     {
-        std::cerr << "[FAIL][render] glfwInit failed\n";
+        std::cerr << "[FAIL][render] window system initialization failed\n";
         return 1;
     }
 
-    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    Ditto::WindowDesc windowDesc;
+    windowDesc.width = opt.width;
+    windowDesc.height = opt.height;
+    windowDesc.title = "DittoRenderSmoke";
+    windowDesc.visible = false;
     if (runOpt.backend == "vulkan" || runOpt.backend == "vk")
     {
 #ifdef DITTO_ENABLE_VULKAN
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        windowDesc.backendHint = Ditto::WindowBackendHint::Vulkan;
 #else
         std::cerr << "[FAIL][render] Vulkan backend requested, but this build has no Vulkan support\n";
-        glfwTerminate();
+        Ditto::ShutdownWindowSystem();
         return 1;
 #endif
     }
     else
     {
         runOpt.backend = "opengl";
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        windowDesc.backendHint = Ditto::WindowBackendHint::OpenGL;
     }
-    GLFWwindow* window = glfwCreateWindow(opt.width, opt.height, "DittoRenderSmoke", nullptr, nullptr);
-    if (!window)
+    Ditto::GlfwWindow window;
+    if (!window.Create(windowDesc))
     {
-        std::cerr << "[FAIL][render] glfwCreateWindow failed\n";
-        glfwTerminate();
+        std::cerr << "[FAIL][render] window creation failed\n";
+        Ditto::ShutdownWindowSystem();
         return 1;
     }
     std::unique_ptr<Ditto::IRenderer> renderer;
     if (runOpt.backend == "vulkan" || runOpt.backend == "vk")
     {
 #ifdef DITTO_ENABLE_VULKAN
-        auto vk = std::make_unique<Ditto::VulkanRenderer>(window);
+        auto vk = std::make_unique<Ditto::VulkanRenderer>(&window);
         if (!vk->IsValid())
         {
             std::cerr << "[FAIL][render] Vulkan renderer initialization failed\n";
-            glfwDestroyWindow(window);
-            glfwTerminate();
+            window.Destroy();
+            Ditto::ShutdownWindowSystem();
             return 1;
         }
         renderer = std::move(vk);
@@ -239,15 +249,18 @@ int main(int argc, char** argv)
     }
     else
     {
-        glfwMakeContextCurrent(window);
-        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+        window.MakeContextCurrent();
+        g_glLoaderWindow = &window;
+        const bool loadedGL = gladLoadGLLoader((GLADloadproc)LoadGLProcAddress) != 0;
+        g_glLoaderWindow = nullptr;
+        if (!loadedGL)
         {
             std::cerr << "[FAIL][render] gladLoadGLLoader failed\n";
-            glfwDestroyWindow(window);
-            glfwTerminate();
+            window.Destroy();
+            Ditto::ShutdownWindowSystem();
             return 1;
         }
-        renderer = std::make_unique<Ditto::GLRenderer>(window);
+        renderer = std::make_unique<Ditto::GLRenderer>(&window);
     }
 
     Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(runOpt.shader);
@@ -255,8 +268,8 @@ int main(int argc, char** argv)
     if (!shader.ok)
     {
         std::cerr << "[FAIL][render] shader load failed: " << shader.error << "\n";
-        glfwDestroyWindow(window);
-        glfwTerminate();
+        window.Destroy();
+        Ditto::ShutdownWindowSystem();
         return 1;
     }
 
@@ -267,8 +280,8 @@ int main(int argc, char** argv)
     if (!Ditto::SaveMaterialAsset(material, opt.outDir / "RenderSmoke.mat"))
     {
         std::cerr << "[FAIL][render] material save failed\n";
-        glfwDestroyWindow(window);
-        glfwTerminate();
+        window.Destroy();
+        Ditto::ShutdownWindowSystem();
         return 1;
     }
     material = Ditto::LoadMaterialAsset((opt.outDir / "RenderSmoke.mat").string());
@@ -276,8 +289,8 @@ int main(int argc, char** argv)
     if (!material.ok)
     {
         std::cerr << "[FAIL][render] material load failed: " << material.error << "\n";
-        glfwDestroyWindow(window);
-        glfwTerminate();
+        window.Destroy();
+        Ditto::ShutdownWindowSystem();
         return 1;
     }
 
@@ -346,7 +359,7 @@ int main(int argc, char** argv)
             glm::mat4 proj = useZeroToOneDepth
                 ? glm::perspectiveZO(glm::radians(45.0f), 1.0f, 0.1f, 100.0f)
                 : glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
-            scene.Render(pipeline, view, proj, glm::vec3(0.0f, 0.0f, 3.0f), opt.width, opt.height, true);
+            scene.Render(view, proj, glm::vec3(0.0f, 0.0f, 3.0f), opt.width, opt.height, true);
             std::vector<unsigned char> pixels;
             if (!needsSubmittedReadback && !renderer->ReadRenderTargetPixels(rt, pixels))
             {
@@ -378,7 +391,7 @@ int main(int argc, char** argv)
             glm::mat4 orthoProj = useZeroToOneDepth
                 ? glm::orthoZO(-2.0f, 2.0f, -2.0f, 2.0f, 0.01f, 100.0f)
                 : glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.01f, 100.0f);
-            scene.Render(pipeline, orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), opt.width, opt.height, false);
+            scene.Render(orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), opt.width, opt.height, false);
             std::vector<unsigned char> orthoPixels;
             if (exitCode == 0 && !needsSubmittedReadback && !renderer->ReadRenderTargetPixels(orthoRt, orthoPixels))
             {
@@ -397,6 +410,7 @@ int main(int argc, char** argv)
             std::vector<unsigned char> recreatedPixels;
             int stressPasses = 0;
             int stressNonBackgroundTotal = 0;
+            int resizeStressPasses = 0;
             const int smallWidth = opt.width / 2;
             const int smallHeight = opt.height / 2;
             if (exitCode == 0)
@@ -406,7 +420,7 @@ int main(int argc, char** argv)
                 renderer->BeginRenderTarget(smallRt);
                 renderer->SetViewport(0, 0, smallWidth, smallHeight);
                 renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.12f, 0.02f, 0.02f, 1.0f));
-                scene.Render(pipeline, orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), smallWidth, smallHeight, false);
+                scene.Render(orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), smallWidth, smallHeight, false);
                 if (!needsSubmittedReadback && !ReadMaybeSubmitted(renderer.get(), smallRt, smallPixels, "small render target"))
                     exitCode = 1;
                 renderer->EndRenderTarget();
@@ -428,7 +442,7 @@ int main(int argc, char** argv)
                 renderer->BeginRenderTarget(stressRt);
                 renderer->SetViewport(0, 0, smallWidth, smallHeight);
                 renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, clear);
-                scene.Render(pipeline, orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), smallWidth, smallHeight, false);
+                scene.Render(orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), smallWidth, smallHeight, false);
                 if (!needsSubmittedReadback && !ReadMaybeSubmitted(renderer.get(), stressRt, stressPixels, "stress render target"))
                     exitCode = 1;
                 renderer->EndRenderTarget();
@@ -458,6 +472,26 @@ int main(int argc, char** argv)
                 renderer->DestroyRenderTarget(stressRt);
             }
 
+            for (int pass = 0; exitCode == 0 && pass < runOpt.resizeStress; ++pass)
+            {
+                const int resizeWidth = opt.width + 16 + pass * 8;
+                const int resizeHeight = opt.height + 12 + pass * 6;
+                window.SetSize(resizeWidth, resizeHeight);
+                window.PollEvents();
+                if (!renderer->NotifyWindowResized(resizeWidth, resizeHeight))
+                {
+                    std::cerr << "[FAIL][render] resize stress pass " << pass << " failed to recreate swapchain\n";
+                    exitCode = 1;
+                    break;
+                }
+
+                renderer->BeginFrame();
+                renderer->SetViewport(0, 0, resizeWidth, resizeHeight);
+                renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.04f, 0.04f, 0.08f, 1.0f));
+                renderer->EndFrame();
+                ++resizeStressPasses;
+            }
+
             if (exitCode == 0)
             {
                 if (needsSubmittedReadback)
@@ -465,7 +499,7 @@ int main(int argc, char** argv)
                 renderer->BeginRenderTarget(recreatedRt);
                 renderer->SetViewport(0, 0, smallWidth, smallHeight);
                 renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.02f, 0.12f, 0.02f, 1.0f));
-                scene.Render(pipeline, orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), smallWidth, smallHeight, false);
+                scene.Render(orthoView, orthoProj, glm::vec3(0.0f, 0.0f, 3.0f), smallWidth, smallHeight, false);
                 if (!needsSubmittedReadback && !ReadMaybeSubmitted(renderer.get(), recreatedRt, recreatedPixels, "recreated render target"))
                     exitCode = 1;
                 renderer->EndRenderTarget();
@@ -527,6 +561,7 @@ int main(int argc, char** argv)
                 stats << "  \"recreatedRenderTargetNonBackgroundPixels\":" << recreatedNonBackground << ",\n";
                 stats << "  \"stressPasses\":" << stressPasses << ",\n";
                 stats << "  \"stressNonBackgroundTotal\":" << stressNonBackgroundTotal << ",\n";
+                stats << "  \"resizeStressPasses\":" << resizeStressPasses << ",\n";
                 stats << "  \"spritePixels\":" << spritePixels << ",\n";
                 stats << "  \"uiPixels\":" << uiPixels << ",\n";
                 stats << "  \"centerRGBA\":[" << (int)pixels[center] << "," << (int)pixels[center + 1]
@@ -566,6 +601,12 @@ int main(int argc, char** argv)
                     std::cerr << "[FAIL][render] stress passes incomplete: " << stressPasses << " / " << runOpt.stress << "\n";
                     exitCode = 1;
                 }
+                else if (resizeStressPasses != runOpt.resizeStress)
+                {
+                    std::cerr << "[FAIL][render] resize stress passes incomplete: "
+                              << resizeStressPasses << " / " << runOpt.resizeStress << "\n";
+                    exitCode = 1;
+                }
                 else if (uiPixels < 512)
                 {
                     std::cerr << "[FAIL][render] UI overlay did not render enough pixels: " << uiPixels << "\n";
@@ -578,6 +619,7 @@ int main(int argc, char** argv)
                               << " smallRT=" << smallNonBackground
                               << " recreatedRT=" << recreatedNonBackground
                               << " stressPasses=" << stressPasses
+                              << " resizeStressPasses=" << resizeStressPasses
                               << " spritePixels=" << spritePixels
                               << " uiPixels=" << uiPixels << " output=" << opt.outDir.string() << "\n";
                 }
@@ -591,7 +633,7 @@ int main(int argc, char** argv)
     }
 
     renderer.reset();
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    window.Destroy();
+    Ditto::ShutdownWindowSystem();
     return exitCode;
 }

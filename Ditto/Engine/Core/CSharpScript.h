@@ -30,6 +30,27 @@ struct ScriptField
     ScriptField(const std::string& n, ScriptFieldType t) : name(n), type(t) {}
 };
 
+struct CSharpCompileResult
+{
+    struct Diagnostic
+    {
+        std::string file;
+        int line = 0;
+        int column = 0;
+        std::string severity;
+        std::string code;
+        std::string message;
+    };
+
+    bool ok = false;
+    std::string scriptPath;
+    std::string outputDllPath;
+    std::string output;
+    int warningCount = 0;
+    int errorCount = 0;
+    std::vector<Diagnostic> diagnostics;
+};
+
 struct CSharpScriptComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::CSharpScript;
@@ -41,6 +62,7 @@ struct CSharpScriptComponent : Component
     fs::file_time_type m_lastWriteTime;
     bool m_needsReload = false;
     bool m_isReloading = false;
+    CSharpCompileResult lastCompileResult;
 
     CSharpScriptComponent();
 
@@ -85,14 +107,6 @@ inline void ForEachScriptComponent(GameObject* obj, Func&& func)
 
 // ==================== C# Script System ====================
 typedef void (*LogCallback)(const std::string& message);
-
-struct CSharpCompileResult
-{
-    bool ok = false;
-    std::string output;
-    int warningCount = 0;
-    int errorCount = 0;
-};
 
 struct CSharpScriptSystem
 {
@@ -163,6 +177,20 @@ extern "C" {
     void Internal_SpriteRenderer_SetColor(void* spriteRenderer, float r, float g, float b, float a);
     void* Internal_SpriteRenderer_GetSprite(void* spriteRenderer);
     void Internal_SpriteRenderer_SetSprite(void* spriteRenderer, void* spritePath);
+    void* Internal_Camera_GetMainCamera();
+    int Internal_Camera_GetProjectionType(void* camera);
+    void Internal_Camera_SetProjectionType(void* camera, int projectionType);
+    float Internal_Camera_GetFieldOfView(void* camera);
+    void Internal_Camera_SetFieldOfView(void* camera, float fieldOfView);
+    float Internal_Camera_GetOrthographicSize(void* camera);
+    void Internal_Camera_SetOrthographicSize(void* camera, float orthographicSize);
+    float Internal_Camera_GetNearClipPlane(void* camera);
+    void Internal_Camera_SetNearClipPlane(void* camera, float nearClipPlane);
+    float Internal_Camera_GetFarClipPlane(void* camera);
+    void Internal_Camera_SetFarClipPlane(void* camera, float farClipPlane);
+    void Internal_Camera_ScreenPointToRay(void* camera, float x, float y, float* outRay);
+    void Internal_Camera_ScreenToWorldPoint(void* camera, float x, float y, float distance, float* outPoint);
+    void Internal_Camera_ScreenToWorldPointOnPlane(void* camera, float x, float y, float worldZ, float* outPoint);
     void Internal_Light_GetColor(void* light, float* outColor);
     void Internal_Light_SetColor(void* light, float r, float g, float b);
     float Internal_Light_GetIntensity(void* light);
@@ -205,6 +233,7 @@ extern "C" {
     int Internal_Input_GetMouseButtonDown(int button);
     int Internal_Input_GetMouseButtonUp(int button);
     void Internal_Input_GetMousePosition(float* outPos);
+    void Internal_Input_GetGameViewportSize(float* outSize);
     float Internal_Input_GetAxis(void* axisName);
     float Internal_Input_GetAxisRaw(void* axisName);
     int Internal_Input_GetButton(void* buttonName);
@@ -231,4 +260,15 @@ extern "C" {
     void Internal_UIButton_SetLabel(void* uiButton, void* label);
     void* Internal_Object_Instantiate(void* gameObject);
     void Internal_Object_Destroy(void* gameObject);
+    void Internal_Animator_Play(void* animator, void* clipName);
+    void Internal_Animator_Stop(void* animator);
+    void Internal_Animator_Pause(void* animator);
+    void Internal_Animator_Resume(void* animator);
+    float Internal_Animator_GetSpeed(void* animator);
+    void Internal_Animator_SetSpeed(void* animator, float speed);
+    int Internal_Animator_IsPlaying(void* animator);
+    void Internal_ParticleSystem_Play(void* particleSystem);
+    void Internal_ParticleSystem_Stop(void* particleSystem);
+    void Internal_ParticleSystem_Clear(void* particleSystem);
+    int Internal_ParticleSystem_IsPlaying(void* particleSystem);
 }

@@ -1,18 +1,34 @@
 #include "Input.h"
+#include "IWindow.h"
 #include <cstring>
 
-GLFWwindow* Input::s_window = nullptr;
-bool Input::s_cur[GLFW_KEY_LAST + 1] = {};
-bool Input::s_prev[GLFW_KEY_LAST + 1] = {};
-bool Input::s_curMouse[GLFW_MOUSE_BUTTON_LAST + 1] = {};
-bool Input::s_prevMouse[GLFW_MOUSE_BUTTON_LAST + 1] = {};
+namespace
+{
+    constexpr int KeySpace = 32;
+    constexpr int KeyA = 65;
+    constexpr int KeyD = 68;
+    constexpr int KeyS = 83;
+    constexpr int KeyW = 87;
+    constexpr int KeyEscape = 256;
+    constexpr int KeyEnter = 257;
+    constexpr int KeyRight = 262;
+    constexpr int KeyLeft = 263;
+    constexpr int KeyDown = 264;
+    constexpr int KeyUp = 265;
+}
+
+Ditto::IWindow* Input::s_window = nullptr;
+bool Input::s_cur[Input::kMaxKeyCode + 1] = {};
+bool Input::s_prev[Input::kMaxKeyCode + 1] = {};
+bool Input::s_curMouse[Input::kMaxMouseButton + 1] = {};
+bool Input::s_prevMouse[Input::kMaxMouseButton + 1] = {};
 double Input::s_mouseX = 0.0, Input::s_mouseY = 0.0;
 float Input::s_viewX = 0.0f, Input::s_viewY = 0.0f;
 float Input::s_viewW = 1.0f, Input::s_viewH = 1.0f;
 float Input::s_contentW = 1.0f, Input::s_contentH = 1.0f;
 float Input::s_axisHorizontal = 0.0f, Input::s_axisVertical = 0.0f;
 
-void Input::Init(GLFWwindow* window)
+void Input::Init(Ditto::IWindow* window)
 {
     s_window = window;
     std::memset(s_cur, 0, sizeof(s_cur));
@@ -28,15 +44,13 @@ void Input::NewFrame()
     std::memcpy(s_prev, s_cur, sizeof(s_cur));
     std::memcpy(s_prevMouse, s_curMouse, sizeof(s_curMouse));
 
-    // Valid GLFW key codes start at GLFW_KEY_SPACE (32); querying lower values
-    // raises GLFW_INVALID_ENUM.
-    for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key)
-        s_cur[key] = glfwGetKey(s_window, key) == GLFW_PRESS;
+    for (int key = kMinKeyCode; key <= kMaxKeyCode; ++key)
+        s_cur[key] = s_window->IsKeyPressed(key);
 
-    for (int b = 0; b <= GLFW_MOUSE_BUTTON_LAST; ++b)
-        s_curMouse[b] = glfwGetMouseButton(s_window, b) == GLFW_PRESS;
+    for (int b = 0; b <= kMaxMouseButton; ++b)
+        s_curMouse[b] = s_window->IsMouseButtonPressed(b);
 
-    glfwGetCursorPos(s_window, &s_mouseX, &s_mouseY);
+    s_window->GetCursorPosition(s_mouseX, s_mouseY);
 
     // Advance smoothed virtual axes toward their raw targets (Unity-like ramp).
     // A fixed per-frame step keeps this independent of the gameplay timestep.
@@ -53,37 +67,37 @@ void Input::NewFrame()
 
 bool Input::GetKey(int key)
 {
-    if (key < 0 || key > GLFW_KEY_LAST) return false;
+    if (key < kMinKeyCode || key > kMaxKeyCode) return false;
     return s_cur[key];
 }
 
 bool Input::GetKeyDown(int key)
 {
-    if (key < 0 || key > GLFW_KEY_LAST) return false;
+    if (key < kMinKeyCode || key > kMaxKeyCode) return false;
     return s_cur[key] && !s_prev[key];
 }
 
 bool Input::GetKeyUp(int key)
 {
-    if (key < 0 || key > GLFW_KEY_LAST) return false;
+    if (key < kMinKeyCode || key > kMaxKeyCode) return false;
     return !s_cur[key] && s_prev[key];
 }
 
 bool Input::GetMouseButton(int button)
 {
-    if (button < 0 || button > GLFW_MOUSE_BUTTON_LAST) return false;
+    if (button < 0 || button > kMaxMouseButton) return false;
     return s_curMouse[button];
 }
 
 bool Input::GetMouseButtonDown(int button)
 {
-    if (button < 0 || button > GLFW_MOUSE_BUTTON_LAST) return false;
+    if (button < 0 || button > kMaxMouseButton) return false;
     return s_curMouse[button] && !s_prevMouse[button];
 }
 
 bool Input::GetMouseButtonUp(int button)
 {
-    if (button < 0 || button > GLFW_MOUSE_BUTTON_LAST) return false;
+    if (button < 0 || button > kMaxMouseButton) return false;
     return !s_curMouse[button] && s_prevMouse[button];
 }
 
@@ -125,15 +139,15 @@ float Input::GetAxisRaw(const char* axisName)
     if (StrEq(axisName, "Horizontal"))
     {
         float v = 0.0f;
-        if (GetKey(GLFW_KEY_D) || GetKey(GLFW_KEY_RIGHT)) v += 1.0f;
-        if (GetKey(GLFW_KEY_A) || GetKey(GLFW_KEY_LEFT))  v -= 1.0f;
+        if (GetKey(KeyD) || GetKey(KeyRight)) v += 1.0f;
+        if (GetKey(KeyA) || GetKey(KeyLeft))  v -= 1.0f;
         return v;
     }
     if (StrEq(axisName, "Vertical"))
     {
         float v = 0.0f;
-        if (GetKey(GLFW_KEY_W) || GetKey(GLFW_KEY_UP))   v += 1.0f;
-        if (GetKey(GLFW_KEY_S) || GetKey(GLFW_KEY_DOWN)) v -= 1.0f;
+        if (GetKey(KeyW) || GetKey(KeyUp))   v += 1.0f;
+        if (GetKey(KeyS) || GetKey(KeyDown)) v -= 1.0f;
         return v;
     }
     return 0.0f;
@@ -151,9 +165,9 @@ static bool ResolveButton(const char* name, int& kind, int& code)
 {
     struct Binding { const char* name; int kind; int code; };
     static const Binding bindings[] = {
-        { "Jump",   0, GLFW_KEY_SPACE },
-        { "Submit", 0, GLFW_KEY_ENTER },
-        { "Cancel", 0, GLFW_KEY_ESCAPE },
+        { "Jump",   0, KeySpace },
+        { "Submit", 0, KeyEnter },
+        { "Cancel", 0, KeyEscape },
         { "Fire1",  1, 0 },   // left mouse
         { "Fire2",  1, 1 },   // right mouse
         { "Fire3",  1, 2 },   // middle mouse

@@ -31,6 +31,7 @@ public:
 
     // 跳转到指定文件并选中（用于Inspector中单击文件名跳转）
     void NavigateToFile(const std::string& filePath);
+    void OpenCSharpFile(const std::string& filePath, int line = 0, int column = 0);
 
 private:
     Editor* m_editor = nullptr;
@@ -51,6 +52,9 @@ private:
 
     bool m_showCreateShaderPopup = false;
     char m_newShaderNameBuffer[64] = "New Shader";
+
+    bool m_showCreatePrefabPopup = false;
+    char m_newPrefabNameBuffer[64] = "New Prefab";
     
     // 创建文件夹弹窗
     bool m_showCreateFolderPopup = false;
@@ -107,7 +111,6 @@ private:
     Ditto::TextureHandle GetOrCreateThumbnail(const std::string& filePath, const std::string& ext);
     
     // 打开 C# 文件相关
-    void OpenCSharpFile(const std::string& filePath);
     bool CreateVisualStudioSolution(const std::string& projectPath, const std::string& projectName);
     std::string GetVisualStudioPath();
 
@@ -116,6 +119,8 @@ private:
     void CreateNewMaterial(const std::string& name);
     void CreateNewPhysicsMaterial2D(const std::string& name);
     void CreateNewShader(const std::string& name);
+    void CreateNewPrefab(const std::string& name);
+    void SaveSelectedObjectAsPrefab(const std::string& name);
     // 创建新文件夹
     void CreateNewFolder(const std::string& name);
     // 创建新场景

@@ -11,6 +11,8 @@
 #include "../../3rdParty/GLM/ext/matrix_transform.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "CSharpScript.h"
+#include "EngineLifecycle.h"
+#include "GlfwWindow.h"
 #include "Input.h"
 #include "PathUtils.h"
 #include "Logger.h"
@@ -19,7 +21,6 @@
 #include "../Graphics/ParticleSystemComponent.h"
 #include "../Audio/AudioEngine.h"
 #include "../Graphics/RHI/GLRenderer.h"
-#include "../Graphics/Shaders/ShaderAsset.h"
 #ifdef DITTO_ENABLE_VULKAN
 #include "../Graphics/RHI/Vulkan/VulkanRenderer.h"
 #endif
@@ -32,51 +33,24 @@ using namespace std;
 using namespace glm;
 namespace fs = std::filesystem;
 
-// Resolve an engine shader by name, anchored to the executable location.
-static std::string FindShaderPath(const std::string& shaderName)
+static Ditto::IWindow* g_gladLoadWindow = nullptr;
+
+static void* LoadGLProcAddress(const char* name)
 {
-    fs::path resolved = PathUtils::ResolveAsset("Shaders/" + shaderName);
-    if (!fs::exists(resolved))
-        DITTO_LOG_WARN_STREAM("[Engine] Shader not found: " << shaderName
-            << " (looked at " << resolved.string() << ")");
-    return resolved.string();
+    return g_gladLoadWindow ? g_gladLoadWindow->GetProcAddress(name) : nullptr;
 }
 
-// Resolve a shader preferring a specific project/base directory, then falling
-// back to the engine's executable-anchored search.
-static std::string FindShaderPathInDir(const std::string& baseDir, const std::string& shaderName)
+namespace EngineKey
 {
-    fs::path resolved = PathUtils::ResolveAsset("Shaders/" + shaderName, baseDir);
-    if (!fs::exists(resolved))
-        DITTO_LOG_WARN_STREAM("[Engine] Shader not found: " << shaderName
-            << " (looked at " << resolved.string() << ")");
-    return resolved.string();
-}
-
-static std::string FindDefaultSceneShaderPath(const std::string& shaderBaseDir)
-{
-    const std::string primary = "Lit_Toon.shader";
-    const std::string fallback = "Lit_Toon.hlsl";
-
-    std::string primaryPath = shaderBaseDir.empty()
-        ? FindShaderPath(primary) : FindShaderPathInDir(shaderBaseDir, primary);
-    if (fs::exists(primaryPath)) return primaryPath;
-
-    std::string fallbackPath = shaderBaseDir.empty()
-        ? FindShaderPath(fallback) : FindShaderPathInDir(shaderBaseDir, fallback);
-    if (fs::exists(fallbackPath)) return fallbackPath;
-
-    return shaderBaseDir.empty()
-        ? FindShaderPath("Scene.hlsl") : FindShaderPathInDir(shaderBaseDir, "Scene.hlsl");
-}
-
-// Read a text file (shader source) into a string.
-static std::string ReadTextFile(const std::string& path)
-{
-    std::ifstream file(path, std::ios::in | std::ios::binary);
-    std::stringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
+    constexpr int Escape = 256;
+    constexpr int Delete = 261;
+    constexpr int D = 68;
+    constexpr int R = 82;
+    constexpr int Z = 90;
+    constexpr int Y = 89;
+    constexpr int LeftControl = 341;
+    constexpr int RightControl = 345;
+    constexpr int LeftAlt = 342;
 }
 
 static const char* BackendName(Engine::Backend backend)
@@ -116,9 +90,9 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     window_width = 1200; window_height = 900;
     keySpeed = 0.01f, mouseSpeed = 1.0f;
     editor = nullptr;
-    window = nullptr;
+    window.reset();
 
-    if (!glfwInit()) throw runtime_error("GLFW init failed");
+    if (!Ditto::InitializeWindowSystem()) throw runtime_error("Window system init failed");
 
     std::vector<Backend> backendCandidates;
 #ifdef DITTO_ENABLE_VULKAN
@@ -154,25 +128,28 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     // caller can fall back to OpenGL.
     auto makeWindowRenderer = [&](Backend b) -> bool
     {
-        glfwDefaultWindowHints();
-        if (b == Backend::Vulkan)
-            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);   // Vulkan: no GL context
-        else
+        window = std::make_unique<Ditto::GlfwWindow>();
+        Ditto::WindowDesc desc;
+        desc.width = window_width;
+        desc.height = window_height;
+        desc.title = "Ditto";
+        desc.backendHint = (b == Backend::Vulkan)
+            ? Ditto::WindowBackendHint::Vulkan
+            : Ditto::WindowBackendHint::OpenGL;
+        if (!window->Create(desc)) return false;
+        window->SetCursorCallback([this](double xpos, double ypos)
         {
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        }
-
-        window = glfwCreateWindow(window_width, window_height, "Ditto", nullptr, nullptr);
-        if (!window) return false;
-        glfwSetWindowUserPointer(window, this);
-        glfwSetCursorPosCallback(window, Engine::MouseCallBack);
-
+            if (!enableMouse) { lastX = xpos; lastY = ypos; return; }
+            if (editor && editor->isSceneActive)
+                sceneCamera->ProcessMouseMovement(mouseSpeed * static_cast<float>(xpos - lastX) / window_width,
+                    mouseSpeed * static_cast<float>(ypos - lastY) / window_height);
+            lastX = xpos;
+            lastY = ypos;
+        });
         if (b == Backend::Vulkan)
         {
 #ifdef DITTO_ENABLE_VULKAN
-            auto vk = std::make_unique<Ditto::VulkanRenderer>(window);
+            auto vk = std::make_unique<Ditto::VulkanRenderer>(window.get());
             if (!vk->IsValid()) return false;   // device/swapchain init failed
             renderer = std::move(vk);
 #else
@@ -181,9 +158,15 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         }
         else
         {
-            glfwMakeContextCurrent(window);
-            if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) return false;
-            renderer = std::make_unique<Ditto::GLRenderer>(window);
+            window->MakeContextCurrent();
+            g_gladLoadWindow = window.get();
+            if (!gladLoadGLLoader((GLADloadproc)LoadGLProcAddress))
+            {
+                g_gladLoadWindow = nullptr;
+                return false;
+            }
+            g_gladLoadWindow = nullptr;
+            renderer = std::make_unique<Ditto::GLRenderer>(window.get());
         }
         return true;
     };
@@ -202,25 +185,18 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 
         Ditto::Logger::Get().Warning(std::string("[Engine] RHI init failed: ") + BackendName(candidate));
         renderer.reset();
-        if (window) { glfwDestroyWindow(window); window = nullptr; }
+        if (window) { window->Destroy(); window.reset(); }
     }
-    if (!initialized) { glfwTerminate(); throw runtime_error("Window/renderer create failed"); }
+    if (!initialized) { Ditto::ShutdownWindowSystem(); throw runtime_error("Window/renderer create failed"); }
 
     resource = std::make_unique<Resource>();
     scene = std::make_unique<Scene>();
     sceneCamera = std::make_unique<Camera>(vec3(0, 10, 10), vec3(0, 0, 0), vec3(0, 1, 0));
     gameCamera = std::make_unique<Camera>(vec3(0, 5, 10), vec3(0, 0, 0), vec3(0, 1, 0));
 
-    // Shaders: editor mode resolves from the executable location; game mode
-    // resolves relative to the loaded project directory.
-    std::string scenePath = FindDefaultSceneShaderPath(shaderBaseDir);
-    Ditto::ShaderAsset defaultShader = Ditto::LoadShaderAsset(scenePath, shaderBaseDir);
-    std::string pipelineSource = defaultShader.ok ? defaultShader.engineHLSL : ReadTextFile(scenePath);
-    shaderPipeline = renderer->CreatePipeline(pipelineSource, defaultShader.pipelineState);
-
     if (createEditor)
     {
-        editor = std::make_unique<Editor>(window, false, "");
+        editor = std::make_unique<Editor>(window.get(), false, "");
         editor->engine = this;
     }
 
@@ -229,7 +205,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     CSharpScriptSystem::SetPhysics(physics.get());
 
     scene->InitializeBaseGeometries(resource.get(), renderer.get());
-    Input::Init(window);
+    Input::Init(window.get());
     AudioEngine::Init();
     CSharpScriptSystem::Initialize();
 }
@@ -273,222 +249,243 @@ Engine::~Engine()
     // window. The Scene/editor were destroyed above and freed their handles first.
     renderer.reset();
 
-    if (window) glfwDestroyWindow(window); glfwTerminate();
+    if (window) { window->Destroy(); window.reset(); }
+    Ditto::ShutdownWindowSystem();
 }
 
 void Engine::Run()
 {
-    while (state != Exit && !glfwWindowShouldClose(window))
+    while (state != Exit && window && !window->ShouldClose())
     {
-        static Engine::State prevState = Edit;
-        curTime = glfwGetTime(); deltaTime = curTime - lastTime; lastTime = curTime;
-
-        bool enteredPlay = (state == Play && prevState != Play);
-        prevState = state;
-
-        // Poll window events and snapshot input state BEFORE gameplay runs so
-        // C# scripts see this frame's key edges (GetKeyDown/Up) correctly.
-        glfwPollEvents();
-        Input::NewFrame();
-        ProcessInput();
-        if (gameMode)
-            Input::SetGameViewport(0.0f, 0.0f, (float)window_width, (float)window_height);
-
+        bool enteredPlay = BeginRuntimeFrame();
         if (state == Play)
-        {
-            CSharpScriptSystem::SetDeltaTime(deltaTime);
-            if (enteredPlay) CSharpScriptSystem::SetTime(0.0f);
-            CSharpScriptSystem::SetTime(CSharpScriptSystem::GetTime() + deltaTime);
-
-            double physStart = glfwGetTime();
-            if (physics2D)
-            {
-                float cappedDelta = static_cast<float>(deltaTime);
-                if (cappedDelta > 0.25f) cappedDelta = 0.25f;
-                physics2DAccumulator += cappedDelta;
-                int steps2D = 0;
-                while (physics2DAccumulator >= physics2D->fixedDeltaTime && steps2D < 5)
-                {
-                    float step2D = physics2D->fixedDeltaTime;
-                    CSharpScriptSystem::SetDeltaTime(step2D);
-                    ForEachGameObject(scene.get(), [](GameObject* obj)
-                    {
-                        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
-                        {
-                            script->FixedUpdate();
-                        });
-                    });
-                    physics2D->StepFixed(scene.get(), step2D);
-                    physics2DAccumulator -= step2D;
-                    steps2D++;
-                }
-                CSharpScriptSystem::SetDeltaTime(deltaTime);
-            }
-            physics->UpdatePhysics(deltaTime);
-            physicsCnt++;
-            physicsTime += glfwGetTime() - physStart;
-
-            // Dispatch collision/trigger Enter/Exit events to C# scripts
-            // (before Update so scripts see the events for this frame).
-            // kind: 0=CollisionEnter 1=CollisionExit 2=TriggerEnter 3=TriggerExit
-            {
-                auto dispatch = [](GameObject* self, GameObject* other,
-                    const ContactEvent& ev, bool flipNormal, bool isEnter)
-                {
-                    if (!self || !other) return;
-                    int kind = (ev.isTrigger ? 2 : 0) + (isEnter ? 0 : 1);
-                    glm::vec3 n = flipNormal ? -ev.normal : ev.normal;
-                    ForEachScriptComponent(self, [&](CSharpScriptComponent* script)
-                    {
-                        if (!script->enabled || !script->scriptInstance) return;
-                        MonoRuntime::CallDispatchCollision(script->scriptInstance, kind,
-                            other, ev.point.x, ev.point.y, ev.point.z,
-                            n.x, n.y, n.z, ev.depth);
-                    });
-                };
-
-                // ev.normal points from a towards b. Unity convention: the
-                // collision normal points AWAY from the other collider (the
-                // direction that separates self from other) -- so a receives
-                // the flipped normal (b->a) and b receives it as-is (a->b).
-                for (const ContactEvent& ev : physics->enterEvents)
-                {
-                    dispatch(ev.a, ev.b, ev, /*flipNormal=*/true, /*isEnter=*/true);
-                    dispatch(ev.b, ev.a, ev, /*flipNormal=*/false, /*isEnter=*/true);
-                }
-                for (const ContactEvent& ev : physics->exitEvents)
-                {
-                    dispatch(ev.a, ev.b, ev, true, false);
-                    dispatch(ev.b, ev.a, ev, false, false);
-                }
-                physics->enterEvents.clear();
-                physics->exitEvents.clear();
-
-                if (physics2D)
-                {
-                    auto dispatch2D = [&](GameObject* self, GameObject* other,
-                        const ContactEvent2D& ev, bool flipNormal, bool isEnter)
-                    {
-                        if (!self || !other) return;
-                        int kind = (ev.isTrigger ? 2 : 0) + (isEnter ? 0 : 1);
-                        glm::vec2 n = flipNormal ? -ev.normal : ev.normal;
-                        ForEachScriptComponent(self, [&](CSharpScriptComponent* script)
-                        {
-                            if (!script->enabled || !script->scriptInstance) return;
-                            MonoRuntime::CallDispatchCollision(script->scriptInstance, kind,
-                                other, ev.point.x, ev.point.y, 0.0f,
-                                n.x, n.y, 0.0f, ev.depth);
-                        });
-                    };
-
-                    for (const ContactEvent2D& ev : physics2D->enterEvents)
-                    {
-                        dispatch2D(ev.a, ev.b, ev, true, true);
-                        dispatch2D(ev.b, ev.a, ev, false, true);
-                    }
-                    for (const ContactEvent2D& ev : physics2D->exitEvents)
-                    {
-                        dispatch2D(ev.a, ev.b, ev, true, false);
-                        dispatch2D(ev.b, ev.a, ev, false, false);
-                    }
-                    physics2D->enterEvents.clear();
-                    physics2D->exitEvents.clear();
-                }
-            }
-
-            // UI button interaction (hover/press/click), using the viewport-
-            // relative mouse position. Runs before script Update so scripts
-            // observe wasClicked the same frame the click happened.
-            {
-                glm::vec2 mouse = Input::GetMousePosition();
-                glm::vec2 vp = Input::GetGameViewportSize();
-                bool lmbDown = Input::GetMouseButton(0);
-                bool lmbUp = Input::GetMouseButtonUp(0);
-
-                ForEachGameObject(scene.get(), [&](GameObject* obj)
-                {
-                    if (!obj->enabled) return;
-                    for (const auto& comp : obj->components)
-                    {
-                        if (!comp || comp->index != ComponentIndex::UIButton || !comp->enabled) continue;
-                        auto* btn = static_cast<UIButtonComponent*>(comp.get());
-                        if (!btn->interactable)
-                        {
-                            btn->hovered = false;
-                            btn->pressed = false;
-                            btn->wasClicked = false;
-                            continue;
-                        }
-                        glm::vec4 rect = obj->GetComponent<RectTransformComponent>()
-                            ? obj->GetComponent<RectTransformComponent>()->ComputeRect(vp.x, vp.y)
-                            : ComputeUIRect(btn->anchor, btn->offset, btn->size, vp.x, vp.y);
-                        btn->hovered = mouse.x >= rect.x && mouse.x < rect.x + rect.z &&
-                            mouse.y >= rect.y && mouse.y < rect.y + rect.w;
-                        btn->pressed = btn->hovered && lmbDown;
-                        if (btn->hovered && lmbUp) btn->wasClicked = true;
-                    }
-                });
-            }
-
-            ForEachGameObject(scene.get(), [](GameObject* obj)
-            {
-                ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
-                {
-                    script->Update();
-                });
-            });
-        }
-
-        // Component simulation that runs every frame.
-        //  - Animator: only in Play mode (it drives the Transform, so running it
-        //    in Edit would overwrite the values the user is authoring).
-        //  - ParticleSystem: always ticked so the Inspector "Play" button can
-        //    preview particles in Edit mode (Unity-like). Each system self-gates
-        //    on its own `playing` flag, so idle systems cost nothing.
-        {
-            float frameDt = static_cast<float>(deltaTime);
-            bool isPlay = (state == Play);
-            ForEachGameObject(scene.get(), [frameDt, isPlay](GameObject* obj)
-            {
-                if (!obj->enabled) return;
-                if (isPlay)
-                    if (auto* anim = obj->GetComponent<AnimatorComponent>())
-                        anim->Update(frameDt);
-                if (auto* ps = obj->GetComponent<ParticleSystemComponent>())
-                    ps->Update(frameDt);
-            });
-        }
-
-        glfwGetFramebufferSize(window, &window_width, &window_height);
-        if (window_width <= 0 || window_height <= 0) continue;
-
-        renderer->BeginFrame();
-        renderer->SetViewport(0, 0, window_width, window_height);
-
-        if (gameMode)
-        {
-            Camera activeCamera = scene ? scene->GetMainCamera(*gameCamera) : *gameCamera;
-            renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, activeCamera.backgroundColor);
-            renderer->SetDepthState(true);
-
-            mat4 view = activeCamera.GetViewMatrix();
-            mat4 projection = activeCamera.GetProjectionMatrix((float)window_width / (float)window_height);
-            
-            if (scene && shaderPipeline)
-            {
-                scene->Render(shaderPipeline, view, projection, activeCamera.position, window_width, window_height, true);
-            }
-        }
+            UpdatePlayModeFrame(enteredPlay);
         else
-        {
-            renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, sceneCamera->backgroundColor);
-            if (editor)
-            {
-                editor->Draw();
-            }
-        }
-
+            UpdateRuntimeComponents();
+        if (!BeginRenderFrame()) continue;
+        RenderMainFrame();
         renderer->EndFrame();
+    }
+}
+
+bool Engine::BeginRuntimeFrame()
+{
+    curTime = window ? window->TimeSeconds() : 0.0f;
+    deltaTime = curTime - lastTime;
+    lastTime = curTime;
+
+    bool enteredPlay = (state == Play && previousFrameState != Play);
+    previousFrameState = state;
+
+    // Poll window events and snapshot input state BEFORE gameplay runs so
+    // C# scripts see this frame's key edges (GetKeyDown/Up) correctly.
+    if (window) window->PollEvents();
+    Input::NewFrame();
+    ProcessInput();
+    if (gameMode)
+        Input::SetGameViewport(0.0f, 0.0f, (float)window_width, (float)window_height);
+
+    return enteredPlay;
+}
+
+void Engine::UpdatePlayModeFrame(bool enteredPlay)
+{
+    if (enteredPlay) CSharpScriptSystem::SetTime(0.0f);
+
+    double physStart = window ? window->TimeSeconds() : 0.0;
+    Ditto::EngineLifecycle::StepPlayModeFrame(scene.get(), physics.get(), physics2D.get(),
+        static_cast<float>(deltaTime), physics2DAccumulator);
+    physicsCnt++;
+    physicsTime += static_cast<float>((window ? window->TimeSeconds() : 0.0) - physStart);
+
+    DispatchCollisionEvents();
+    UpdateUIButtonInteractions();
+}
+
+void Engine::StepPhysics2D()
+{
+    if (!physics2D) return;
+
+    float cappedDelta = static_cast<float>(deltaTime);
+    if (cappedDelta > 0.25f) cappedDelta = 0.25f;
+    physics2DAccumulator += cappedDelta;
+    int steps2D = 0;
+    while (physics2DAccumulator >= physics2D->fixedDeltaTime && steps2D < 5)
+    {
+        float step2D = physics2D->fixedDeltaTime;
+        CSharpScriptSystem::SetDeltaTime(step2D);
+        ForEachGameObject(scene.get(), [](GameObject* obj)
+        {
+            ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
+            {
+                script->FixedUpdate();
+            });
+        });
+        physics2D->StepFixed(scene.get(), step2D);
+        physics2DAccumulator -= step2D;
+        steps2D++;
+    }
+    CSharpScriptSystem::SetDeltaTime(deltaTime);
+}
+
+void Engine::DispatchCollisionEvents()
+{
+    // Dispatch collision/trigger Enter/Exit events to C# scripts
+    // (before Update so scripts see the events for this frame).
+    // kind: 0=CollisionEnter 1=CollisionExit 2=TriggerEnter 3=TriggerExit
+    auto dispatch = [](GameObject* self, GameObject* other,
+        const ContactEvent& ev, bool flipNormal, bool isEnter)
+    {
+        if (!self || !other) return;
+        int kind = (ev.isTrigger ? 2 : 0) + (isEnter ? 0 : 1);
+        glm::vec3 n = flipNormal ? -ev.normal : ev.normal;
+        ForEachScriptComponent(self, [&](CSharpScriptComponent* script)
+        {
+            if (!script->enabled || !script->scriptInstance) return;
+            MonoRuntime::CallDispatchCollision(script->scriptInstance, kind,
+                other, ev.point.x, ev.point.y, ev.point.z,
+                n.x, n.y, n.z, ev.depth);
+        });
+    };
+
+    // ev.normal points from a towards b. Unity convention: the collision normal
+    // points away from the other collider.
+    for (const ContactEvent& ev : physics->enterEvents)
+    {
+        dispatch(ev.a, ev.b, ev, true, true);
+        dispatch(ev.b, ev.a, ev, false, true);
+    }
+    for (const ContactEvent& ev : physics->exitEvents)
+    {
+        dispatch(ev.a, ev.b, ev, true, false);
+        dispatch(ev.b, ev.a, ev, false, false);
+    }
+    physics->enterEvents.clear();
+    physics->exitEvents.clear();
+
+    if (!physics2D) return;
+
+    auto dispatch2D = [&](GameObject* self, GameObject* other,
+        const ContactEvent2D& ev, bool flipNormal, bool isEnter)
+    {
+        if (!self || !other) return;
+        int kind = (ev.isTrigger ? 2 : 0) + (isEnter ? 0 : 1);
+        glm::vec2 n = flipNormal ? -ev.normal : ev.normal;
+        ForEachScriptComponent(self, [&](CSharpScriptComponent* script)
+        {
+            if (!script->enabled || !script->scriptInstance) return;
+            MonoRuntime::CallDispatchCollision(script->scriptInstance, kind,
+                other, ev.point.x, ev.point.y, 0.0f,
+                n.x, n.y, 0.0f, ev.depth);
+        });
+    };
+
+    for (const ContactEvent2D& ev : physics2D->enterEvents)
+    {
+        dispatch2D(ev.a, ev.b, ev, true, true);
+        dispatch2D(ev.b, ev.a, ev, false, true);
+    }
+    for (const ContactEvent2D& ev : physics2D->exitEvents)
+    {
+        dispatch2D(ev.a, ev.b, ev, true, false);
+        dispatch2D(ev.b, ev.a, ev, false, false);
+    }
+    physics2D->enterEvents.clear();
+    physics2D->exitEvents.clear();
+}
+
+void Engine::UpdateUIButtonInteractions()
+{
+    // UI button interaction (hover/press/click), using the viewport-relative
+    // mouse position. Runs before script Update so scripts observe clicks in
+    // the same frame.
+    glm::vec2 mouse = Input::GetMousePosition();
+    glm::vec2 vp = Input::GetGameViewportSize();
+    bool lmbDown = Input::GetMouseButton(0);
+    bool lmbUp = Input::GetMouseButtonUp(0);
+
+    ForEachGameObject(scene.get(), [&](GameObject* obj)
+    {
+        if (!obj->enabled) return;
+        for (const auto& comp : obj->components)
+        {
+            if (!comp || comp->index != ComponentIndex::UIButton || !comp->enabled) continue;
+            auto* btn = static_cast<UIButtonComponent*>(comp.get());
+            if (!btn->interactable)
+            {
+                btn->hovered = false;
+                btn->pressed = false;
+                btn->wasClicked = false;
+                continue;
+            }
+            glm::vec4 rect = obj->GetComponent<RectTransformComponent>()
+                ? obj->GetComponent<RectTransformComponent>()->ComputeRect(vp.x, vp.y)
+                : ComputeUIRect(btn->anchor, btn->offset, btn->size, vp.x, vp.y);
+            btn->hovered = mouse.x >= rect.x && mouse.x < rect.x + rect.z &&
+                mouse.y >= rect.y && mouse.y < rect.y + rect.w;
+            btn->pressed = btn->hovered && lmbDown;
+            if (btn->hovered && lmbUp) btn->wasClicked = true;
+        }
+    });
+}
+
+void Engine::UpdateScriptComponents()
+{
+    ForEachGameObject(scene.get(), [](GameObject* obj)
+    {
+        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
+        {
+            script->Update();
+        });
+    });
+}
+
+void Engine::UpdateRuntimeComponents()
+{
+    // Animator runs only in Play mode; ParticleSystem also ticks in Edit mode
+    // for Inspector preview playback.
+    float frameDt = static_cast<float>(deltaTime);
+    bool isPlay = (state == Play);
+    ForEachGameObject(scene.get(), [frameDt, isPlay](GameObject* obj)
+    {
+        if (!obj->enabled) return;
+        if (isPlay)
+            if (auto* anim = obj->GetComponent<AnimatorComponent>())
+                anim->Update(frameDt);
+        if (auto* ps = obj->GetComponent<ParticleSystemComponent>())
+            ps->Update(frameDt);
+    });
+}
+
+bool Engine::BeginRenderFrame()
+{
+    if (window) window->GetFramebufferSize(window_width, window_height);
+    if (window_width <= 0 || window_height <= 0) return false;
+
+    renderer->BeginFrame();
+    renderer->SetViewport(0, 0, window_width, window_height);
+    return true;
+}
+
+void Engine::RenderMainFrame()
+{
+    if (gameMode)
+    {
+        Camera activeCamera = scene ? scene->GetMainCamera(*gameCamera) : *gameCamera;
+        renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, activeCamera.backgroundColor);
+        renderer->SetDepthState(true);
+
+        mat4 view = activeCamera.GetViewMatrix();
+        mat4 projection = activeCamera.GetProjectionMatrix((float)window_width / (float)window_height);
+
+        if (scene)
+            scene->Render(view, projection, activeCamera.position, window_width, window_height, true);
+    }
+    else
+    {
+        renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, sceneCamera->backgroundColor);
+        if (editor)
+            editor->Draw();
     }
 }
 
@@ -526,7 +523,7 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
     mat4 view = activeCamera.GetViewMatrix();
     mat4 projection = activeCamera.GetProjectionMatrix((float)w / (float)h);
 
-    scene->Render(shaderPipeline, view, projection, activeCamera.position, w, h, isGameView);
+    scene->Render(view, projection, activeCamera.position, w, h, isGameView);
 
     renderer->EndRenderTarget();
 
@@ -535,15 +532,16 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
 
 void Engine::ProcessInput()
 {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) state = Exit;
+    if (!window) return;
+    if (window->IsKeyPressed(EngineKey::Escape)) state = Exit;
 
     static bool altPressedLastFrame = false;
-    bool altPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
+    bool altPressedNow = window->IsKeyPressed(EngineKey::LeftAlt);
     if (altPressedNow && !altPressedLastFrame) enableMouse = !enableMouse;
     altPressedLastFrame = altPressedNow;
 
     static bool deletePressedLastFrame = false;
-    bool deletePressedNow = glfwGetKey(window, GLFW_KEY_DELETE) == GLFW_PRESS;
+    bool deletePressedNow = window->IsKeyPressed(EngineKey::Delete);
     if (deletePressedNow && !deletePressedLastFrame && editor) {
         if (editor->selectedFile.IsValid())
             editor->DeleteSelectedFile();
@@ -553,7 +551,7 @@ void Engine::ProcessInput()
     deletePressedLastFrame = deletePressedNow;
 
     static bool ctrlDPressedLastFrame = false;
-    bool ctrlDPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+    bool ctrlDPressedNow = window->IsKeyPressed(EngineKey::LeftControl) && window->IsKeyPressed(EngineKey::D);
     if (ctrlDPressedNow && !ctrlDPressedLastFrame && editor) {
         if (editor->selectedFile.IsValid())
             editor->DuplicateSelectedFile();
@@ -563,7 +561,7 @@ void Engine::ProcessInput()
     ctrlDPressedLastFrame = ctrlDPressedNow;
 
     static bool ctrlRPressedLastFrame = false;
-    bool ctrlRPressedNow = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+    bool ctrlRPressedNow = window->IsKeyPressed(EngineKey::LeftControl) && window->IsKeyPressed(EngineKey::R);
     if (ctrlRPressedNow && !ctrlRPressedLastFrame) {
         ForEachGameObject(scene.get(), [](GameObject* obj)
         {
@@ -582,18 +580,18 @@ void Engine::ProcessInput()
     // text field so the shortcuts don't fight ImGui's own text editing.
     // Game mode has NO ImGui context (only the editor calls CreateContext), so
     // guard the GetIO() call -- it asserts/crashes on a null context otherwise.
-    bool ctrlDown = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                    glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+    bool ctrlDown = window->IsKeyPressed(EngineKey::LeftControl) ||
+                    window->IsKeyPressed(EngineKey::RightControl);
     bool textInputActive = ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput;
 
     static bool ctrlZLastFrame = false;
-    bool ctrlZNow = ctrlDown && glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS;
+    bool ctrlZNow = ctrlDown && window->IsKeyPressed(EngineKey::Z);
     if (ctrlZNow && !ctrlZLastFrame && editor && state == Edit && !textInputActive)
         editor->Undo();
     ctrlZLastFrame = ctrlZNow;
 
     static bool ctrlYLastFrame = false;
-    bool ctrlYNow = ctrlDown && glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS;
+    bool ctrlYNow = ctrlDown && window->IsKeyPressed(EngineKey::Y);
     if (ctrlYNow && !ctrlYLastFrame && editor && state == Edit && !textInputActive)
         editor->Redo();
     ctrlYLastFrame = ctrlYNow;
@@ -679,47 +677,12 @@ void Engine::StartScriptsAndAwakeComponents()
 
 void Engine::EnterPlayMode()
 {
-    RebuildRuntimePhysics();
-    PrepareScriptsForPlay();
-    StartScriptsAndAwakeComponents();
-    CSharpScriptSystem::SetTime(0.0f);
+    Ditto::EngineLifecycle::EnterPlayMode(scene.get(), physics.get(), physics2D.get(), physics2DAccumulator);
 }
 
 void Engine::ExitPlayMode()
 {
-    ForEachGameObject(scene.get(), [](GameObject* obj)
-    {
-        ForEachScriptComponent(obj, [](CSharpScriptComponent* script)
-        {
-            script->OnDestroy();
-            script->started = false;
-        });
-
-        // Drop back to euler-authored rotation so the next Play seeds the
-        // quaternion fresh from the (possibly restored) euler values.
-        if (TransformComponent* t = obj->GetComponent<TransformComponent>())
-        {
-            t->useQuatRotation = false;
-            t->localDirty = true;
-        }
-    });
-
-    if (physics) physics->ClearColliders();
-    if (physics2D) physics2D->Clear();
-    physics2DAccumulator = 0.0f;
-    AudioEngine::StopAll();
-}
-
-void Engine::MouseCallBack(GLFWwindow* window, double xpos, double ypos)
-{
-    Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
-    if (!engine) return;
-    if (!engine->enableMouse) { engine->lastX = xpos; engine->lastY = ypos; return; }
-    if (engine->editor && engine->editor->isSceneActive)
-    engine->sceneCamera->ProcessMouseMovement(engine->mouseSpeed * (xpos - engine->lastX) / engine->window_width,
-        engine->mouseSpeed * (ypos - engine->lastY) / engine->window_height);
-    engine->lastX = xpos;
-    engine->lastY = ypos;
+    Ditto::EngineLifecycle::ExitPlayMode(scene.get(), physics.get(), physics2D.get(), physics2DAccumulator);
 }
 
 void Engine::SetProjectPath(const std::string& path)

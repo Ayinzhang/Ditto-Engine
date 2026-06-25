@@ -6,12 +6,14 @@
 #include "ProjectWindow.h"
 #include "InspectorWindow.h"
 #include "BuildSystem.h"
+#include "AssetHealthWindow.h"
 #include "../Engine/Graphics/RHI/IRenderer.h"
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/ImGui/imgui.h"
 #include "../Engine/Core/CSharpScript.h"
 
 struct Engine; struct GameObject; struct Project; struct Camera; struct Shader; struct SceneWindow;
+namespace Ditto { class IWindow; }
 
 enum class SceneToolbarIcon
 {
@@ -95,13 +97,13 @@ struct Editor
     static constexpr size_t kUndoDepth = 64;
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
-    void* m_glfwWindow = nullptr;       // GLFWwindow* (for lazy ImGui backend init)
+    Ditto::IWindow* m_window = nullptr; // engine-owned window (for lazy ImGui backend init)
     bool m_imguiBackendInit = false;    // ImGui platform+renderer backend initialized
     int frame; float fps, ppf, deltaTime;
     
     std::string m_tempScenePath;
 
-    Editor(void* window, bool gameMode = false, const std::string& projectPath = "");
+    Editor(Ditto::IWindow* window, bool gameMode = false, const std::string& projectPath = "");
     ~Editor();
     void Draw();
     void DrawProjectSelector();
@@ -159,6 +161,10 @@ struct Editor
     // Script drag-drop handling
     void OnScriptComponentDropped(const std::string& scriptPath);
     void OnScriptComponentDroppedToObject(GameObject* obj, const std::string& scriptPath);
+    bool InstantiatePrefabToScene(const std::string& prefabPath);
+    bool SaveSelectedObjectAsPrefab(const std::string& prefabPath);
+    bool ApplySelectedPrefabInstance();
+    bool RevertSelectedPrefabInstance();
 
     // 3D model preview related (delegated to InspectorWindow)
     void InitModelPreview() { if (m_inspectorWindow) m_inspectorWindow->InitModelPreview(); }
@@ -243,4 +249,5 @@ private:
     std::unique_ptr<ProjectWindow> m_projectWindow;
     std::unique_ptr<InspectorWindow> m_inspectorWindow;
     std::unique_ptr<SceneWindow> m_sceneWindow;
+    std::unique_ptr<AssetHealthWindow> m_assetHealthWindow;
 };

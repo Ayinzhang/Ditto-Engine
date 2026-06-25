@@ -5,12 +5,39 @@ This file tracks known short-term engineering issues. Keep it UTF-8 encoded.
 ## Documentation
 
 - Fixed: `README.md`, `README_zh.md`, and this file were rewritten as UTF-8 Markdown.
+- Fixed: README build/feature summary now describes JSON scene files, prefab assets,
+  and the Visual Studio solution helper script.
 - Keep build, test, and dependency instructions updated when project files change.
+
+## Visual Studio Build
+
+- Fixed: the hand-maintained `Ditto.sln` path now matches the CMake/MSVC path by
+  excluding GLM's C++ module interface file (`3rdParty/GLM/glm.cppm`) from
+  compilation and disabling MSVC source module dependency scanning.
+- Fixed: `build_editor.py` normalizes duplicate `Path`/`PATH` process environment
+  entries before launching MSBuild, avoiding VC task startup failures on Windows.
+- Fixed: `Ditto.vcxproj` now disables vcpkg MSBuild integration for the hand-maintained
+  Visual Studio project, matching the CMake-generated MSVC targets.
+- Fixed: Debug Visual Studio builds use the x64 host compiler and disable Just My
+  Code instrumentation, avoiding MSVC C1001 failures on large third-party
+  translation units such as ImGui.
+- Fixed: `build_editor.py` decodes MSBuild output as UTF-8 so Chinese diagnostics
+  are readable in PowerShell.
+- Fixed: `Ditto.sln` is now the primary Windows build path; the solution carries
+  the editor plus the `DittoTests` and `DittoRenderSmoke` test projects.
+- Recommended next step: keep mirroring source-file changes into the VS project
+  lists whenever files are split.
 
 ## Editor UI Consistency
 
 - In progress: shared inspector picker widgets now live in
   `Editor/ComponentInspectorWidgets.*`.
+- Fixed: component Inspector drawing implementations now live in the editor
+  module (`Editor/ComponentInspectorWidgets.cpp`), leaving runtime component
+  code focused on data, behavior, and serialization.
+- Fixed: Project window filters generated sidecar files from the asset view:
+  `.meta` files and script-compile `.dll` outputs no longer appear as project
+  assets.
 - In progress: project asset preview helpers now live in
   `Editor/AssetPreviewUtils.*`.
 - Fixed: mesh, material, sprite, texture, audio clip, font, and Rigidbody2D
@@ -40,6 +67,7 @@ This file tracks known short-term engineering issues. Keep it UTF-8 encoded.
   duplicate GUID, and missing GUID-reference diagnostics.
 - Fixed: asset import cache now persists to `.ditto/import-cache.txt` and reloads
   on project scans, giving the editor a durable baseline for import state.
+- Fixed: import records now keep artifact and dependency fields covered by tests.
 - Fixed: `.physmat2d` assets are project-relative, have default project assets,
   editor creation, inspector editing, scene serialization, and physics coverage.
 - Recommended next step: evolve the persisted import records into artifact
@@ -52,6 +80,11 @@ This file tracks known short-term engineering issues. Keep it UTF-8 encoded.
   script preparation, `Start()`, physics rebuild, and play-on-awake components.
 - Fixed: Stop now uses `Engine::ExitPlayMode()` for script teardown, physics clear,
   audio stop, and authored rotation restoration.
+- Fixed: the main runtime loop is split into explicit input, Play update,
+  physics, collision dispatch, UI interaction, runtime component update, and
+  render stages.
+- Fixed: `CSharpScriptComponent::OnDestroy()` now resets lifecycle state even
+  when no managed runtime instance exists.
 - Fixed: script lifecycle tests now cover idempotent preparation and stop calls,
   including repeated prepare/stop paths.
 - Recommended next step: add dedicated tests around full engine
@@ -62,6 +95,9 @@ This file tracks known short-term engineering issues. Keep it UTF-8 encoded.
 
 - Fixed: `ComponentIndex`, `Component`, and `DerivedFromComponent` now live in
   `Engine/Core/Component.h` instead of being embedded in `GameObject.h`.
+- In progress: runtime/editor singleton access is moving through
+  `Ditto::RuntimeContext`; `GameObject.cpp` and shared inspector widgets now use
+  context accessors with legacy globals only as fallback.
 - Fixed: scene save/load and snapshot serialization now live in
   `Engine/Core/SceneSerialization.cpp`, leaving `Scene.cpp` focused on runtime
   scene behavior.

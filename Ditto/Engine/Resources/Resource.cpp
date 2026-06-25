@@ -13,7 +13,6 @@
 #include "AssetPath.h"
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLAD/glad.h"
-#include "../../3rdParty/GLFW/glfw3.h"
 
 #ifdef DITTO_ENABLE_ASSIMP
 #include "../../3rdParty/Assimp/include/assimp/Importer.hpp"

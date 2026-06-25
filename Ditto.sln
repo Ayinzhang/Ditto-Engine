@@ -5,6 +5,10 @@ VisualStudioVersion = 17.14.36811.4 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Ditto", "Ditto\Ditto.vcxproj", "{85775C14-D581-4E0A-BE7D-8B480F4E86A4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DittoTests", "Ditto\Tests\DittoTests.vcxproj", "{4F51B759-B583-4E50-8F96-6A3BD73D6F01}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DittoRenderSmoke", "Ditto\Tests\DittoRenderSmoke.vcxproj", "{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,6 +25,18 @@ Global
 		{85775C14-D581-4E0A-BE7D-8B480F4E86A4}.Release|x64.Build.0 = Release|x64
 		{85775C14-D581-4E0A-BE7D-8B480F4E86A4}.Release|x86.ActiveCfg = Release|Win32
 		{85775C14-D581-4E0A-BE7D-8B480F4E86A4}.Release|x86.Build.0 = Release|Win32
+		{4F51B759-B583-4E50-8F96-6A3BD73D6F01}.Debug|x64.ActiveCfg = Debug|x64
+		{4F51B759-B583-4E50-8F96-6A3BD73D6F01}.Debug|x64.Build.0 = Debug|x64
+		{4F51B759-B583-4E50-8F96-6A3BD73D6F01}.Debug|x86.ActiveCfg = Debug|x64
+		{4F51B759-B583-4E50-8F96-6A3BD73D6F01}.Release|x64.ActiveCfg = Release|x64
+		{4F51B759-B583-4E50-8F96-6A3BD73D6F01}.Release|x64.Build.0 = Release|x64
+		{4F51B759-B583-4E50-8F96-6A3BD73D6F01}.Release|x86.ActiveCfg = Release|x64
+		{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}.Debug|x64.ActiveCfg = Debug|x64
+		{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}.Debug|x64.Build.0 = Debug|x64
+		{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}.Debug|x86.ActiveCfg = Debug|x64
+		{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}.Release|x64.ActiveCfg = Release|x64
+		{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}.Release|x64.Build.0 = Release|x64
+		{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

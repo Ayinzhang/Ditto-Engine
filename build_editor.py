@@ -1,8 +1,40 @@
+import os
 import subprocess
 import sys
-import os
+from pathlib import Path
 
-os.chdir(r"C:\Projects\Ditto-Engine")
+os.chdir(Path(__file__).resolve().parent)
+
+
+def normalize_process_path_environment():
+    """MSBuild's VC tasks can fail if the process env has both Path and PATH."""
+    path_keys = [key for key in os.environ.keys() if key.lower() == "path"]
+    if len(path_keys) <= 1:
+        return
+
+    preferred = "Path" if "Path" in os.environ else path_keys[0]
+    path_value = os.environ.get(preferred) or os.environ.get(path_keys[0], "")
+    for key in path_keys:
+        if key != preferred:
+            os.environ.pop(key, None)
+    os.environ[preferred] = path_value
+
+
+def msbuild_environment():
+    env = {}
+    path_value = None
+    for key, value in os.environ.items():
+        if key.lower() == "path":
+            if path_value is None or key == "Path":
+                path_value = value
+            continue
+        env[key] = value
+    if path_value is not None:
+        env["Path"] = path_value
+    return env
+
+
+normalize_process_path_environment()
 
 # Run MSBuild
 cmd = [
@@ -17,9 +49,9 @@ cmd = [
 ]
 
 print("Building Ditto project...")
-result = subprocess.run(cmd, capture_output=True, text=True, errors='ignore')
+result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=msbuild_environment())
 
-# Try to print stdout, ignore encoding errors
+# Print captured MSBuild output with stable Unicode handling.
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')

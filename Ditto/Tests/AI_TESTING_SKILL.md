@@ -14,16 +14,11 @@ shader paths, output directories, and diagnostic dumps being trustworthy first.
 
 ## Commands
 
-Configure:
+Build the current test executables through Visual Studio/MSBuild:
 
 ```powershell
-cmake -S Ditto -B build-tests
-```
-
-Build the current test executable:
-
-```powershell
-cmake --build build-tests --target DittoTests --config Debug
+msbuild Ditto.sln /p:Configuration=Debug /p:Platform=x64 /t:DittoTests /m:1 /v:minimal /nologo
+msbuild Ditto.sln /p:Configuration=Debug /p:Platform=x64 /t:DittoRenderSmoke /m:1 /v:minimal /nologo
 ```
 
 Run the full ordered flow:
@@ -35,31 +30,25 @@ powershell -ExecutionPolicy Bypass -File Ditto\Tests\RunFullTests.ps1
 Run only file-operation tests:
 
 ```powershell
-build-tests\Debug\DittoTests.exe --stage file
+x64\Debug\DittoTests.exe --stage file
 ```
 
 Run only C# scripting tests:
 
 ```powershell
-build-tests\Debug\DittoTests.exe --stage csharp
+x64\Debug\DittoTests.exe --stage csharp
 ```
 
 Run only simulation tests:
 
 ```powershell
-build-tests\Debug\DittoTests.exe --stage simulation
-```
-
-Run via CTest:
-
-```powershell
-ctest --test-dir build-tests -C Debug --output-on-failure
+x64\Debug\DittoTests.exe --stage simulation
 ```
 
 Dump a sample scene tree for AI inspection:
 
 ```powershell
-build-tests\Debug\DittoTests.exe --dump-scene
+x64\Debug\DittoTests.exe --dump-scene
 ```
 
 ## Current Coverage
@@ -85,12 +74,8 @@ The `csharp` stage currently covers:
 - Attaching CSharpScript components to GameObject instances.
 - Compiling a fixture script against the current `DittoEngine.dll` API.
 
-The C# API assembly is built by the `DittoEngineCSharp` CMake target when
-`dotnet` is available:
-
-```powershell
-cmake --build build-tests --target DittoEngineCSharp --config Debug
-```
+The C# API assembly is built by the Visual Studio test projects before native
+compilation when `dotnet` is available.
 
 The expected API output is:
 
@@ -115,7 +100,7 @@ The `render` stage currently covers:
 Default output directory:
 
 ```text
-build-tests/TestOutput/RenderSmoke/
+x64/TestOutput/RenderSmoke/
 ```
 
 Default render outputs:
@@ -133,13 +118,13 @@ UnlitSmoke.shader
 Run the render smoke directly:
 
 ```powershell
-build-tests\Debug\DittoRenderSmoke.exe --out build-tests\TestOutput\RenderSmoke
+x64\Debug\DittoRenderSmoke.exe --out x64\TestOutput\RenderSmoke
 ```
 
 Run it with a user shader:
 
 ```powershell
-build-tests\Debug\DittoRenderSmoke.exe --shader Ditto\Assets\Shaders\Lit_Toon.shader --out build-tests\TestOutput\LitToon
+x64\Debug\DittoRenderSmoke.exe --shader Ditto\Assets\Shaders\Lit_Toon.shader --out x64\TestOutput\LitToon
 ```
 
 The `simulation` stage currently covers:
@@ -163,7 +148,7 @@ Planned simulation extensions:
   simulated results.
 - Do not rely on screenshots alone. Rendering tests must also provide JSON
   state and pixel statistics.
-- Keep generated build directories under `build-*`; they are ignored by git.
+- Keep generated build outputs under `x64/`; they are ignored by git.
 - Keep test assets and expected outputs small and deterministic.
 
 ## Adding Tests

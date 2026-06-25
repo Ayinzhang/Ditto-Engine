@@ -9,21 +9,19 @@ namespace Ditto
     //
     // Lifetime: a GLRenderer must outlive everything that holds its handles
     // (Scene, the editor windows) and must be destroyed while the GL context is
-    // still current (i.e. before glfwDestroyWindow/glfwTerminate).
+    // still current (i.e. before the platform window is destroyed).
     class GLRenderer : public IRenderer
     {
     public:
-        // `window` is the GLFWwindow* (kept as void* so this header needs no GLFW
-        // include); used by EndFrame to swap buffers.
-        explicit GLRenderer(void* window) : m_window(window) {}
+        explicit GLRenderer(IWindow* window) : m_window(window) {}
         ~GLRenderer() override;
 
         RendererBackend Backend() const override { return RendererBackend::OpenGL; }
 
         void BeginFrame() override {}
-        void EndFrame() override;   // glfwSwapBuffers
+        void EndFrame() override;
 
-        void ImGuiInit(void* window) override;
+        void ImGuiInit(IWindow* window) override;
         void ImGuiShutdown() override;
         void ImGuiNewFrame() override;
         void ImGuiRenderDrawData(void* drawData) override;
@@ -90,7 +88,8 @@ namespace Ditto
         std::vector<GLTexture>         m_textures;
         std::vector<GLRenderTargetRes> m_renderTargets;
 
-        void* m_window = nullptr;   // GLFWwindow* for buffer swap
+        IWindow* m_window = nullptr;
+        IWindow* m_imguiWindow = nullptr;
         unsigned int m_currentProgram = 0;
         unsigned int m_frameUBO = 0;   // FrameUniforms std140 UBO (binding 0)
         unsigned int m_defaultSampler = 0;

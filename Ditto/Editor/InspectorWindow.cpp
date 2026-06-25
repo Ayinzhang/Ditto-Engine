@@ -29,10 +29,6 @@ static Ditto::IRenderer* PreviewRenderer(Editor* editor);
 #include "../3rdParty/GLM/glm.hpp"
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
 
-// For icon loading
-#include "../3rdParty/stb_image.h"
-#include "../3rdParty/GLAD/glad.h"
-
 namespace fs = std::filesystem;
 
 namespace
@@ -74,84 +70,6 @@ namespace
         if (search.empty()) return true;
         return LowerText(text).find(LowerText(search)) != std::string::npos;
     }
-
-    // Unity icon cache
-    struct IconCache
-    {
-        std::map<std::string, ImTextureID> icons;
-        bool initialized = false;
-        bool initFailed = false;
-
-        ImTextureID GetIcon(const std::string& name)
-        {
-            if (!initialized || initFailed) return (ImTextureID)0;
-            auto it = icons.find(name);
-            return it != icons.end() ? it->second : (ImTextureID)0;
-        }
-
-        void Initialize()
-        {
-            if (initialized || initFailed) return;
-
-            // Check if OpenGL context is available
-            if (!gladLoadGL())
-            {
-                initFailed = true;
-                return;
-            }
-
-            initialized = true;
-
-            // Load icons from Icons folder
-            std::string iconBasePath = "C:/Projects/Ditto-Engine/Ditto/Assets/Icons/";
-
-            // Load icons - map key to filename
-            std::map<std::string, std::string> iconFileMap = {
-                {"picker", "ObjectPicker.png"},
-                {"shader", "Shader.png"},
-                {"material", "Material.png"},
-                {"texture", "Texture2D.png"},
-                {"mesh", "Model.png"},
-                {"sprite", "Sprite.png"},
-            };
-
-            for (const auto& [key, filename] : iconFileMap)
-            {
-                std::string fullPath = iconBasePath + filename;
-
-                if (!fs::exists(fullPath))
-                {
-                    DITTO_LOG_WARN_STREAM("[IconCache] Icon not found: " << fullPath);
-                    continue;
-                }
-
-                int width, height, channels;
-                unsigned char* data = stbi_load(fullPath.c_str(), &width, &height, &channels, 4);
-                if (data)
-                {
-                    GLuint textureID;
-                    glGenTextures(1, &textureID);
-                    if (textureID == 0)
-                    {
-                        stbi_image_free(data);
-                        continue;
-                    }
-
-                    glBindTexture(GL_TEXTURE_2D, textureID);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-                    stbi_image_free(data);
-                    icons[key] = (ImTextureID)(intptr_t)textureID;
-                    DITTO_LOG_INFO_STREAM("[IconCache] Loaded " << key << " from " << fullPath);
-                }
-            }
-
-            DITTO_LOG_INFO_STREAM("[IconCache] Initialized with " << icons.size() << " icons");
-        }
-    };
-
-    static IconCache g_iconCache;
 
     // Asset item for picker
     struct AssetItem
@@ -218,8 +136,21 @@ namespace
     }
 
     // Draw Unity-style asset picker popup with grid layout
+    ImTextureID GetEditorAssetIcon(Editor* editor, const std::string& iconKey)
+    {
+        if (!editor) return (ImTextureID)0;
+        std::string extension = ".asset";
+        if (iconKey == "shader") extension = ".shader";
+        else if (iconKey == "material") extension = ".mat";
+        else if (iconKey == "texture" || iconKey == "sprite") extension = ".png";
+        else if (iconKey == "mesh") extension = ".obj";
+        else if (iconKey == "picker") extension = ".objectpicker";
+        return (ImTextureID)editor->GetIconByExtension(extension);
+    }
+
     bool DrawAssetPicker(const char* popupId, const char* assetType, const std::vector<std::string>& extensions,
-                         std::string& outSelectedPath, const std::string& iconKey, char* searchBuffer, size_t searchBufferSize)
+                         std::string& outSelectedPath, const std::string& iconKey, char* searchBuffer, size_t searchBufferSize,
+                         Editor* editor)
     {
         bool selected = false;
 
@@ -263,9 +194,7 @@ namespace
                 ImGui::Separator();
             }
 
-            // Initialize icon cache
-            g_iconCache.Initialize();
-            ImTextureID icon = g_iconCache.GetIcon(iconKey);
+            ImTextureID icon = GetEditorAssetIcon(editor, iconKey);
 
             // Display assets in a list with icons
             for (const auto& asset : assets)
@@ -323,18 +252,8 @@ namespace
         float circleButtonWidth = buttonHeight; // Square button for the circle
         float mainButtonWidth = availWidth - circleButtonWidth - 2.0f;
 
-        // Initialize icon cache (legacy OpenGL cache for fallback)
-        g_iconCache.Initialize();
-        ImTextureID icon = g_iconCache.GetIcon(iconKey);
-        ImTextureID pickerIcon = g_iconCache.GetIcon("picker");
-
-        // Prefer RHI-loaded icons (used by Editor) so the picker button matches
-        // the rest of the editor regardless of the active graphics backend.
-        if (editor)
-        {
-            if (void* rhiIcon = editor->GetIconByExtension(".objectpicker"))
-                pickerIcon = (ImTextureID)rhiIcon;
-        }
+        ImTextureID icon = GetEditorAssetIcon(editor, iconKey);
+        ImTextureID pickerIcon = GetEditorAssetIcon(editor, "picker");
 
         // Main button showing current selection
         ImGui::BeginGroup();
@@ -468,7 +387,7 @@ namespace
         if (ImGui::IsPopupOpen(id) && ImGui::IsWindowAppearing())
             searchBuffer[0] = '\0';
 
-        if (DrawAssetPicker(id, assetType, extensions, *outSelectedPath, iconKey, searchBuffer, sizeof(searchBuffer)))
+        if (DrawAssetPicker(id, assetType, extensions, *outSelectedPath, iconKey, searchBuffer, sizeof(searchBuffer), editor))
             return true;
 
         return false;
@@ -929,7 +848,10 @@ void InspectorWindow::Draw()
                 { "Button", ComponentIndex::UIButton, [&]() { m_currentObject->AddComponent<UIButtonComponent>(); } },
                 { "Audio Source", ComponentIndex::AudioSource, [&]() { m_currentObject->AddComponent<AudioSourceComponent>(); } },
                 { "Animator", ComponentIndex::Animator, [&]() { m_currentObject->AddComponent<AnimatorComponent>(); } },
-                { "Particle System", ComponentIndex::ParticleSystem, [&]() { m_currentObject->AddComponent<ParticleSystemComponent>(); } },
+                { "Particle System", ComponentIndex::ParticleSystem, [&]() {
+                    auto* ps = m_currentObject->AddComponent<ParticleSystemComponent>();
+                    ps->materialPath = "Materials/Lit_Sprite.mat";
+                } },
             };
 
             auto drawComponentItem = [&](const ComponentMenuItem& item) -> bool
@@ -1050,7 +972,11 @@ void InspectorWindow::Draw()
             if (ImGui::BeginMenu("Effects"))
             {
                 if (!(m_currentObject->compMask & ComponentIndex::ParticleSystem) && ImGui::MenuItem("Particle System"))
-                    { if (m_editor) m_editor->PushUndoSnapshot(); m_currentObject->AddComponent<ParticleSystemComponent>(); }
+                    {
+                        if (m_editor) m_editor->PushUndoSnapshot();
+                        auto* ps = m_currentObject->AddComponent<ParticleSystemComponent>();
+                        ps->materialPath = "Materials/Lit_Sprite.mat";
+                    }
                 ImGui::EndMenu();
             }
 

@@ -12,7 +12,7 @@
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 
-class Resource;
+struct Resource;
 struct UIRenderer;
 
 struct BaseGeometry
@@ -92,11 +92,12 @@ struct Scene
 
     void MarkDirty() { if (onModified) onModified(); }
 
+    void RegisterSubtree(GameObject* obj);
     void UnregisterSubtree(GameObject* obj);
 
     void CollectRenderData();
     void UpdateSSBOs();
-    void Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
+    void Render(const glm::mat4& view, const glm::mat4& projection,
         const glm::vec3& viewPos, int viewportWidth, int viewportHeight, bool renderUI = false);
 
     void InitializeBaseGeometries(Resource* resource, Ditto::IRenderer* rhi);
@@ -118,6 +119,6 @@ struct Scene
 
 private:
     void DestroyAllObjects();
-    Ditto::PipelineHandle GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback);
+    Ditto::PipelineHandle GetOrCreateShaderPipeline(const std::string& shaderName);
     Ditto::PipelineState GetShaderPipelineState(const std::string& shaderName);
 };

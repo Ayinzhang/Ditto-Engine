@@ -9,7 +9,7 @@ namespace Ditto
     {
         std::string materialName;
         std::string sourcePath;
-        std::string shaderName = "Lit_Toon";
+        std::string shaderName;
         glm::vec4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
         std::string mainTexturePath;
         bool ok = false;

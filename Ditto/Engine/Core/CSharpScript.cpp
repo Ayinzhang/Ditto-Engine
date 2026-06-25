@@ -3,7 +3,10 @@
 #include <windows.h>
 #include <sstream>
 #include <cctype>
+#include <algorithm>
+#include <functional>
 #include "CSharpScript.h"
+#include "CSharpScriptCompiler.h"
 #include "RuntimeContext.h"
 #include "MonoRuntime.h"
 #include "GameObject.h"
@@ -12,172 +15,19 @@
 #include "../Resources/AssetReferenceIO.h"
 #ifndef DITTO_HEADLESS_TESTS
 #include "../../Editor/Editor.h"
+#include "../../Editor/ProjectWindow.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #include "Input.h"
 #include "../Audio/AudioEngine.h"
+#include "../Resources/AssetPath.h"
 #endif
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
 #include "../Physics/Physics.h"
+#include "../Animation/AnimatorComponent.h"
+#include "../Graphics/ParticleSystemComponent.h"
 
 namespace fs = std::filesystem;
-
-static std::string FindDittoEngineDll()
-{
-    const std::vector<std::string> possiblePaths = {
-        "3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
-        "Ditto/3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
-        "../Ditto/3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
-        "../../Ditto/3rdParty/Mono/bin/Release/netstandard2.0/DittoEngine.dll",
-        "3rdParty/Mono/DittoEngine.dll",
-        "../../3rdParty/Mono/DittoEngine.dll",
-        "../3rdParty/Mono/DittoEngine.dll",
-        "Ditto/3rdParty/Mono/DittoEngine.dll",
-        "../Ditto/3rdParty/Mono/DittoEngine.dll",
-        "../../Ditto/3rdParty/Mono/DittoEngine.dll",
-    };
-
-    for (const auto& path : possiblePaths)
-    {
-        if (fs::exists(path)) return fs::absolute(path).string();
-    }
-
-    return "3rdParty/Mono/DittoEngine.dll";
-}
-
-static std::string FindMSBuildPath()
-{
-    char* vsPathEnv = nullptr;
-    size_t vsPathLen = 0;
-    if (_dupenv_s(&vsPathEnv, &vsPathLen, "VSINSTALLDIR") == 0 && vsPathEnv)
-    {
-        std::string roslynPath = std::string(vsPathEnv) + "MSBuild\\Current\\Bin\\Roslyn";
-        free(vsPathEnv);
-        if (fs::exists(roslynPath))
-            return roslynPath;
-    }
-
-    const char* regKey = "SOFTWARE\\Microsoft\\VisualStudio\\Setup\\Instances";
-    HKEY hKey = nullptr;
-
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
-    {
-        char name[MAX_PATH];
-        DWORD index = 0;
-        DWORD nameSize = MAX_PATH;
-
-        while (RegEnumKeyExA(hKey, index++, name, &nameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
-        {
-            std::string instanceKey = std::string(regKey) + "\\" + name;
-            HKEY hInstKey = nullptr;
-
-            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, instanceKey.c_str(), 0, KEY_READ, &hInstKey) == ERROR_SUCCESS)
-            {
-                char installPath[MAX_PATH];
-                DWORD size = MAX_PATH;
-                DWORD type = REG_SZ;
-
-                if (RegQueryValueExA(hInstKey, "InstallLocation", nullptr, &type, (LPBYTE)installPath, &size) == ERROR_SUCCESS)
-                {
-                    std::string roslynPath = std::string(installPath) + "MSBuild\\Current\\Bin\\Roslyn";
-                    if (fs::exists(roslynPath))
-                    {
-                        RegCloseKey(hInstKey);
-                        RegCloseKey(hKey);
-                        return roslynPath;
-                    }
-                }
-                RegCloseKey(hInstKey);
-            }
-            nameSize = MAX_PATH;
-        }
-        RegCloseKey(hKey);
-    }
-
-    char* pathEnv = nullptr;
-    size_t pathLen = 0;
-    if (_dupenv_s(&pathEnv, &pathLen, "PATH") == 0 && pathEnv)
-    {
-        std::string pathStr(pathEnv);
-        free(pathEnv);
-
-        size_t pos = 0;
-        while ((pos = pathStr.find(';')) != std::string::npos)
-        {
-            std::string dir = pathStr.substr(0, pos);
-            std::string cscPath = dir + "\\csc.exe";
-            if (fs::exists(cscPath))
-            {
-                size_t lastSlash = dir.find_last_of("\\/");
-                if (lastSlash != std::string::npos)
-                {
-                    std::string roslynDir = dir.substr(0, lastSlash);
-                    if (roslynDir.find("Roslyn") != std::string::npos)
-                        return roslynDir;
-                }
-            }
-            pathStr.erase(0, pos + 1);
-        }
-    }
-
-    const char* drives[] = { "D:", "C:", "E:", "F:" };
-    for (const auto& drive : drives)
-    {
-        std::string vsBase = std::string(drive) + "\\Visual Studio 2022";
-        if (fs::exists(vsBase))
-        {
-            std::string roslynPath = vsBase + "\\MSBuild\\Current\\Bin\\Roslyn";
-            if (fs::exists(roslynPath))
-                return roslynPath;
-
-            for (const auto& entry : fs::directory_iterator(vsBase))
-            {
-                if (!entry.is_directory())
-                    continue;
-                roslynPath = entry.path().string() + "\\MSBuild\\Current\\Bin\\Roslyn";
-                if (fs::exists(roslynPath))
-                    return roslynPath;
-            }
-        }
-
-        std::string progFiles = std::string(drive) + "\\Program Files\\Microsoft Visual Studio\\2022";
-        if (fs::exists(progFiles))
-        {
-            for (const auto& entry : fs::directory_iterator(progFiles))
-            {
-                if (!entry.is_directory())
-                    continue;
-                std::string roslynPath = entry.path().string() + "\\MSBuild\\Current\\Bin\\Roslyn";
-                if (fs::exists(roslynPath))
-                    return roslynPath;
-            }
-        }
-    }
-
-    return "";
-}
-
-static std::string FindNetStandardDll()
-{
-    std::vector<fs::path> candidates = {
-        fs::path("C:/Program Files/dotnet/sdk"),
-        fs::path("C:/Program Files/dotnet/packs/NETStandard.Library.Ref"),
-        fs::path("C:/Program Files/dotnet/packs/Microsoft.NETCore.App.Ref"),
-    };
-
-    for (const fs::path& root : candidates)
-    {
-        std::error_code ec;
-        if (!fs::exists(root, ec)) continue;
-        for (const auto& entry : fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec))
-        {
-            if (ec) break;
-            if (entry.is_regular_file(ec) && entry.path().filename() == "netstandard.dll")
-                return fs::absolute(entry.path()).string();
-        }
-    }
-    return "";
-}
 
 bool CSharpScriptSystem::s_initialized = false;
 float CSharpScriptSystem::s_deltaTime = 0.016f;
@@ -363,6 +213,73 @@ namespace
         if (!(std::isalpha((unsigned char)s[0]) || s[0] == '_')) return false;
         for (char c : s) if (!(std::isalnum((unsigned char)c) || c == '_')) return false;
         return true;
+    }
+
+    CameraComponent* FindMainCameraComponent(Scene* scene)
+    {
+        if (!scene || !scene->rootGameObject) return nullptr;
+
+        CameraComponent* result = nullptr;
+        GameObject* resultObject = nullptr;
+        std::function<void(GameObject*)> visit = [&](GameObject* obj)
+        {
+            if (!obj || result || !obj->enabled) return;
+            CameraComponent* camera = obj->GetComponent<CameraComponent>();
+            if (camera && camera->enabled && camera->mainCamera)
+            {
+                result = camera;
+                resultObject = obj;
+                return;
+            }
+            for (const auto& child : obj->children)
+                visit(child.get());
+        };
+        visit(scene->rootGameObject.get());
+        if (resultObject) scene->mainCamera = resultObject;
+        return result;
+    }
+
+    glm::vec2 CurrentGameViewportSize()
+    {
+#ifndef DITTO_HEADLESS_TESTS
+        glm::vec2 size = Input::GetGameViewportSize();
+        return glm::vec2(glm::max(1.0f, size.x), glm::max(1.0f, size.y));
+#else
+        return glm::vec2(1.0f, 1.0f);
+#endif
+    }
+
+    Camera ToRuntimeCamera(CameraComponent* component)
+    {
+        TransformComponent* transform = component && component->gameObject
+            ? component->gameObject->GetComponent<TransformComponent>() : nullptr;
+        return component ? component->ToCamera(transform)
+            : Camera(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    }
+
+    glm::vec3 ScreenToWorldPointAtDistance(CameraComponent* component,
+        const glm::vec2& screenPoint, float distance)
+    {
+        Camera runtimeCamera = ToRuntimeCamera(component);
+        glm::vec2 viewport = CurrentGameViewportSize();
+        Camera::Ray ray = runtimeCamera.ScreenPointToRayFull(screenPoint,
+            static_cast<int>(viewport.x), static_cast<int>(viewport.y));
+        return ray.origin + ray.direction * distance;
+    }
+
+    glm::vec3 ScreenToWorldPointOnZ(CameraComponent* component,
+        const glm::vec2& screenPoint, float worldZ)
+    {
+        Camera runtimeCamera = ToRuntimeCamera(component);
+        glm::vec2 viewport = CurrentGameViewportSize();
+        Camera::Ray ray = runtimeCamera.ScreenPointToRayFull(screenPoint,
+            static_cast<int>(viewport.x), static_cast<int>(viewport.y));
+
+        if (std::abs(ray.direction.z) <= 0.0001f)
+            return ray.origin;
+
+        float t = (worldZ - ray.origin.z) / ray.direction.z;
+        return ray.origin + ray.direction * t;
     }
 
     // Split a declarator list ("a = 1, b = new Vector3(1,2,3), c") on commas
@@ -560,6 +477,7 @@ void CSharpScriptComponent::FixedUpdate()
 void CSharpScriptComponent::OnDestroy()
 {
     if (scriptInstance) MonoRuntime::CallOnDestroy(scriptInstance);
+    started = false;
 }
 
 void CSharpScriptComponent::Serialize(std::ostream& file) const
@@ -636,7 +554,7 @@ void CSharpScriptComponent::Deserialize(std::istream& file)
     scriptName = Ditto::AssetReferenceIO::ReadString(file);
     std::uint32_t assetReferenceVersion = Ditto::RuntimeContext::SceneLoadingVersion();
     if (assetReferenceVersion == 0)
-        assetReferenceVersion = g_sceneLoadingVersion == 0 ? 16 : g_sceneLoadingVersion;
+        assetReferenceVersion = 16;
     scriptPath = Ditto::AssetReferenceIO::ReadAssetReference(file, assetReferenceVersion);
 
     file.read(reinterpret_cast<char*>(&enabled), sizeof(enabled));
@@ -744,6 +662,42 @@ void CSharpScriptComponent::OnInspectorGUI()
 
     ImGui::Text("Script: "); ImGui::SameLine();
     ImGui::TextDisabled("%s", scriptPath.c_str());
+
+    if (!lastCompileResult.scriptPath.empty())
+    {
+        ImVec4 color = lastCompileResult.ok
+            ? ImVec4(0.35f, 0.85f, 0.45f, 1.0f)
+            : ImVec4(1.0f, 0.45f, 0.35f, 1.0f);
+        ImGui::TextColored(color, "Compile: %s (%d errors, %d warnings)",
+            lastCompileResult.ok ? "OK" : "Failed",
+            lastCompileResult.errorCount,
+            lastCompileResult.warningCount);
+        for (size_t i = 0; i < lastCompileResult.diagnostics.size() && i < 5; ++i)
+        {
+            const auto& diagnostic = lastCompileResult.diagnostics[i];
+            std::string label = diagnostic.file + "(" + std::to_string(diagnostic.line)
+                + "," + std::to_string(diagnostic.column) + "): "
+                + diagnostic.severity + " " + diagnostic.code + ": " + diagnostic.message;
+            ImGui::PushID(static_cast<int>(i));
+            if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick))
+            {
+                Editor* editor = CSharpScriptSystem::GetEditor();
+                std::string fileToOpen = diagnostic.file.empty() ? scriptPath : diagnostic.file;
+                if (editor && editor->GetProjectWindow())
+                    editor->GetProjectWindow()->OpenCSharpFile(fileToOpen, diagnostic.line, diagnostic.column);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Open source file");
+            ImGui::PopID();
+        }
+        if (!lastCompileResult.output.empty() && ImGui::CollapsingHeader("Compiler Output"))
+        {
+            std::string output = lastCompileResult.output.substr(0, 4096);
+            if (lastCompileResult.output.size() > output.size())
+                output += "\n...";
+            ImGui::TextWrapped("%s", output.c_str());
+        }
+    }
 
     for (auto& field : fields)
     {
@@ -942,7 +896,24 @@ bool CSharpScriptSystem::LoadScript(const std::string& csPath, CSharpScriptCompo
 
     std::string dllPathStr = dllPath.string();
 
-    if (!CompileScript(csPath, dllPathStr)) return false;
+    component->lastCompileResult = CompileScriptDetailed(csPath, dllPathStr);
+    if (!component->lastCompileResult.ok)
+    {
+        Ditto::Logger::Get().Error("[CSharpScript] Compile failed for " + csPath
+            + " (" + std::to_string(component->lastCompileResult.errorCount) + " errors, "
+            + std::to_string(component->lastCompileResult.warningCount) + " warnings)");
+        if (!component->lastCompileResult.output.empty())
+            Ditto::Logger::Get().Error(component->lastCompileResult.output);
+        return false;
+    }
+
+    if (component->lastCompileResult.warningCount > 0)
+    {
+        Ditto::Logger::Get().Warning("[CSharpScript] Compile warnings for " + csPath
+            + " (" + std::to_string(component->lastCompileResult.warningCount) + " warnings)");
+        if (!component->lastCompileResult.output.empty())
+            Ditto::Logger::Get().Warning(component->lastCompileResult.output);
+    }
 
     if (CSharpScriptSystem::IsInitialized() && MonoRuntime::IsInitialized())
     {
@@ -1150,134 +1121,28 @@ void CSharpScriptComponent::HotReloadScript()
 
 CSharpCompileResult CSharpScriptSystem::CompileScriptDetailed(const std::string& csPath, std::string& outDllPath)
 {
-    CSharpCompileResult compileResult;
-    if (!fs::exists(csPath))
-    {
-        compileResult.output = "Script file not found: " + csPath;
-        compileResult.errorCount = 1;
-        return compileResult;
-    }
-
-    fs::path scriptPath(csPath);
-    fs::path absScriptPath = fs::absolute(scriptPath);
-    if (outDllPath.empty())
-    {
-        fs::path dllAbsPath = absScriptPath.parent_path() / (absScriptPath.stem().string() + ".dll");
-        outDllPath = dllAbsPath.string();
-    }
-
-    std::string dittoEngineDll = FindDittoEngineDll();
-    if (dittoEngineDll.empty())
-    {
-        compileResult.output = "DittoEngine.dll not found";
-        compileResult.errorCount = 1;
-        return compileResult;
-    }
-
-    std::string monoMscorlib;
-    {
-        const std::vector<std::string> mscorlibPaths = {
-            "3rdParty/Mono/mscorlib.dll",
-            "../../3rdParty/Mono/mscorlib.dll",
-            "../3rdParty/Mono/mscorlib.dll",
-            "Ditto/3rdParty/Mono/mscorlib.dll",
-            "../Ditto/3rdParty/Mono/mscorlib.dll",
-            "../../Ditto/3rdParty/Mono/mscorlib.dll",
-        };
-        for (const auto& path : mscorlibPaths)
-        {
-            if (fs::exists(path))
-            {
-                monoMscorlib = fs::absolute(path).string();
-                break;
-            }
-        }
-    }
-
-    if (monoMscorlib.empty())
-    {
-        compileResult.output = "Mono mscorlib.dll not found";
-        compileResult.errorCount = 1;
-        return compileResult;
-    }
-
-    std::string netstandardDll = FindNetStandardDll();
-    if (netstandardDll.empty())
-    {
-        compileResult.output = "netstandard.dll not found";
-        compileResult.errorCount = 1;
-        return compileResult;
-    }
-
-    std::string roslynPath = FindMSBuildPath();
-    if (roslynPath.empty())
-    {
-        compileResult.output = "Roslyn compiler path not found";
-        compileResult.errorCount = 1;
-        return compileResult;
-    }
-
-    std::string cscPath = roslynPath + "\\csc.exe";
-    if (!fs::exists(cscPath))
-    {
-        compileResult.output = "csc.exe not found: " + cscPath;
-        compileResult.errorCount = 1;
-        return compileResult;
-    }
-
-    if (fs::exists(outDllPath))
-    {
-        try { fs::remove(outDllPath); }
-        catch (const fs::filesystem_error&)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            try { fs::remove(outDllPath); } catch (...) {}
-        }
-    }
-
-    fs::path logPath = fs::temp_directory_path() / (absScriptPath.stem().string() + "_csc.log");
-    std::string cmd = "cmd /c \"\"" + cscPath + "\""
-        + " /target:library"
-        + " /nostdlib+"
-        + " /reference:\"" + monoMscorlib + "\""
-        + " /reference:\"" + netstandardDll + "\""
-        + " /reference:\"" + dittoEngineDll + "\""
-        + " /out:\"" + outDllPath + "\""
-        + " \"" + absScriptPath.string() + "\""
-        + " >\"" + logPath.string() + "\" 2>&1\"";
-
-    int result = system(cmd.c_str());
-    {
-        std::ifstream log(logPath, std::ios::binary);
-        if (log)
-            compileResult.output.assign(std::istreambuf_iterator<char>(log), std::istreambuf_iterator<char>());
-        std::error_code ec;
-        fs::remove(logPath, ec);
-    }
-
-    size_t pos = 0;
-    while ((pos = compileResult.output.find("warning CS", pos)) != std::string::npos)
-    {
-        ++compileResult.warningCount;
-        pos += 10;
-    }
-    pos = 0;
-    while ((pos = compileResult.output.find("error CS", pos)) != std::string::npos)
-    {
-        ++compileResult.errorCount;
-        pos += 8;
-    }
-
-    compileResult.ok = result == 0 && fs::exists(outDllPath);
-    if (!compileResult.ok && compileResult.errorCount == 0)
-        compileResult.errorCount = 1;
-
-    return compileResult;
+    return Ditto::CSharpScriptCompiler::CompileDetailed(csPath, outDllPath);
 }
 
 bool CSharpScriptSystem::CompileScript(const std::string& csPath, std::string& outDllPath)
 {
-    return CompileScriptDetailed(csPath, outDllPath).ok;
+    CSharpCompileResult result = CompileScriptDetailed(csPath, outDllPath);
+    if (!result.ok)
+    {
+        Ditto::Logger::Get().Error("[CSharpScript] Compile failed for " + csPath
+            + " (" + std::to_string(result.errorCount) + " errors, "
+            + std::to_string(result.warningCount) + " warnings)");
+        if (!result.output.empty())
+            Ditto::Logger::Get().Error(result.output);
+    }
+    else if (result.warningCount > 0)
+    {
+        Ditto::Logger::Get().Warning("[CSharpScript] Compile warnings for " + csPath
+            + " (" + std::to_string(result.warningCount) + " warnings)");
+        if (!result.output.empty())
+            Ditto::Logger::Get().Warning(result.output);
+    }
+    return result.ok;
 }
 
 bool CSharpScriptSystem::HotReloadScript(CSharpScriptComponent* component)
@@ -1327,6 +1192,21 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.SpriteRenderer::GetSprite", (void*)Internal_SpriteRenderer_GetSprite);
     ::MonoRuntime::AddInternalCall("DittoEngine.SpriteRenderer::SetSprite", (void*)Internal_SpriteRenderer_SetSprite);
 
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::GetMainCameraNative", (void*)Internal_Camera_GetMainCamera);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::GetProjectionTypeNative", (void*)Internal_Camera_GetProjectionType);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::SetProjectionTypeNative", (void*)Internal_Camera_SetProjectionType);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::GetFieldOfViewNative", (void*)Internal_Camera_GetFieldOfView);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::SetFieldOfViewNative", (void*)Internal_Camera_SetFieldOfView);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::GetOrthographicSizeNative", (void*)Internal_Camera_GetOrthographicSize);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::SetOrthographicSizeNative", (void*)Internal_Camera_SetOrthographicSize);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::GetNearClipPlaneNative", (void*)Internal_Camera_GetNearClipPlane);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::SetNearClipPlaneNative", (void*)Internal_Camera_SetNearClipPlane);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::GetFarClipPlaneNative", (void*)Internal_Camera_GetFarClipPlane);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::SetFarClipPlaneNative", (void*)Internal_Camera_SetFarClipPlane);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::ScreenPointToRayNative", (void*)Internal_Camera_ScreenPointToRay);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::ScreenToWorldPointNative", (void*)Internal_Camera_ScreenToWorldPoint);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Camera::ScreenToWorldPointOnPlaneNative", (void*)Internal_Camera_ScreenToWorldPointOnPlane);
+
     ::MonoRuntime::AddInternalCall("DittoEngine.Light::GetLightColor", (void*)Internal_Light_GetColor);
     ::MonoRuntime::AddInternalCall("DittoEngine.Light::SetLightColor", (void*)Internal_Light_SetColor);
     ::MonoRuntime::AddInternalCall("DittoEngine.Light::GetIntensity", (void*)Internal_Light_GetIntensity);
@@ -1372,6 +1252,7 @@ void CSharpScriptSystem::RegisterInternalCalls()
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMouseButtonDownNative", (void*)Internal_Input_GetMouseButtonDown);
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMouseButtonUpNative", (void*)Internal_Input_GetMouseButtonUp);
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetMousePositionNative", (void*)Internal_Input_GetMousePosition);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetGameViewportSizeNative", (void*)Internal_Input_GetGameViewportSize);
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetAxisNative", (void*)Internal_Input_GetAxis);
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetAxisRawNative", (void*)Internal_Input_GetAxisRaw);
     ::MonoRuntime::AddInternalCall("DittoEngine.Input::GetButtonNative", (void*)Internal_Input_GetButton);
@@ -1399,6 +1280,19 @@ void CSharpScriptSystem::RegisterInternalCalls()
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Object::InstantiateNative", (void*)Internal_Object_Instantiate);
     ::MonoRuntime::AddInternalCall("DittoEngine.Object::DestroyNative", (void*)Internal_Object_Destroy);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.Animator::PlayNative", (void*)Internal_Animator_Play);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Animator::StopNative", (void*)Internal_Animator_Stop);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Animator::PauseNative", (void*)Internal_Animator_Pause);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Animator::ResumeNative", (void*)Internal_Animator_Resume);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Animator::GetSpeedNative", (void*)Internal_Animator_GetSpeed);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Animator::SetSpeedNative", (void*)Internal_Animator_SetSpeed);
+    ::MonoRuntime::AddInternalCall("DittoEngine.Animator::IsPlayingNative", (void*)Internal_Animator_IsPlaying);
+
+    ::MonoRuntime::AddInternalCall("DittoEngine.ParticleSystem::PlayNative", (void*)Internal_ParticleSystem_Play);
+    ::MonoRuntime::AddInternalCall("DittoEngine.ParticleSystem::StopNative", (void*)Internal_ParticleSystem_Stop);
+    ::MonoRuntime::AddInternalCall("DittoEngine.ParticleSystem::ClearNative", (void*)Internal_ParticleSystem_Clear);
+    ::MonoRuntime::AddInternalCall("DittoEngine.ParticleSystem::IsPlayingNative", (void*)Internal_ParticleSystem_IsPlaying);
 
     ::MonoRuntime::AddInternalCall("DittoEngine.Debug::Log", (void*)Internal_Debug_Log);
 }
@@ -1516,6 +1410,15 @@ void Internal_Input_GetMousePosition(float* outPos)
     outPos[0] = p.x;
     outPos[1] = p.y;
 }
+
+void Internal_Input_GetGameViewportSize(float* outSize)
+{
+    if (!outSize) return;
+    glm::vec2 size = Input::GetGameViewportSize();
+    outSize[0] = size.x;
+    outSize[1] = size.y;
+}
+
 float Internal_Input_GetAxis(void* axisName)
 {
     if (!axisName) return 0.0f;
@@ -1547,7 +1450,7 @@ int Internal_Input_GetButtonUp(void* buttonName)
     return Input::GetButtonUp(n.c_str()) ? 1 : 0;
 }
 #else
-// Headless test builds (DittoTests) compile this file without GLFW/Input.
+// Headless test builds (DittoTests) compile this file without window/Input.
 int Internal_Input_GetKey(int)            { return 0; }
 int Internal_Input_GetKeyDown(int)        { return 0; }
 int Internal_Input_GetKeyUp(int)          { return 0; }
@@ -1555,6 +1458,7 @@ int Internal_Input_GetMouseButton(int)    { return 0; }
 int Internal_Input_GetMouseButtonDown(int){ return 0; }
 int Internal_Input_GetMouseButtonUp(int)  { return 0; }
 void Internal_Input_GetMousePosition(float* outPos) { if (outPos) { outPos[0] = 0; outPos[1] = 0; } }
+void Internal_Input_GetGameViewportSize(float* outSize) { if (outSize) { outSize[0] = 1; outSize[1] = 1; } }
 float Internal_Input_GetAxis(void*)       { return 0.0f; }
 float Internal_Input_GetAxisRaw(void*)    { return 0.0f; }
 int Internal_Input_GetButton(void*)       { return 0; }
@@ -1611,6 +1515,11 @@ void* Internal_GameObject_GetComponentByType(void* gameObject, void* typeName)
     {
         for (const auto& comp : go->components)
             if (comp && comp->index == ComponentIndex::SpriteRenderer) return comp.get();
+    }
+    else if (typeStr == "Camera")
+    {
+        for (const auto& comp : go->components)
+            if (comp && comp->index == ComponentIndex::Camera) return comp.get();
     }
     else if (typeStr == "Rigidbody")
     {
@@ -1708,7 +1617,6 @@ void Internal_UIButton_SetLabel(void* uiButton, void* label)
 void* Internal_Object_Instantiate(void* gameObject)
 {
     Scene* scene = Ditto::RuntimeContext::CurrentScene();
-    if (!scene) scene = g_currentScene;
     if (!gameObject || !scene || !scene->rootGameObject) return nullptr;
     GameObject* source = static_cast<GameObject*>(gameObject);
     auto clone = std::make_unique<GameObject>(source);
@@ -1723,7 +1631,6 @@ void* Internal_Object_Instantiate(void* gameObject)
 void Internal_Object_Destroy(void* gameObject)
 {
     Scene* scene = Ditto::RuntimeContext::CurrentScene();
-    if (!scene) scene = g_currentScene;
     if (!gameObject || !scene || !scene->rootGameObject) return;
     GameObject* obj = static_cast<GameObject*>(gameObject);
     if (obj == scene->rootGameObject.get()) return;
@@ -1853,6 +1760,112 @@ void Internal_SpriteRenderer_SetSprite(void* spriteRenderer, void* spritePath)
     if (!spriteRenderer || !spritePath) return;
     static_cast<SpriteRendererComponent*>(spriteRenderer)->spritePath =
         MonoRuntime::GetStringFromMono((MonoString*)spritePath);
+}
+
+void* Internal_Camera_GetMainCamera()
+{
+    return FindMainCameraComponent(Ditto::RuntimeContext::CurrentScene());
+}
+
+int Internal_Camera_GetProjectionType(void* camera)
+{
+    if (!camera) return 0;
+    return static_cast<int>(static_cast<CameraComponent*>(camera)->projectionType);
+}
+
+void Internal_Camera_SetProjectionType(void* camera, int projectionType)
+{
+    if (!camera) return;
+    CameraComponent* c = static_cast<CameraComponent*>(camera);
+    c->projectionType = projectionType == 1
+        ? Camera::ProjectionType::Orthographic
+        : Camera::ProjectionType::Perspective;
+}
+
+float Internal_Camera_GetFieldOfView(void* camera)
+{
+    if (!camera) return 45.0f;
+    return static_cast<CameraComponent*>(camera)->fieldOfView;
+}
+
+void Internal_Camera_SetFieldOfView(void* camera, float fieldOfView)
+{
+    if (!camera) return;
+    static_cast<CameraComponent*>(camera)->fieldOfView =
+        std::clamp(fieldOfView, 1.0f, 179.0f);
+}
+
+float Internal_Camera_GetOrthographicSize(void* camera)
+{
+    if (!camera) return 5.0f;
+    return static_cast<CameraComponent*>(camera)->orthographicSize;
+}
+
+void Internal_Camera_SetOrthographicSize(void* camera, float orthographicSize)
+{
+    if (!camera) return;
+    static_cast<CameraComponent*>(camera)->orthographicSize =
+        glm::max(0.0001f, orthographicSize);
+}
+
+float Internal_Camera_GetNearClipPlane(void* camera)
+{
+    if (!camera) return 0.1f;
+    return static_cast<CameraComponent*>(camera)->nearClipPlane;
+}
+
+void Internal_Camera_SetNearClipPlane(void* camera, float nearClipPlane)
+{
+    if (!camera) return;
+    CameraComponent* c = static_cast<CameraComponent*>(camera);
+    c->nearClipPlane = glm::max(0.0001f, nearClipPlane);
+    c->farClipPlane = glm::max(c->nearClipPlane + 0.0001f, c->farClipPlane);
+}
+
+float Internal_Camera_GetFarClipPlane(void* camera)
+{
+    if (!camera) return 100.0f;
+    return static_cast<CameraComponent*>(camera)->farClipPlane;
+}
+
+void Internal_Camera_SetFarClipPlane(void* camera, float farClipPlane)
+{
+    if (!camera) return;
+    CameraComponent* c = static_cast<CameraComponent*>(camera);
+    c->farClipPlane = glm::max(c->nearClipPlane + 0.0001f, farClipPlane);
+}
+
+void Internal_Camera_ScreenPointToRay(void* camera, float x, float y, float* outRay)
+{
+    if (!outRay) return;
+    CameraComponent* c = static_cast<CameraComponent*>(camera);
+    Camera runtimeCamera = ToRuntimeCamera(c);
+    glm::vec2 viewport = CurrentGameViewportSize();
+    Camera::Ray ray = runtimeCamera.ScreenPointToRayFull(glm::vec2(x, y),
+        static_cast<int>(viewport.x), static_cast<int>(viewport.y));
+
+    outRay[0] = ray.origin.x;    outRay[1] = ray.origin.y;    outRay[2] = ray.origin.z;
+    outRay[3] = ray.direction.x; outRay[4] = ray.direction.y; outRay[5] = ray.direction.z;
+}
+
+void Internal_Camera_ScreenToWorldPoint(void* camera, float x, float y, float distance, float* outPoint)
+{
+    if (!outPoint) return;
+    glm::vec3 point = ScreenToWorldPointAtDistance(static_cast<CameraComponent*>(camera),
+        glm::vec2(x, y), distance);
+    outPoint[0] = point.x;
+    outPoint[1] = point.y;
+    outPoint[2] = point.z;
+}
+
+void Internal_Camera_ScreenToWorldPointOnPlane(void* camera, float x, float y, float worldZ, float* outPoint)
+{
+    if (!outPoint) return;
+    glm::vec3 point = ScreenToWorldPointOnZ(static_cast<CameraComponent*>(camera),
+        glm::vec2(x, y), worldZ);
+    outPoint[0] = point.x;
+    outPoint[1] = point.y;
+    outPoint[2] = point.z;
 }
 
 void Internal_Light_GetColor(void* light, float* outColor)
@@ -2079,6 +2092,76 @@ void Internal_Rigidbody2D_AddTorque(void* rigidbody, float torque, int mode)
     if (!rigidbody) return;
     static_cast<Rigidbody2DComponent*>(rigidbody)->AddTorque(
         torque, static_cast<Rigidbody2DComponent::ForceMode2D>(mode));
+}
+
+void Internal_Animator_Play(void* animator, void* clipName)
+{
+    if (!animator) return;
+    AnimatorComponent* anim = static_cast<AnimatorComponent*>(animator);
+    std::string clip = clipName ? MonoRuntime::GetStringFromMono((MonoString*)clipName) : "";
+    anim->Play(clip);
+}
+
+void Internal_Animator_Stop(void* animator)
+{
+    if (!animator) return;
+    static_cast<AnimatorComponent*>(animator)->Stop();
+}
+
+void Internal_Animator_Pause(void* animator)
+{
+    if (!animator) return;
+    static_cast<AnimatorComponent*>(animator)->Pause();
+}
+
+void Internal_Animator_Resume(void* animator)
+{
+    if (!animator) return;
+    static_cast<AnimatorComponent*>(animator)->Resume();
+}
+
+float Internal_Animator_GetSpeed(void* animator)
+{
+    if (!animator) return 1.0f;
+    return static_cast<AnimatorComponent*>(animator)->playbackSpeed;
+}
+
+void Internal_Animator_SetSpeed(void* animator, float speed)
+{
+    if (!animator) return;
+    static_cast<AnimatorComponent*>(animator)->playbackSpeed = speed;
+}
+
+int Internal_Animator_IsPlaying(void* animator)
+{
+    if (!animator) return 0;
+    return static_cast<AnimatorComponent*>(animator)->IsPlaying() ? 1 : 0;
+}
+
+void Internal_ParticleSystem_Play(void* particleSystem)
+{
+    if (!particleSystem) return;
+    static_cast<ParticleSystemComponent*>(particleSystem)->Play();
+}
+
+void Internal_ParticleSystem_Stop(void* particleSystem)
+{
+    if (!particleSystem) return;
+    static_cast<ParticleSystemComponent*>(particleSystem)->Stop();
+}
+
+void Internal_ParticleSystem_Clear(void* particleSystem)
+{
+    if (!particleSystem) return;
+    ParticleSystemComponent* ps = static_cast<ParticleSystemComponent*>(particleSystem);
+    ps->Stop();
+    ps->particles.clear();
+}
+
+int Internal_ParticleSystem_IsPlaying(void* particleSystem)
+{
+    if (!particleSystem) return 0;
+    return static_cast<ParticleSystemComponent*>(particleSystem)->playing ? 1 : 0;
 }
 
 }

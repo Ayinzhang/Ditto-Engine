@@ -37,6 +37,7 @@ struct ParticleSystemComponent : Component
     glm::vec4 endColor{ 1.0f, 1.0f, 1.0f, 0.0f };
     float startSize = 0.2f;
     float endSize = 0.0f;
+    std::string materialPath;
 
     // Forces.
     glm::vec3 gravity{ 0.0f, -2.0f, 0.0f };

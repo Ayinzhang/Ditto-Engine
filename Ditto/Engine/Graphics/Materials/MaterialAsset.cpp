@@ -72,12 +72,15 @@ namespace Ditto
 
     MaterialAsset LoadMaterialAsset(const std::string& materialName, const fs::path& preferredRoot)
     {
-        MaterialAsset material = MakeDefaultMaterial(materialName.empty() ? "Default Material" : materialName);
+        MaterialAsset material;
+        material.materialName = materialName.empty() ? "Material" : materialName;
         fs::path path = ResolveMaterialPath(materialName, preferredRoot);
         if (path.empty())
         {
-            material.ok = materialName.empty();
-            if (!material.ok) material.error = "Material not found: " + materialName;
+            material.ok = false;
+            material.error = materialName.empty()
+                ? "Material path is empty"
+                : "Material not found: " + materialName;
             return material;
         }
 
@@ -141,7 +144,10 @@ namespace Ditto
             material.mainTexturePath = textureFromGuid;
 
         if (material.shaderName.empty())
-            material.shaderName = "Lit_Toon";
+        {
+            material.ok = false;
+            material.error = "Material has no shader: " + path.string();
+        }
         return material;
     }
 
@@ -157,7 +163,13 @@ namespace Ditto
             return false;
         }
 
-        std::string shaderName = material.shaderName.empty() ? "Lit_Toon" : material.shaderName;
+        std::string shaderName = AssetPath::NormalizeAssetKey(material.shaderName);
+        if (shaderName.empty())
+        {
+            Logger::Get().Error("[MaterialAsset] Cannot save material without a shader: " + path.string());
+            return false;
+        }
+
         std::string mainTexturePath = AssetPath::NormalizeAssetKey(material.mainTexturePath);
         std::string shaderGuid = AssetDatabase::Get().GuidForPath(shaderName);
         std::string mainTextureGuid = AssetDatabase::Get().GuidForPath(mainTexturePath);

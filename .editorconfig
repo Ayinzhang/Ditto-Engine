@@ -1,0 +1,15 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{md,ps1,py,bat,cmd}]
+end_of_line = crlf
+
+[*.{png,ico,dll,lib,obj,bin,artifact}]
+charset = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset

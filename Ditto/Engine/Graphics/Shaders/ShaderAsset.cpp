@@ -41,7 +41,9 @@ namespace Ditto
 
     fs::path ResolveShaderPath(const std::string& shaderName, const fs::path& preferredRoot)
     {
-        std::string name = shaderName.empty() ? "Lit_Toon" : shaderName;
+        std::string name = shaderName;
+        if (name.empty())
+            return {};
         Logger::Get().Verbose("[ShaderAsset] Resolving shader: " + name);
 
         std::vector<std::string> candidates;
@@ -1057,7 +1059,13 @@ v2f VSMain(appdata v)
     ShaderAsset LoadShaderAsset(const std::string& shaderName, const fs::path& preferredRoot)
     {
         ShaderAsset asset;
-        asset.shaderName = shaderName.empty() ? "Lit_Toon" : shaderName;
+        asset.shaderName = shaderName;
+        if (asset.shaderName.empty())
+        {
+            asset.error = "Shader name is empty";
+            Logger::Get().Error("[ShaderAsset] " + asset.error);
+            return asset;
+        }
         fs::path path = ResolveShaderPath(asset.shaderName, preferredRoot);
         asset.sourcePath = path.string();
         if (!fs::exists(path))

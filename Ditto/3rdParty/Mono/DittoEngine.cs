@@ -346,6 +346,124 @@ namespace DittoEngine
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void SetIntensity(IntPtr light, float intensity);
     }
+
+    public struct Ray
+    {
+        public Vector3 origin;
+        public Vector3 direction;
+
+        public Ray(Vector3 origin, Vector3 direction)
+        {
+            this.origin = origin;
+            this.direction = direction;
+        }
+    }
+
+    public class Camera
+    {
+        public enum ProjectionType { Perspective = 0, Orthographic = 1 }
+
+        private IntPtr _nativeCamera;
+        internal Camera(IntPtr native) { _nativeCamera = native; }
+
+        public bool isValid => _nativeCamera != IntPtr.Zero;
+
+        public static Camera main
+        {
+            get
+            {
+                IntPtr camera = GetMainCameraNative();
+                return camera == IntPtr.Zero ? null : new Camera(camera);
+            }
+        }
+
+        public ProjectionType projectionType
+        {
+            get => _nativeCamera == IntPtr.Zero ? ProjectionType.Perspective : (ProjectionType)GetProjectionTypeNative(_nativeCamera);
+            set { if (_nativeCamera != IntPtr.Zero) SetProjectionTypeNative(_nativeCamera, (int)value); }
+        }
+
+        public float fieldOfView
+        {
+            get => _nativeCamera == IntPtr.Zero ? 45.0f : GetFieldOfViewNative(_nativeCamera);
+            set { if (_nativeCamera != IntPtr.Zero) SetFieldOfViewNative(_nativeCamera, value); }
+        }
+
+        public float orthographicSize
+        {
+            get => _nativeCamera == IntPtr.Zero ? 5.0f : GetOrthographicSizeNative(_nativeCamera);
+            set { if (_nativeCamera != IntPtr.Zero) SetOrthographicSizeNative(_nativeCamera, value); }
+        }
+
+        public float nearClipPlane
+        {
+            get => _nativeCamera == IntPtr.Zero ? 0.1f : GetNearClipPlaneNative(_nativeCamera);
+            set { if (_nativeCamera != IntPtr.Zero) SetNearClipPlaneNative(_nativeCamera, value); }
+        }
+
+        public float farClipPlane
+        {
+            get => _nativeCamera == IntPtr.Zero ? 100.0f : GetFarClipPlaneNative(_nativeCamera);
+            set { if (_nativeCamera != IntPtr.Zero) SetFarClipPlaneNative(_nativeCamera, value); }
+        }
+
+        public Ray ScreenPointToRay(Vector2 screenPoint)
+        {
+            if (_nativeCamera == IntPtr.Zero)
+                return new Ray(Vector3.zero, new Vector3(0.0f, 0.0f, -1.0f));
+
+            float[] ray = new float[6];
+            ScreenPointToRayNative(_nativeCamera, screenPoint.x, screenPoint.y, ray);
+            return new Ray(
+                new Vector3(ray[0], ray[1], ray[2]),
+                new Vector3(ray[3], ray[4], ray[5]));
+        }
+
+        public Vector3 ScreenToWorldPoint(Vector3 screenPoint)
+        {
+            if (_nativeCamera == IntPtr.Zero) return Vector3.zero;
+            float[] point = new float[3];
+            ScreenToWorldPointNative(_nativeCamera, screenPoint.x, screenPoint.y, screenPoint.z, point);
+            return new Vector3(point[0], point[1], point[2]);
+        }
+
+        public Vector3 ScreenToWorldPoint(Vector2 screenPoint, float worldZ = 0.0f)
+        {
+            if (_nativeCamera == IntPtr.Zero) return Vector3.zero;
+            float[] point = new float[3];
+            ScreenToWorldPointOnPlaneNative(_nativeCamera, screenPoint.x, screenPoint.y, worldZ, point);
+            return new Vector3(point[0], point[1], point[2]);
+        }
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern IntPtr GetMainCameraNative();
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int GetProjectionTypeNative(IntPtr camera);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetProjectionTypeNative(IntPtr camera, int projectionType);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetFieldOfViewNative(IntPtr camera);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetFieldOfViewNative(IntPtr camera, float fieldOfView);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetOrthographicSizeNative(IntPtr camera);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetOrthographicSizeNative(IntPtr camera, float orthographicSize);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetNearClipPlaneNative(IntPtr camera);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetNearClipPlaneNative(IntPtr camera, float nearClipPlane);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetFarClipPlaneNative(IntPtr camera);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetFarClipPlaneNative(IntPtr camera, float farClipPlane);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void ScreenPointToRayNative(IntPtr camera, float x, float y, float[] outRay);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void ScreenToWorldPointNative(IntPtr camera, float x, float y, float distance, float[] outPoint);
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void ScreenToWorldPointOnPlaneNative(IntPtr camera, float x, float y, float worldZ, float[] outPoint);
+    }
     
     // Rigidbody 组件
     public class Rigidbody
@@ -832,6 +950,8 @@ namespace DittoEngine
                 return new Renderer(compPtr) as T;
             if (typeof(T) == typeof(SpriteRenderer))
                 return new SpriteRenderer(compPtr) as T;
+            if (typeof(T) == typeof(Camera))
+                return new Camera(compPtr) as T;
             if (typeof(T) == typeof(Light))
                 return new Light(compPtr) as T;
             if (typeof(T) == typeof(Rigidbody))
@@ -848,6 +968,10 @@ namespace DittoEngine
                 return new UIImage(compPtr) as T;
             if (typeof(T) == typeof(UIButton))
                 return new UIButton(compPtr) as T;
+            if (typeof(T) == typeof(Animator))
+                return new Animator(compPtr) as T;
+            if (typeof(T) == typeof(ParticleSystem))
+                return new ParticleSystem(compPtr) as T;
 
             return null;
         }
@@ -930,6 +1054,9 @@ namespace DittoEngine
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void GetMousePositionNative(float[] outPos);
 
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void GetGameViewportSizeNative(float[] outSize);
+
         public static bool GetKey(KeyCode key) => GetKeyNative((int)key) != 0;
         public static bool GetKeyDown(KeyCode key) => GetKeyDownNative((int)key) != 0;
         public static bool GetKeyUp(KeyCode key) => GetKeyUpNative((int)key) != 0;
@@ -946,6 +1073,16 @@ namespace DittoEngine
                 float[] p = new float[2];
                 GetMousePositionNative(p);
                 return new Vector2(p[0], p[1]);
+            }
+        }
+
+        public static Vector2 gameViewportSize
+        {
+            get
+            {
+                float[] size = new float[2];
+                GetGameViewportSizeNative(size);
+                return new Vector2(size[0], size[1]);
             }
         }
 
@@ -1042,6 +1179,107 @@ namespace DittoEngine
             RaycastHit hit;
             return Raycast(origin, direction, maxDistance, out hit);
         }
+    }
+
+    // Animator Component
+    public class Animator
+    {
+        private IntPtr _nativePtr;
+
+        public Animator(IntPtr ptr) { _nativePtr = ptr; }
+
+        public void Play(string clipName = "")
+        {
+            if (_nativePtr != IntPtr.Zero)
+                PlayNative(_nativePtr, clipName);
+        }
+
+        public void Stop()
+        {
+            if (_nativePtr != IntPtr.Zero)
+                StopNative(_nativePtr);
+        }
+
+        public void Pause()
+        {
+            if (_nativePtr != IntPtr.Zero)
+                PauseNative(_nativePtr);
+        }
+
+        public void Resume()
+        {
+            if (_nativePtr != IntPtr.Zero)
+                ResumeNative(_nativePtr);
+        }
+
+        public float speed
+        {
+            get => _nativePtr != IntPtr.Zero ? GetSpeedNative(_nativePtr) : 1.0f;
+            set { if (_nativePtr != IntPtr.Zero) SetSpeedNative(_nativePtr, value); }
+        }
+
+        public bool isPlaying => _nativePtr != IntPtr.Zero && IsPlayingNative(_nativePtr) != 0;
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void PlayNative(IntPtr animator, string clipName);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void StopNative(IntPtr animator);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void PauseNative(IntPtr animator);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void ResumeNative(IntPtr animator);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetSpeedNative(IntPtr animator);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetSpeedNative(IntPtr animator, float speed);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int IsPlayingNative(IntPtr animator);
+    }
+
+    // ParticleSystem Component
+    public class ParticleSystem
+    {
+        private IntPtr _nativePtr;
+
+        public ParticleSystem(IntPtr ptr) { _nativePtr = ptr; }
+
+        public void Play()
+        {
+            if (_nativePtr != IntPtr.Zero)
+                PlayNative(_nativePtr);
+        }
+
+        public void Stop()
+        {
+            if (_nativePtr != IntPtr.Zero)
+                StopNative(_nativePtr);
+        }
+
+        public void Clear()
+        {
+            if (_nativePtr != IntPtr.Zero)
+                ClearNative(_nativePtr);
+        }
+
+        public bool isPlaying => _nativePtr != IntPtr.Zero && IsPlayingNative(_nativePtr) != 0;
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void PlayNative(IntPtr particleSystem);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void StopNative(IntPtr particleSystem);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void ClearNative(IntPtr particleSystem);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern int IsPlayingNative(IntPtr particleSystem);
     }
 
     // MonoBehaviour 基类

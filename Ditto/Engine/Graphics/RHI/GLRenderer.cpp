@@ -1,12 +1,10 @@
 #include "GLRenderer.h"
 #include "../../../3rdParty/GLAD/glad.h"
-#define GLFW_INCLUDE_NONE
-#include "../../../3rdParty/GLFW/glfw3.h"
 #include "../../../3rdParty/GLM/gtc/type_ptr.hpp"
+#include "../../Core/IWindow.h"
 #include "../../Core/Logger.h"
 #include "../Shaders/ShaderCompiler.h"
 #include "../../../3rdParty/ImGui/imgui.h"
-#include "../../../3rdParty/ImGui/imgui_impl_glfw.h"
 #include "../../../3rdParty/ImGui/imgui_impl_opengl3.h"
 #include <cstdint>
 
@@ -49,24 +47,33 @@ namespace Ditto
     // ----------------------------- Frame -----------------------------
     void GLRenderer::EndFrame()
     {
-        if (m_window) glfwSwapBuffers(static_cast<GLFWwindow*>(m_window));
+        if (m_window) m_window->SwapBuffers();
     }
 
     // ----------------------------- ImGui -----------------------------
-    void GLRenderer::ImGuiInit(void* window)
+    void GLRenderer::ImGuiInit(IWindow* window)
     {
-        ImGui_ImplGlfw_InitForOpenGL(static_cast<GLFWwindow*>(window), true);
+        if (window)
+        {
+            window->ImGuiInitForOpenGL(true);
+            m_imguiWindow = window;
+        }
         ImGui_ImplOpenGL3_Init("#version 450");
     }
     void GLRenderer::ImGuiShutdown()
     {
         ImGui_ImplOpenGL3_Shutdown();
-        ImGui_ImplGlfw_Shutdown();
+        if (m_imguiWindow)
+        {
+            m_imguiWindow->ImGuiShutdown();
+            m_imguiWindow = nullptr;
+        }
     }
     void GLRenderer::ImGuiNewFrame()
     {
         ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
+        if (m_imguiWindow)
+            m_imguiWindow->ImGuiNewFrame();
     }
     void GLRenderer::ImGuiRenderDrawData(void* drawData)
     {

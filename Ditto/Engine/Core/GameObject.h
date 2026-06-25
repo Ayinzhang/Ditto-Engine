@@ -15,15 +15,14 @@ struct GameObject;
 struct Scene;
 struct Editor;  // Forward declaration
 
-// Legacy observer symbol. New code should prefer Ditto::RuntimeContext.
-extern Editor* g_editor;
-
 struct GameObject
 {
     bool enabled = true;
     bool locked = false;
     int compMask = 0;
     std::string name;
+    std::string prefabSourcePath;
+    std::string prefabSourceGuid;
 
     // Single-ownership tree: each GameObject owns its children; `parent` is a
     // non-owning back-pointer.
@@ -99,16 +98,6 @@ struct GameObject
     void Deserialize(std::istream& file);
 };
 
-
-// Legacy observer symbol. New code should prefer Ditto::RuntimeContext.
-extern Scene* g_currentScene;
-
-// Version of the scene file currently being deserialized. Set by
-// Scene::ReadFromStream before component deserialization so components can read
-// version-gated fields (e.g. RendererComponent::meshPath, added in v2) while
-// still loading older files. 0 when not loading.
-extern std::uint32_t g_sceneLoadingVersion;
-
 struct TransformComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::Transform;
@@ -133,6 +122,7 @@ struct TransformComponent : Component
     void UpdateTransform();
     void UpdateWorldMatrix() const;
     glm::mat4 GetWorldModel() const;
+    void SetTRS(const glm::vec3& newPosition, const glm::vec3& newRotation, const glm::vec3& newScale);
 
     // Seed `orientation` from the current euler `rotation` (matching the same
     // Y*X*Z order UpdateTransform uses) and switch to quaternion mode. Called
@@ -197,11 +187,9 @@ struct RendererComponent : Component
     static constexpr int TypeBit = ComponentIndex::Renderer;
 
     enum ShadowCastingMode { ShadowsOff, ShadowsOn, TwoSided, ShadowsOnly };
-    static constexpr const char* DefaultShaderName = "Lit_Toon";
 
     glm::vec4 color;
     std::string materialPath;
-    std::string shaderName;
     std::string mainTexturePath;
     ShadowCastingMode shadowCastingMode = ShadowsOn;
     bool receiveShadows = true;
@@ -230,12 +218,9 @@ struct SpriteRendererComponent : Component
     enum MaskInteraction { None, VisibleInsideMask, VisibleOutsideMask };
     enum SpriteSortPoint { Center, Pivot };
 
-    static constexpr const char* DefaultShaderName = "Lit_Sprite";
-
     glm::vec4 color{ 1.0f };
     std::string spritePath;  // Required - must be loaded from Assets
     std::string materialPath;
-    std::string shaderName = DefaultShaderName;
 
     bool flipX = false;
     bool flipY = false;

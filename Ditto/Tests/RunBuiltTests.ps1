@@ -22,7 +22,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($RunVulkan) {
     Write-Host "[DittoTests] Stage 3/4: Vulkan rendering and shader output"
     $vkRenderOut = Join-Path (Split-Path $RenderOut -Parent) "RenderSmokeVK"
-    & $RenderExe --backend vulkan --out $vkRenderOut
+    & $RenderExe --backend vulkan --out $vkRenderOut --resize-stress 3
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

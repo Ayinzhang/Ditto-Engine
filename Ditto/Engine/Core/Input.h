@@ -1,25 +1,25 @@
 #pragma once
-#define GLFW_INCLUDE_NONE
-#include "../../3rdParty/GLFW/glfw3.h"
 #include "../../3rdParty/GLM/glm.hpp"
+
+namespace Ditto { class IWindow; }
 
 // Static input state exposed to gameplay (C# scripts query this through
 // internal calls). Double-buffered key/mouse state polled once per frame from
-// GLFW's cached state -- NewFrame() must run AFTER glfwPollEvents() so `cur`
-// holds this frame's state and `prev` last frame's (edge detection).
+// the platform window after events are pumped, so `cur` holds this frame's
+// state and `prev` last frame's (edge detection).
 //
 // Mouse position is reported relative to the game viewport: in the editor this
 // is the "Game" panel rect (set by Editor::DrawGame each frame); in standalone
 // game mode it is the full window.
 struct Input
 {
-    static void Init(GLFWwindow* window);
-    // Snapshot prev = cur, then poll fresh state. Call after glfwPollEvents().
+    static void Init(Ditto::IWindow* window);
+    // Snapshot prev = cur, then poll fresh state. Call after window events.
     static void NewFrame();
 
-    static bool GetKey(int glfwKey);
-    static bool GetKeyDown(int glfwKey);
-    static bool GetKeyUp(int glfwKey);
+    static bool GetKey(int key);
+    static bool GetKeyDown(int key);
+    static bool GetKeyUp(int key);
 
     static bool GetMouseButton(int button);       // 0=left 1=right 2=middle
     static bool GetMouseButtonDown(int button);
@@ -48,11 +48,15 @@ struct Input
     static void SetGameViewport(float x, float y, float w, float h, float contentW = 0.0f, float contentH = 0.0f);
 
 private:
-    static GLFWwindow* s_window;
-    static bool s_cur[GLFW_KEY_LAST + 1];
-    static bool s_prev[GLFW_KEY_LAST + 1];
-    static bool s_curMouse[GLFW_MOUSE_BUTTON_LAST + 1];
-    static bool s_prevMouse[GLFW_MOUSE_BUTTON_LAST + 1];
+    static constexpr int kMinKeyCode = 0;
+    static constexpr int kMaxKeyCode = 512;
+    static constexpr int kMaxMouseButton = 8;
+
+    static Ditto::IWindow* s_window;
+    static bool s_cur[kMaxKeyCode + 1];
+    static bool s_prev[kMaxKeyCode + 1];
+    static bool s_curMouse[kMaxMouseButton + 1];
+    static bool s_prevMouse[kMaxMouseButton + 1];
     static double s_mouseX, s_mouseY;
     static float s_viewX, s_viewY, s_viewW, s_viewH;
     static float s_contentW, s_contentH;

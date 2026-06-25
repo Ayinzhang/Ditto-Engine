@@ -13,8 +13,7 @@ namespace Ditto
     class VulkanRenderer : public IRenderer
     {
     public:
-        // `window` is the GLFWwindow* (NO_API) used to create the present surface.
-        explicit VulkanRenderer(void* window);
+        explicit VulkanRenderer(IWindow* window);
         ~VulkanRenderer() override;
 
         // True once the instance + device were created successfully.
@@ -24,9 +23,10 @@ namespace Ditto
         // ---- Frame ----
         void BeginFrame() override;
         void EndFrame() override;
+        bool NotifyWindowResized(int width, int height) override;
 
         // ---- ImGui ----
-        void ImGuiInit(void* window) override;
+        void ImGuiInit(IWindow* window) override;
         void ImGuiShutdown() override;
         void ImGuiNewFrame() override;
         void ImGuiRenderDrawData(void* drawData) override;
@@ -86,7 +86,7 @@ namespace Ditto
 
         static constexpr int kFramesInFlight = 2;
 
-        void* m_window = nullptr;   // GLFWwindow*
+        IWindow* m_window = nullptr;
 
         VkInstance m_instance = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
@@ -124,6 +124,7 @@ namespace Ditto
         // ImGui + textures.
         VkDescriptorPool m_imguiPool = VK_NULL_HANDLE;
         bool m_imguiInit = false;
+        IWindow* m_imguiWindow = nullptr;
         VkSampler m_sampler = VK_NULL_HANDLE;
         struct VkTextureRes
         {

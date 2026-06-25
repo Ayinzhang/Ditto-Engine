@@ -15,8 +15,8 @@
 #include "../3rdParty/GLM/gtc/type_ptr.hpp"
 #define GLM_ENABLE_EXPERIMENTAL
 #include "../3rdParty/GLM/gtx/euler_angles.hpp"
-#include "../3rdParty/GLFW/glfw3.h"
 #include "../3rdParty/ImGui/imgui.h"
+#include "../3rdParty/ImGui/imgui_internal.h"
 #include "../3rdParty/ImGuizmo/ImGuizmo.h"
 #include <iostream>
 #include <cmath>

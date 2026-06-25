@@ -4,11 +4,13 @@
 #endif
 #include "../../3rdParty/GLM/common.hpp"
 #include "../../3rdParty/GLM/geometric.hpp"
+#include "../Resources/AssetReferenceIO.h"
 #include <ostream>
 #include <istream>
 #include <random>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
 namespace
 {
@@ -28,7 +30,8 @@ ParticleSystemComponent::ParticleSystemComponent(ParticleSystemComponent* other)
       looping(other->looping), duration(other->duration), playOnAwake(other->playOnAwake),
       startLifetime(other->startLifetime), startSpeed(other->startSpeed),
       startColor(other->startColor), endColor(other->endColor),
-      startSize(other->startSize), endSize(other->endSize), gravity(other->gravity),
+      startSize(other->startSize), endSize(other->endSize), materialPath(other->materialPath),
+      gravity(other->gravity),
       shape(other->shape), coneAngle(other->coneAngle), sphereRadius(other->sphereRadius)
 {
     index = ComponentIndex::ParticleSystem;
@@ -162,6 +165,13 @@ void ParticleSystemComponent::OnInspectorGUI()
     ImGui::DragFloat("End Size", &endSize, 0.01f, 0.0f, 50.0f);
 
     ImGui::Separator();
+    ImGui::TextUnformatted("Renderer");
+    char materialBuffer[512] = {};
+    std::snprintf(materialBuffer, sizeof(materialBuffer), "%s", materialPath.c_str());
+    if (ImGui::InputText("Material", materialBuffer, sizeof(materialBuffer)))
+        materialPath = materialBuffer;
+
+    ImGui::Separator();
     ImGui::TextUnformatted("Shape");
     const char* shapeNames[] = { "Cone", "Sphere", "Box" };
     int shapeIdx = static_cast<int>(shape);
@@ -205,6 +215,7 @@ void ParticleSystemComponent::Serialize(std::ostream& file) const
     file.write(reinterpret_cast<const char*>(&endColor), sizeof(endColor));
     file.write(reinterpret_cast<const char*>(&startSize), sizeof(startSize));
     file.write(reinterpret_cast<const char*>(&endSize), sizeof(endSize));
+    Ditto::AssetReferenceIO::WriteAssetReference(file, materialPath);
     file.write(reinterpret_cast<const char*>(&gravity), sizeof(gravity));
     int32_t shapeInt = static_cast<int32_t>(shape);
     file.write(reinterpret_cast<const char*>(&shapeInt), sizeof(shapeInt));
@@ -225,6 +236,7 @@ void ParticleSystemComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&endColor), sizeof(endColor));
     file.read(reinterpret_cast<char*>(&startSize), sizeof(startSize));
     file.read(reinterpret_cast<char*>(&endSize), sizeof(endSize));
+    materialPath = Ditto::AssetReferenceIO::ReadAssetReference(file, 17);
     file.read(reinterpret_cast<char*>(&gravity), sizeof(gravity));
     int32_t shapeInt = 0;
     file.read(reinterpret_cast<char*>(&shapeInt), sizeof(shapeInt));

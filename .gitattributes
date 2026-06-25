@@ -1,0 +1,9 @@
+* text=auto eol=crlf
+
+*.png binary
+*.ico binary
+*.dll binary
+*.lib binary
+*.obj binary
+*.bin binary
+*.artifact binary

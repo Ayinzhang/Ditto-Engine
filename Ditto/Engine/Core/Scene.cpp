@@ -19,8 +19,6 @@
 #include <cstdio>
 #include <cstdint>
 
-Scene* g_currentScene = nullptr;
-
 #ifndef DITTO_HEADLESS_SCENE
 static unsigned char* LoadImageRGBA(const std::filesystem::path& path, int* width, int* height, int* channels)
 {
@@ -40,7 +38,6 @@ static unsigned char* LoadImageRGBA(const std::filesystem::path& path, int* widt
 Scene::Scene()
 {
     name = "Default";
-    g_currentScene = this;
     Ditto::RuntimeContext::SetCurrentScene(this);
 
     rootGameObject = std::make_unique<GameObject>(name);
@@ -52,8 +49,6 @@ Scene::~Scene()
 {
     if (Ditto::RuntimeContext::CurrentScene() == this)
         Ditto::RuntimeContext::SetCurrentScene(nullptr);
-    if (g_currentScene == this)
-        g_currentScene = nullptr;
 
     DestroyAllObjects();
 
@@ -191,6 +186,24 @@ void Scene::UnregisterSubtree(GameObject* obj)
     visit(obj);
 }
 
+void Scene::RegisterSubtree(GameObject* obj)
+{
+    if (!obj || obj == rootGameObject.get()) return;
+
+    std::function<void(GameObject*)> visit = [&](GameObject* node)
+    {
+        if (!node) return;
+        if (std::find(gameObjects.begin(), gameObjects.end(), node) == gameObjects.end())
+            gameObjects.push_back(node);
+        if (!mainLight && node->GetComponent<LightComponent>())
+            mainLight = node;
+        if (!mainCamera && node->GetComponent<CameraComponent>())
+            mainCamera = node;
+        for (const auto& child : node->children) visit(child.get());
+    };
+    visit(obj);
+}
+
 #ifndef DITTO_HEADLESS_SCENE
 void Scene::CollectRenderData()
 {
@@ -216,11 +229,18 @@ void Scene::CollectRenderData()
             if (!obj->enabled) return;
 
             TransformComponent* transform = obj->GetComponent<TransformComponent>();
+            auto loadMaterial = [](const std::string& materialPath, Ditto::MaterialAsset& material) -> bool
+                {
+                    if (materialPath.empty()) return false;
+                    material = Ditto::LoadMaterialAsset(materialPath);
+                    return material.ok && !material.shaderName.empty();
+                };
+
             auto addBatchInstance = [&](const std::string& meshPath,
                 const std::string& shaderName, const std::string& texturePath,
                 const glm::vec4& color, int sortingOrder)
                 {
-                    if (!transform || !transform->enabled) return;
+                    if (!transform || !transform->enabled || shaderName.empty()) return;
 
                     std::string meshKey = "file:" + meshPath;
                     std::string colorKey = std::to_string(color.r) + "," + std::to_string(color.g) + "," +
@@ -259,42 +279,30 @@ void Scene::CollectRenderData()
                 // All meshes come from project Assets.
                 EnsureCustomGeometry(renderer->meshPath);
 
-                Ditto::MaterialAsset material = renderer->materialPath.empty()
-                    ? Ditto::MakeDefaultMaterial("Inline Material")
-                    : Ditto::LoadMaterialAsset(renderer->materialPath);
-                if (renderer->materialPath.empty() || !material.ok)
+                Ditto::MaterialAsset material;
+                if (loadMaterial(renderer->materialPath, material))
                 {
-                    material.shaderName = renderer->shaderName.empty() ? RendererComponent::DefaultShaderName : renderer->shaderName;
-                    material.color = renderer->color;
-                    material.mainTexturePath = renderer->mainTexturePath;
+                    std::string texturePath = material.mainTexturePath.empty()
+                        ? renderer->mainTexturePath
+                        : material.mainTexturePath;
+                    addBatchInstance(renderer->meshPath, material.shaderName, texturePath,
+                        glm::vec4(material.color) * renderer->color, 0);
                 }
-
-                std::string shaderName = material.shaderName.empty() ? RendererComponent::DefaultShaderName : material.shaderName;
-                std::string texturePath = material.mainTexturePath;
-                addBatchInstance(renderer->meshPath, shaderName, texturePath, glm::vec4(material.color), 0);
             }
 
             SpriteRendererComponent* sprite = obj->GetComponent<SpriteRendererComponent>();
             if (sprite && sprite->enabled && transform && transform->enabled &&
                 !sprite->spritePath.empty())
             {
-                const bool hasMaterial = !sprite->materialPath.empty();
-                Ditto::MaterialAsset material = sprite->materialPath.empty()
-                    ? Ditto::MakeDefaultMaterial("Inline Sprite Material")
-                    : Ditto::LoadMaterialAsset(sprite->materialPath);
-                if (sprite->materialPath.empty() || !material.ok)
+                Ditto::MaterialAsset material;
+                if (loadMaterial(sprite->materialPath, material))
                 {
-                    material.shaderName = sprite->shaderName.empty() ? SpriteRendererComponent::DefaultShaderName : sprite->shaderName;
-                    material.color = sprite->color;
-                    material.mainTexturePath = sprite->spritePath;
-                }
-
-                std::string shaderName = material.shaderName.empty() ? SpriteRendererComponent::DefaultShaderName : material.shaderName;
-                std::string texturePath = material.mainTexturePath.empty() ? sprite->spritePath : material.mainTexturePath;
-                glm::vec4 finalColor = hasMaterial && material.ok ? glm::vec4(material.color) * sprite->color : sprite->color;
+                    std::string texturePath = material.mainTexturePath.empty() ? sprite->spritePath : material.mainTexturePath;
+                    glm::vec4 finalColor = glm::vec4(material.color) * sprite->color;
                 // Sprites use a built-in quad mesh — we just use a sentinel "sprite" meshPath
-                addBatchInstance("__sprite_quad__", shaderName, texturePath,
-                    finalColor, sprite->sortingOrder);
+                    addBatchInstance("__sprite_quad__", material.shaderName, texturePath,
+                        finalColor, sprite->sortingOrder);
+                }
             }
 
             // Particle systems: each alive particle becomes a camera-facing Quad
@@ -304,37 +312,43 @@ void Scene::CollectRenderData()
             ParticleSystemComponent* ps = obj->GetComponent<ParticleSystemComponent>();
             if (ps && ps->enabled)
             {
-                const std::string shaderName = SpriteRendererComponent::DefaultShaderName;
-                std::string batchKey = "particles|" + std::to_string(reinterpret_cast<uintptr_t>(ps));
-                GeometryInstances* batch = nullptr;
-                auto batchIt = renderBatches.find(batchKey);
-                if (batchIt == renderBatches.end())
+                Ditto::MaterialAsset material;
+                if (loadMaterial(ps->materialPath, material))
                 {
-                    auto newBatch = std::make_unique<GeometryInstances>();
-                    newBatch->meshPath = "__particle_quad__";
-                    newBatch->shaderName = shaderName;
-                    newBatch->sortingOrder = 1000; // draw after opaque/sprites
-                    batch = newBatch.get();
-                    renderBatches[batchKey] = std::move(newBatch);
-                }
-                else
-                {
-                    batch = batchIt->second.get();
-                }
+                    std::string batchKey = "particles|" + std::to_string(reinterpret_cast<uintptr_t>(ps));
+                    GeometryInstances* batch = nullptr;
+                    auto batchIt = renderBatches.find(batchKey);
+                    if (batchIt == renderBatches.end())
+                    {
+                        auto newBatch = std::make_unique<GeometryInstances>();
+                        newBatch->meshPath = "__particle_quad__";
+                        newBatch->shaderName = material.shaderName;
+                        newBatch->texturePath = material.mainTexturePath;
+                        newBatch->sortingOrder = 1000; // draw after opaque/sprites
+                        batch = newBatch.get();
+                        renderBatches[batchKey] = std::move(newBatch);
+                    }
+                    else
+                    {
+                        batch = batchIt->second.get();
+                        batch->shaderName = material.shaderName;
+                        batch->texturePath = material.mainTexturePath;
+                    }
 
-                for (const Particle& p : ps->particles)
-                {
-                    if (!p.alive) continue;
-                    // Billboard: columns are camera right/up scaled by size, facing
-                    // the camera, positioned at the particle's world position.
-                    glm::mat4 m(1.0f);
-                    m[0] = glm::vec4(cameraRight * p.size, 0.0f);
-                    m[1] = glm::vec4(cameraUp * p.size, 0.0f);
-                    m[2] = glm::vec4(glm::normalize(glm::cross(cameraRight, cameraUp)), 0.0f);
-                    m[3] = glm::vec4(p.position, 1.0f);
-                    batch->modelMatrices.push_back(m);
-                    batch->instanceColors.push_back(p.color);
-                    batch->instanceCount++;
+                    for (const Particle& p : ps->particles)
+                    {
+                        if (!p.alive) continue;
+                        // Billboard: columns are camera right/up scaled by size, facing
+                        // the camera, positioned at the particle's world position.
+                        glm::mat4 m(1.0f);
+                        m[0] = glm::vec4(cameraRight * p.size, 0.0f);
+                        m[1] = glm::vec4(cameraUp * p.size, 0.0f);
+                        m[2] = glm::vec4(glm::normalize(glm::cross(cameraRight, cameraUp)), 0.0f);
+                        m[3] = glm::vec4(p.position, 1.0f);
+                        batch->modelMatrices.push_back(m);
+                        batch->instanceColors.push_back(glm::vec4(material.color) * p.color);
+                        batch->instanceCount++;
+                    }
                 }
             }
 
@@ -373,7 +387,7 @@ void Scene::UpdateSSBOs()
     for (auto& pair : renderBatches) UploadBatch(renderer, pair.second.get());
 }
 
-void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const glm::mat4& projection,
+void Scene::Render(const glm::mat4& view, const glm::mat4& projection,
     const glm::vec3& viewPos, int viewportWidth, int viewportHeight, bool renderUI)
 {
     if (!renderer) return;
@@ -428,8 +442,9 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
 
     for (GeometryInstances* batch : drawBatches)
     {
-        Ditto::PipelineHandle shaderPipeline = GetOrCreateShaderPipeline(batch->shaderName, pipeline);
-        renderer->BindPipeline(shaderPipeline ? shaderPipeline : pipeline);
+        Ditto::PipelineHandle shaderPipeline = GetOrCreateShaderPipeline(batch->shaderName);
+        if (!shaderPipeline) continue;
+        renderer->BindPipeline(shaderPipeline);
         renderer->SetFrameUniforms(fu);
         renderer->BindTexture(2, GetOrCreateMaterialTexture(batch->texturePath));
 
@@ -457,49 +472,50 @@ void Scene::Render(Ditto::PipelineHandle pipeline, const glm::mat4& view, const 
     }
 }
 
-Ditto::PipelineHandle Scene::GetOrCreateShaderPipeline(const std::string& shaderName, Ditto::PipelineHandle fallback)
+Ditto::PipelineHandle Scene::GetOrCreateShaderPipeline(const std::string& shaderName)
 {
-    std::string key = shaderName.empty() ? RendererComponent::DefaultShaderName : shaderName;
-    if (key == RendererComponent::DefaultShaderName && fallback)
-        return fallback;
+    if (shaderName.empty())
+        return {};
 
-    auto it = shaderPipelines.find(key);
+    auto it = shaderPipelines.find(shaderName);
     if (it != shaderPipelines.end())
         return it->second;
 
-    Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(key);
+    Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(shaderName);
     if (!shader.ok)
     {
-        DITTO_LOG_ERROR_STREAM("[Scene] Failed to load shader: " << key << " - " << shader.error);
-        return fallback;
+        DITTO_LOG_ERROR_STREAM("[Scene] Failed to load shader: " << shaderName << " - " << shader.error);
+        return {};
     }
 
-    shaderPipelineStates[key] = shader.pipelineState;
+    shaderPipelineStates[shaderName] = shader.pipelineState;
     Ditto::PipelineHandle created = renderer ? renderer->CreatePipeline(shader.engineHLSL, shader.pipelineState) : Ditto::PipelineHandle{};
     if (!created)
     {
-        DITTO_LOG_ERROR_STREAM("[Scene] Failed to create shader pipeline: " << key);
-        return fallback;
+        DITTO_LOG_ERROR_STREAM("[Scene] Failed to create shader pipeline: " << shaderName);
+        return {};
     }
-    shaderPipelines[key] = created;
+    shaderPipelines[shaderName] = created;
     return created;
 }
 
 Ditto::PipelineState Scene::GetShaderPipelineState(const std::string& shaderName)
 {
-    std::string key = shaderName.empty() ? RendererComponent::DefaultShaderName : shaderName;
-    auto it = shaderPipelineStates.find(key);
+    if (shaderName.empty())
+        return {};
+
+    auto it = shaderPipelineStates.find(shaderName);
     if (it != shaderPipelineStates.end())
         return it->second;
 
-    Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(key);
+    Ditto::ShaderAsset shader = Ditto::LoadShaderAsset(shaderName);
     if (shader.ok)
     {
-        shaderPipelineStates[key] = shader.pipelineState;
+        shaderPipelineStates[shaderName] = shader.pipelineState;
         return shader.pipelineState;
     }
-    shaderPipelineStates[key] = {};
-    return shaderPipelineStates[key];
+    shaderPipelineStates[shaderName] = {};
+    return shaderPipelineStates[shaderName];
 }
 
 Ditto::TextureHandle Scene::GetOrCreateMaterialTexture(const std::string& texturePath)
@@ -663,7 +679,7 @@ float Scene::GetLightIntensity() const
 #else
 void Scene::CollectRenderData() {}
 void Scene::UpdateSSBOs() {}
-void Scene::Render(Ditto::PipelineHandle, const glm::mat4&, const glm::mat4&, const glm::vec3&, int, int, bool) {}
+void Scene::Render(const glm::mat4&, const glm::mat4&, const glm::vec3&, int, int, bool) {}
 void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
 {
     resource = _resource;

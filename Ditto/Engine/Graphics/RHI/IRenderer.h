@@ -13,6 +13,8 @@
 // ---------------------------------------------------------------------------
 namespace Ditto
 {
+    class IWindow;
+
     enum class RendererBackend
     {
         OpenGL,
@@ -88,13 +90,14 @@ namespace Ditto
         // opt in incrementally.
         virtual void BeginFrame() {}
         virtual void EndFrame() {}
+        virtual bool NotifyWindowResized(int width, int height) { return width > 0 && height > 0; }
 
         // ---- Dear ImGui backend (platform + renderer), implemented per-backend.
-        // ImGuiInit sets up the GLFW platform + the renderer backend; ImGuiNewFrame
+        // ImGuiInit sets up the window platform + the renderer backend; ImGuiNewFrame
         // runs both backends' NewFrame; ImGuiRenderDrawData records the draw data
         // (into the current command buffer on Vulkan). The caller still owns
         // ImGui::CreateContext/NewFrame/Render/DestroyContext.
-        virtual void ImGuiInit(void* window) {}
+        virtual void ImGuiInit(IWindow* window) {}
         virtual void ImGuiShutdown() {}
         virtual void ImGuiNewFrame() {}
         virtual void ImGuiRenderDrawData(void* drawData) {}

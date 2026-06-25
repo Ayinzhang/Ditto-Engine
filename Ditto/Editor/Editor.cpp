@@ -16,35 +16,22 @@
 #include "SceneWindow.h"
 #include "BuildSystem.h"
 #include "../Engine/Core/ProjectManager.h"
+#include "../Engine/Core/PrefabAsset.h"
 #include "../Engine/Core/Input.h"
+#include "../Engine/Core/IWindow.h"
 #include "../3rdParty/ImGuizmo/ImGuizmo.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
 #include "../Engine/Core/CSharpScript.h"
 #include "../Engine/Core/Logger.h"
-#define GLFW_INCLUDE_NONE
-#include "../3rdParty/GLFW/glfw3.h"
-#include "../3rdParty/GLAD/glad.h"
-#include "../3rdParty/ImGui/imgui_impl_glfw.h"
-#include "../3rdParty/ImGui/imgui_impl_opengl3.h"
+#include "../Engine/Resources/AssetDatabase.h"
+#include "../Engine/Resources/AssetPath.h"
 #include "../3rdParty/ImGui/imgui_internal.h"
 #include "../3rdParty/GLM/ext/matrix_transform.hpp"
 #define STB_IMAGE_IMPLEMENTATION
 #include "../3rdParty/stb_image.h"
 using namespace glm;
 namespace fs = std::filesystem;
-
-static void EditorFileDropCallback(GLFWwindow* window, int count, const char** paths)
-{
-    Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
-    if (!engine || !engine->editor || count <= 0 || !paths) return;
-
-    std::vector<std::string> dropped;
-    dropped.reserve(static_cast<size_t>(count));
-    for (int i = 0; i < count; ++i)
-        if (paths[i]) dropped.emplace_back(paths[i]);
-    engine->editor->ImportExternalFilesToProject(dropped);
-}
 
 static GameObject* CreateCameraObject(GameObject* parent, const std::string& name = "Camera")
 {
@@ -65,7 +52,6 @@ static RendererComponent* AddDefaultRenderer(GameObject* obj, const std::string&
     RendererComponent* renderer = obj->AddComponent<RendererComponent>();
     renderer->meshPath = meshPath;
     renderer->materialPath = "Materials/Lit_Toon.mat";
-    renderer->shaderName = RendererComponent::DefaultShaderName;
     return renderer;
 }
 
@@ -73,7 +59,6 @@ static GameObject* CreateSpriteObject(GameObject* parent, const std::string& spr
 {
     GameObject* sprite = parent->AddChild(std::make_unique<GameObject>("Sprite"));
     SpriteRendererComponent* renderer = sprite->AddComponent<SpriteRendererComponent>();
-    renderer->shaderName = SpriteRendererComponent::DefaultShaderName;
     renderer->materialPath = "Materials/Lit_Sprite.mat";
     renderer->spritePath = spritePath;
     renderer->color = glm::vec4(1.0f);
@@ -174,6 +159,170 @@ static void SelectCreatedObject(Editor* editor, GameObject* obj)
     editor->selectedFile.Clear();
     if (editor->engine && editor->engine->scene)
         editor->engine->scene->MarkDirty();
+}
+
+static bool BuildGameObjectPath(GameObject* root, GameObject* object, std::vector<int>& outPath)
+{
+    outPath.clear();
+    if (!root || !object) return false;
+    if (object == root) return true;
+
+    std::vector<int> reversedPath;
+    for (GameObject* node = object; node && node != root; node = node->parent)
+    {
+        GameObject* parent = node->parent;
+        if (!parent) return false;
+
+        auto it = std::find_if(parent->children.begin(), parent->children.end(),
+            [node](const std::unique_ptr<GameObject>& child) { return child.get() == node; });
+        if (it == parent->children.end()) return false;
+
+        reversedPath.push_back(static_cast<int>(std::distance(parent->children.begin(), it)));
+    }
+
+    outPath.assign(reversedPath.rbegin(), reversedPath.rend());
+    return true;
+}
+
+static GameObject* ResolveGameObjectPath(GameObject* root, const std::vector<int>& path)
+{
+    GameObject* node = root;
+    for (int childIndex : path)
+    {
+        if (!node || childIndex < 0 || childIndex >= static_cast<int>(node->children.size()))
+            return nullptr;
+        node = node->children[childIndex].get();
+    }
+    return node;
+}
+
+static std::vector<std::vector<int>> CaptureExpandedObjectPaths(
+    GameObject* root,
+    const std::set<GameObject*>& expandedObjects)
+{
+    std::vector<std::vector<int>> paths;
+    for (GameObject* expanded : expandedObjects)
+    {
+        std::vector<int> path;
+        if (BuildGameObjectPath(root, expanded, path))
+            paths.push_back(std::move(path));
+    }
+    return paths;
+}
+
+static void RestoreExpandedObjectPaths(
+    GameObject* root,
+    const std::vector<std::vector<int>>& paths,
+    std::set<GameObject*>& expandedObjects)
+{
+    expandedObjects.clear();
+    if (!root) return;
+
+    for (const std::vector<int>& path : paths)
+        if (GameObject* expanded = ResolveGameObjectPath(root, path))
+            expandedObjects.insert(expanded);
+}
+
+struct GameObjectPathKey
+{
+    std::vector<int> indices;
+    std::vector<std::string> names;
+    std::vector<size_t> siblingCounts;
+};
+
+static bool BuildGameObjectPathKey(GameObject* root, GameObject* object, GameObjectPathKey& outKey)
+{
+    outKey = {};
+    if (!BuildGameObjectPath(root, object, outKey.indices)) return false;
+
+    GameObject* node = root;
+    for (int childIndex : outKey.indices)
+    {
+        if (!node || childIndex < 0 || childIndex >= static_cast<int>(node->children.size()))
+            return false;
+
+        outKey.siblingCounts.push_back(node->children.size());
+        node = node->children[childIndex].get();
+        outKey.names.push_back(node ? node->name : std::string());
+    }
+
+    return true;
+}
+
+static GameObject* ResolveGameObjectPathKey(GameObject* root, const GameObjectPathKey& key)
+{
+    GameObject* node = root;
+    for (size_t depth = 0; depth < key.indices.size(); ++depth)
+    {
+        if (!node) return nullptr;
+
+        const int childIndex = key.indices[depth];
+        const std::string& childName = key.names[depth];
+        const size_t oldSiblingCount = key.siblingCounts[depth];
+        GameObject* next = nullptr;
+
+        if (childIndex >= 0 && childIndex < static_cast<int>(node->children.size()) &&
+            node->children[childIndex] && node->children[childIndex]->name == childName)
+        {
+            next = node->children[childIndex].get();
+        }
+        else
+        {
+            auto namedSibling = std::find_if(node->children.begin(), node->children.end(),
+                [&childName](const std::unique_ptr<GameObject>& child) {
+                    return child && child->name == childName;
+                });
+            if (namedSibling != node->children.end())
+            {
+                next = namedSibling->get();
+            }
+            else if (node->children.size() == oldSiblingCount &&
+                     childIndex >= 0 && childIndex < static_cast<int>(node->children.size()))
+            {
+                next = node->children[childIndex].get();
+            }
+        }
+
+        if (!next) return nullptr;
+        node = next;
+    }
+    return node;
+}
+
+static std::vector<GameObjectPathKey> CaptureExpandedObjectPathKeys(
+    GameObject* root,
+    const std::set<GameObject*>& expandedObjects)
+{
+    std::vector<GameObjectPathKey> keys;
+    for (GameObject* expanded : expandedObjects)
+    {
+        GameObjectPathKey key;
+        if (BuildGameObjectPathKey(root, expanded, key))
+            keys.push_back(std::move(key));
+    }
+    return keys;
+}
+
+static void RestoreExpandedObjectPathKeys(
+    GameObject* root,
+    const std::vector<GameObjectPathKey>& keys,
+    std::set<GameObject*>& expandedObjects)
+{
+    expandedObjects.clear();
+    if (!root) return;
+
+    for (const GameObjectPathKey& key : keys)
+        if (GameObject* expanded = ResolveGameObjectPathKey(root, key))
+            expandedObjects.insert(expanded);
+}
+
+static void RemoveExpandedSubtree(GameObject* root, std::set<GameObject*>& expandedObjects)
+{
+    if (!root) return;
+
+    expandedObjects.erase(root);
+    for (const auto& child : root->children)
+        RemoveExpandedSubtree(child.get(), expandedObjects);
 }
 
 static GameObject* CreateCubeObject(GameObject* parent)
@@ -301,9 +450,6 @@ static std::string FindVCVarsPath()
     return "";
 }
 
-// Global Editor pointer
-Editor* g_editor = nullptr;
-
 static ImRect GetCurrentViewportRect()
 {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -314,10 +460,9 @@ static ImRect GetCurrentViewportRect()
     return ImRect(min, max);
 }
 
-Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
+Editor::Editor(Ditto::IWindow* window, bool gameMode, const std::string& projectPath)
 {
-    // Set global Editor pointer
-    g_editor = this;
+    // Set RuntimeContext Editor pointer
     Ditto::RuntimeContext::SetCurrentEditor(this);
     
     // Initialize selection state
@@ -342,7 +487,7 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     // The ImGui platform+renderer backend is initialized lazily on the first
     // Draw(), because it routes through engine->renderer (assigned by the caller
     // AFTER this constructor) and must match the active backend (GL or Vulkan).
-    m_glfwWindow = window;
+    m_window = window;
 
     showSavePopup = false;
     showLoadPopup = false;
@@ -369,9 +514,13 @@ Editor::Editor(void* window, bool gameMode, const std::string& projectPath)
     // Initialize window components
     m_projectWindow = std::make_unique<ProjectWindow>(this);
     m_inspectorWindow = std::make_unique<InspectorWindow>(this);
+    m_assetHealthWindow = std::make_unique<AssetHealthWindow>(this);
     m_sceneWindow = std::make_unique<SceneWindow>(this);
-    if (m_glfwWindow)
-        glfwSetDropCallback(static_cast<GLFWwindow*>(m_glfwWindow), EditorFileDropCallback);
+    if (m_window)
+        m_window->SetDropCallback([this](const std::vector<std::string>& paths)
+        {
+            ImportExternalFilesToProject(paths);
+        });
     
     // Set script log callback
     CSharpScriptSystem::SetEditor(this);
@@ -395,8 +544,8 @@ Editor::~Editor()
 {
     if (Ditto::RuntimeContext::CurrentEditor() == this)
         Ditto::RuntimeContext::SetCurrentEditor(nullptr);
-    if (g_editor == this)
-        g_editor = nullptr;
+    if (m_window)
+        m_window->SetDropCallback(nullptr);
 
     CleanupModelPreview();
     CleanupFileIcons();
@@ -419,7 +568,7 @@ void Editor::Draw()
     // backend and icon textures are created through the active RHI backend.
     if (!m_imguiBackendInit && engine && engine->renderer)
     {
-        engine->renderer->ImGuiInit(m_glfwWindow);
+        engine->renderer->ImGuiInit(m_window);
         m_imguiBackendInit = true;
     }
     InitFileIcons();
@@ -525,6 +674,7 @@ void Editor::Draw()
     if (m_projectWindow) m_projectWindow->Draw();
     if (m_projectWindow) m_projectWindow->DrawConsoleWindow();
     if (m_inspectorWindow) m_inspectorWindow->Draw();
+    if (m_assetHealthWindow) m_assetHealthWindow->Draw();
     DrawPopups();
     DrawBuildSettingsWindow();
 
@@ -756,6 +906,19 @@ void Editor::DrawToolbar()
             ImGui::EndMenu();
         }
 
+        if (ImGui::BeginMenu("Window"))
+        {
+            if (ImGui::MenuItem("Asset Health"))
+            {
+                if (m_assetHealthWindow)
+                {
+                    m_assetHealthWindow->Open();
+                    m_assetHealthWindow->RefreshDiagnostics();
+                }
+            }
+            ImGui::EndMenu();
+        }
+
         if (ImGui::BeginMenu("Help"))
         {
             if (ImGui::MenuItem("About Ditto Engine")) {}
@@ -819,13 +982,13 @@ void Editor::DrawToolbar()
             }
             else if (engine->state == Engine::Play)
             {
-                // Already playing 鈥?clicking Play returns to Edit (acts as Stop)
+                // Already playing: clicking Play returns to Edit (acts as Stop).
                 engine->SetEngineState(Engine::Stop);
                 StopAndRestoreScene();
             }
             else if (engine->state == Engine::Pause)
             {
-                // Paused 鈥?clicking Play also returns to Edit (acts as Stop);
+                // Paused: clicking Play also returns to Edit (acts as Stop).
                 // both buttons should go grey to signal "session ended".
                 engine->SetEngineState(Engine::Stop);
                 StopAndRestoreScene();
@@ -861,7 +1024,7 @@ void Editor::DrawToolbar()
             }
             else if (engine->state == Engine::Pause)
             {
-                // Already paused 鈥?clicking Pause resumes Play
+                // Already paused: clicking Pause resumes Play.
                 engine->SetEngineState(Engine::Play);
             }
             // In Edit state: do nothing (Pause has no meaning before Play)
@@ -1177,6 +1340,15 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::EndMenu();
         }
         // Deferred: both mutate an ancestor's children vector mid-draw.
+        if (!obj->prefabSourcePath.empty())
+        {
+            ImGui::Separator();
+            if (ImGui::MenuItem("Apply Prefab"))
+                ApplySelectedPrefabInstance();
+            if (ImGui::MenuItem("Revert Prefab"))
+                RevertSelectedPrefabInstance();
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem("Copy")) m_pendingCopy = true;
         if (ImGui::MenuItem("Delete")) m_pendingDelete = true;
         ImGui::EndPopup();
@@ -1789,32 +1961,12 @@ Editor::EditorSnapshot Editor::CaptureEditorSnapshot() const
 
     GameObject* root = engine->scene->rootGameObject.get();
     GameObject* current = selectedObject ? selectedObject : activeSelection;
-    auto buildPath = [root](GameObject* object) {
-        std::vector<int> path;
-        if (!root || !object) return path;
-        std::vector<int> reversedPath;
-        for (GameObject* node = object; node && node != root; node = node->parent)
-        {
-            if (!node->parent) break;
-            auto& siblings = node->parent->children;
-            auto it = std::find_if(siblings.begin(), siblings.end(),
-                [node](const std::unique_ptr<GameObject>& child) { return child.get() == node; });
-            if (it == siblings.end()) break;
-            reversedPath.push_back(static_cast<int>(std::distance(siblings.begin(), it)));
-        }
-        path.assign(reversedPath.rbegin(), reversedPath.rend());
-        return path;
-    };
-
     if (root && current)
     {
-        snapshot.hasSelectedObject = true;
-        snapshot.selectedObjectPath = buildPath(current);
+        snapshot.hasSelectedObject = BuildGameObjectPath(root, current, snapshot.selectedObjectPath);
     }
 
-    for (GameObject* expanded : m_expandedGameObjects)
-        if (expanded)
-            snapshot.expandedObjectPaths.push_back(buildPath(expanded));
+    snapshot.expandedObjectPaths = CaptureExpandedObjectPaths(root, m_expandedGameObjects);
 
     if (selectedComponent && selectedComponent->gameObject == current)
     {
@@ -1842,24 +1994,13 @@ void Editor::RestoreEditorSelection(const EditorSnapshot& snapshot)
 
     if (!engine || !engine->scene || !engine->scene->rootGameObject) return;
 
-    auto resolvePath = [this](const std::vector<int>& path) -> GameObject* {
-        GameObject* node = engine->scene->rootGameObject.get();
-        for (int childIndex : path)
-        {
-            if (childIndex < 0 || childIndex >= static_cast<int>(node->children.size()))
-                return nullptr;
-            node = node->children[childIndex].get();
-        }
-        return node;
-    };
-
     for (const std::vector<int>& path : snapshot.expandedObjectPaths)
-        if (GameObject* expanded = resolvePath(path))
+        if (GameObject* expanded = ResolveGameObjectPath(engine->scene->rootGameObject.get(), path))
             m_expandedGameObjects.insert(expanded);
 
     if (!snapshot.hasSelectedObject) return;
 
-    GameObject* node = resolvePath(snapshot.selectedObjectPath);
+    GameObject* node = ResolveGameObjectPath(engine->scene->rootGameObject.get(), snapshot.selectedObjectPath);
     if (!node) return;
 
     selectedObject = node;
@@ -1911,6 +2052,8 @@ void Editor::Undo()
     if (engine->state == Engine::State::Play) return;
     if (m_undoStack.empty()) return;
 
+    std::vector<GameObjectPathKey> expandedPaths =
+        CaptureExpandedObjectPathKeys(engine->scene->rootGameObject.get(), m_expandedGameObjects);
     EditorSnapshot current = CaptureEditorSnapshot();
     EditorSnapshot prev = std::move(m_undoStack.back());
     m_undoStack.pop_back();
@@ -1920,6 +2063,7 @@ void Editor::Undo()
         m_redoStack.push_back(std::move(current));
         if (m_redoStack.size() > kUndoDepth) m_redoStack.erase(m_redoStack.begin());
         RestoreEditorSelection(prev);
+        RestoreExpandedObjectPathKeys(engine->scene->rootGameObject.get(), expandedPaths, m_expandedGameObjects);
         m_hasPendingEdit = false;
         sceneDirty = true;
     }
@@ -1935,6 +2079,8 @@ void Editor::Redo()
     if (engine->state == Engine::State::Play) return;
     if (m_redoStack.empty()) return;
 
+    std::vector<GameObjectPathKey> expandedPaths =
+        CaptureExpandedObjectPathKeys(engine->scene->rootGameObject.get(), m_expandedGameObjects);
     EditorSnapshot current = CaptureEditorSnapshot();
     EditorSnapshot next = std::move(m_redoStack.back());
     m_redoStack.pop_back();
@@ -1944,6 +2090,7 @@ void Editor::Redo()
         m_undoStack.push_back(std::move(current));
         if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
         RestoreEditorSelection(next);
+        RestoreExpandedObjectPathKeys(engine->scene->rootGameObject.get(), expandedPaths, m_expandedGameObjects);
         m_hasPendingEdit = false;
         sceneDirty = true;
     }
@@ -1963,7 +2110,14 @@ void Editor::CopySelectedObject()
     GameObject* attachTo = selectedObject->parent
         ? selectedObject->parent
         : engine->scene->rootGameObject.get();
-    selectedObject = attachTo->AddChild(std::move(clone));
+    GameObject* copiedObject = attachTo ? attachTo->AddChild(std::move(clone)) : nullptr;
+    if (!copiedObject) return;
+
+    engine->scene->RegisterSubtree(copiedObject);
+    selectedObject = copiedObject;
+    activeSelection = copiedObject;
+    selectedComponent = nullptr;
+    selectedFile.Clear();
     engine->scene->MarkDirty();  // Mark scene as modified
 }
 
@@ -1981,13 +2135,34 @@ void Editor::DeleteSelectedObject()
     // Single-root model: every deletable object has a parent (root is guarded
     // above). Take ownership out of the tree, scrub the non-owning observer
     // list, then let `owned` destroy the subtree at scope end.
+    GameObject* objectToDelete = selectedObject;
     GameObject* parent = selectedObject->parent;
-    std::unique_ptr<GameObject> owned = parent->DetachChild(selectedObject);
+    if (!parent) return;
 
-    engine->scene->UnregisterSubtree(selectedObject);
+    auto siblingIt = std::find_if(parent->children.begin(), parent->children.end(),
+        [objectToDelete](const std::unique_ptr<GameObject>& child) { return child.get() == objectToDelete; });
+    size_t siblingIndex = siblingIt != parent->children.end()
+        ? static_cast<size_t>(std::distance(parent->children.begin(), siblingIt))
+        : parent->children.size();
+
+    GameObject* nextSelection = nullptr;
+    if (siblingIndex + 1 < parent->children.size())
+        nextSelection = parent->children[siblingIndex + 1].get();
+    else if (siblingIndex > 0 && siblingIndex - 1 < parent->children.size())
+        nextSelection = parent->children[siblingIndex - 1].get();
+    else
+        nextSelection = parent;
+
+    RemoveExpandedSubtree(objectToDelete, m_expandedGameObjects);
+    std::unique_ptr<GameObject> owned = parent->DetachChild(objectToDelete);
+
+    engine->scene->UnregisterSubtree(objectToDelete);
     owned.reset();
 
-    selectedObject = parent;
+    selectedObject = nextSelection;
+    activeSelection = nextSelection;
+    selectedComponent = nullptr;
+    selectedFile.Clear();
 
     engine->scene->MarkDirty();  // Mark scene as modified
 }
@@ -2305,6 +2480,80 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
         // Mark scene as modified
         sceneDirty = true;
     }
+}
+
+bool Editor::InstantiatePrefabToScene(const std::string& prefabPath)
+{
+    if (!engine || !engine->scene || prefabPath.empty())
+        return false;
+
+    std::unique_ptr<GameObject> instance = Ditto::PrefabAsset::Instantiate(prefabPath);
+    if (!instance)
+        return false;
+
+    PushUndoSnapshot();
+    GameObject* parent = selectedObject ? selectedObject : engine->scene->rootGameObject.get();
+    if (!parent)
+        return false;
+
+    GameObject* created = parent->AddChild(std::move(instance));
+    engine->scene->RegisterSubtree(created);
+    SelectCreatedObject(this, created);
+    sceneDirty = true;
+    engine->scene->MarkDirty();
+    DITTO_LOG_INFO_STREAM("[Editor] Instantiated prefab: " << prefabPath);
+    return true;
+}
+
+bool Editor::SaveSelectedObjectAsPrefab(const std::string& prefabPath)
+{
+    if (!selectedObject || !engine || !engine->scene || prefabPath.empty())
+        return false;
+
+    if (selectedObject == engine->scene->rootGameObject.get())
+    {
+        DITTO_LOG_WARN("[Editor] Scene root cannot be saved as a prefab");
+        return false;
+    }
+
+    if (!Ditto::PrefabAsset::Save(*selectedObject, prefabPath))
+        return false;
+
+    selectedObject->prefabSourcePath = Ditto::AssetPath::NormalizeAssetKey(prefabPath);
+    selectedObject->prefabSourceGuid = Ditto::AssetDatabase::Get().EnsureMetaForAsset(prefabPath);
+    DITTO_LOG_INFO_STREAM("[Editor] Saved prefab: " << prefabPath);
+    return true;
+}
+
+bool Editor::ApplySelectedPrefabInstance()
+{
+    if (!selectedObject || selectedObject->prefabSourcePath.empty())
+        return false;
+
+    if (!Ditto::PrefabAsset::Apply(*selectedObject))
+        return false;
+
+    DITTO_LOG_INFO_STREAM("[Editor] Applied prefab instance: " << selectedObject->prefabSourcePath);
+    return true;
+}
+
+bool Editor::RevertSelectedPrefabInstance()
+{
+    if (!selectedObject || !engine || !engine->scene || selectedObject->prefabSourcePath.empty())
+        return false;
+
+    PushUndoSnapshot();
+    engine->scene->UnregisterSubtree(selectedObject);
+    if (!Ditto::PrefabAsset::Revert(*selectedObject))
+        return false;
+
+    engine->scene->RegisterSubtree(selectedObject);
+    activeSelection = selectedObject;
+    selectedComponent = nullptr;
+    sceneDirty = true;
+    engine->scene->MarkDirty();
+    DITTO_LOG_INFO_STREAM("[Editor] Reverted prefab instance: " << selectedObject->prefabSourcePath);
+    return true;
 }
 
 void Editor::SaveCurrentScene()

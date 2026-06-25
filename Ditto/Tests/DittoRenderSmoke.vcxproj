@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{C19102A6-2C52-4B3B-99B1-A90E1539CC5A}</ProjectGuid>
+    <RootNamespace>DittoRenderSmoke</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+    <VcpkgEnabled>false</VcpkgEnabled>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros">
+    <VulkanSDK Condition="'$(VULKAN_SDK)' != ''">$(VULKAN_SDK)</VulkanSDK>
+    <VulkanSDK Condition="'$(VulkanSDK)' == ''">C:\VulkanSDK\1.4.350.0</VulkanSDK>
+    <EnableVulkan Condition="'$(EnableVulkan)'=='' and Exists('$(VulkanSDK)\Include\vulkan\vulkan.h') and Exists('$(VulkanSDK)\Lib\vulkan-1.lib')">true</EnableVulkan>
+    <EnableVulkan Condition="'$(EnableVulkan)'==''">false</EnableVulkan>
+    <AssimpRoot>$(MSBuildThisFileDirectory)..\3rdParty\Assimp</AssimpRoot>
+    <EnableAssimp Condition="'$(EnableAssimp)'=='' and Exists('$(AssimpRoot)\include\assimp\Importer.hpp') and Exists('$(AssimpRoot)\lib\assimp-vc143-mt.lib')">true</EnableAssimp>
+    <EnableAssimp Condition="'$(EnableAssimp)'==''">false</EnableAssimp>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)x64\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)x64\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;DITTO_HEADLESS_TESTS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <SupportJustMyCode>false</SupportJustMyCode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\3rdParty;$(MSBuildThisFileDirectory)..\3rdParty\GLAD;$(MSBuildThisFileDirectory)..\3rdParty\GLFW;$(MSBuildThisFileDirectory)..\3rdParty\GLM;$(MSBuildThisFileDirectory)..\3rdParty\ImGui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)..\3rdParty\GLFW\glfw3.lib;opengl32.lib;gdi32.lib;user32.lib;shell32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(EnableVulkan)'=='true'">vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/NODEFAULTLIB:MSVCRT %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <PreBuildEvent>
+      <Command>setlocal
+set "DOTNET=dotnet"
+if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
+set "DOTNET_CLI_UI_LANGUAGE=en"
+set "DOTNET_NOLOGO=true"
+cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
+    </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>if "$(EnableAssimp)"=="true" copy /Y "$(AssimpRoot)\bin\assimp-vc143-mt.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;DITTO_HEADLESS_TESTS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..;$(MSBuildThisFileDirectory)..\3rdParty;$(MSBuildThisFileDirectory)..\3rdParty\GLAD;$(MSBuildThisFileDirectory)..\3rdParty\GLFW;$(MSBuildThisFileDirectory)..\3rdParty\GLM;$(MSBuildThisFileDirectory)..\3rdParty\ImGui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)..\3rdParty\GLFW\glfw3.lib;opengl32.lib;gdi32.lib;user32.lib;shell32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(EnableVulkan)'=='true'">vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <PreBuildEvent>
+      <Command>setlocal
+set "DOTNET=dotnet"
+if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
+set "DOTNET_CLI_UI_LANGUAGE=en"
+set "DOTNET_NOLOGO=true"
+cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build DittoEngine.csproj -c Release</Command>
+    </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>if "$(EnableAssimp)"=="true" copy /Y "$(AssimpRoot)\bin\assimp-vc143-mt.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="RenderSmoke.cpp" />
+    <ClCompile Include="StbImage.cpp" />
+    <ClCompile Include="..\Engine\Core\GameObject.cpp" />
+    <ClCompile Include="..\Engine\Core\Scene.cpp" />
+    <ClCompile Include="..\Engine\Core\SceneRaycast.cpp" />
+    <ClCompile Include="..\Engine\Core\SceneSerialization.cpp" />
+    <ClCompile Include="..\Engine\Core\PathUtils.cpp" />
+    <ClCompile Include="..\Engine\Core\JsonValue.cpp" />
+    <ClCompile Include="..\Engine\Core\JsonSceneSchema.cpp" />
+    <ClCompile Include="..\Engine\Core\GameObjectJson.cpp" />
+    <ClCompile Include="..\Engine\Core\JsonConfig.cpp" />
+    <ClCompile Include="..\Engine\Core\RuntimeContext.cpp" />
+    <ClCompile Include="..\Engine\Core\GlfwWindow.cpp" />
+    <ClCompile Include="..\Engine\Core\EngineLifecycle.cpp" />
+    <ClCompile Include="..\Engine\Core\Logger.cpp" />
+    <ClCompile Include="..\Engine\Core\ProjectManager.cpp" />
+    <ClCompile Include="..\Engine\Core\PrefabAsset.cpp" />
+    <ClCompile Include="..\Engine\Core\CSharpScript.cpp" />
+    <ClCompile Include="..\Engine\Core\CSharpScriptCompiler.cpp" />
+    <ClCompile Include="..\Engine\Core\MonoRuntime.cpp" />
+    <ClCompile Include="..\Engine\Graphics\Camera.cpp" />
+    <ClCompile Include="..\Engine\Physics\Physics.cpp" />
+    <ClCompile Include="..\Engine\Physics\Physics2D.cpp" />
+    <ClCompile Include="..\Engine\Physics\PhysicsMaterial2DAsset.cpp" />
+    <ClCompile Include="..\Engine\Physics\CollisionShape.cpp" />
+    <ClCompile Include="..\Engine\Physics\GJK.cpp" />
+    <ClCompile Include="..\Engine\Resources\AssetDatabase.cpp" />
+    <ClCompile Include="..\Engine\Resources\AssetReferenceIO.cpp" />
+    <ClCompile Include="..\Engine\Resources\AssetPath.cpp" />
+    <ClCompile Include="..\Engine\Resources\Resource.cpp" />
+    <ClCompile Include="..\Engine\Graphics\Materials\MaterialAsset.cpp" />
+    <ClCompile Include="..\Engine\Graphics\Shaders\ShaderAsset.cpp" />
+    <ClCompile Include="..\Engine\Graphics\Shaders\ShaderCompiler.cpp" />
+    <ClCompile Include="..\Engine\Animation\AnimatorComponent.cpp" />
+    <ClCompile Include="..\Engine\Graphics\ParticleSystemComponent.cpp" />
+    <ClCompile Include="..\Engine\Graphics\RHI\GLRenderer.cpp" />
+    <ClCompile Include="..\Engine\Graphics\UI\FontAtlas.cpp" />
+    <ClCompile Include="..\Engine\Graphics\UI\UIRenderer.cpp" />
+    <ClCompile Include="..\3rdParty\GLAD\glad.c" />
+    <ClCompile Include="..\3rdParty\ImGui\imgui.cpp" />
+    <ClCompile Include="..\3rdParty\ImGui\imgui_draw.cpp" />
+    <ClCompile Include="..\3rdParty\ImGui\imgui_tables.cpp" />
+    <ClCompile Include="..\3rdParty\ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="..\3rdParty\ImGui\imgui_impl_glfw.cpp" />
+    <ClCompile Include="..\3rdParty\ImGui\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="..\Engine\Graphics\RHI\Vulkan\VulkanRenderer.cpp" Condition="'$(EnableVulkan)'=='true'" />
+    <ClCompile Include="..\Engine\Graphics\RHI\Vulkan\VulkanRenderer_Resources.cpp" Condition="'$(EnableVulkan)'=='true'" />
+    <ClCompile Include="..\Engine\Graphics\RHI\Vulkan\VulkanRenderer_Swapchain.cpp" Condition="'$(EnableVulkan)'=='true'" />
+    <ClCompile Include="..\3rdParty\ImGui\imgui_impl_vulkan.cpp" Condition="'$(EnableVulkan)'=='true'" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

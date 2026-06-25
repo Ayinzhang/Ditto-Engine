@@ -1,76 +1,37 @@
 #include "Scene.h"
-#include "Logger.h"
-#include "RuntimeContext.h"
-#include "../Resources/AssetReferenceIO.h"
 
-#include <cstdint>
-#include <cstring>
+#include "GameObjectJson.h"
+#include "JsonSceneSchema.h"
+#include "JsonValue.h"
+#include "Logger.h"
+
 #include <fstream>
 #include <functional>
 #include <sstream>
 
-std::uint32_t g_sceneLoadingVersion = 0;
-
 namespace
 {
-    struct LegacySceneLoadingVersionScope
-    {
-        explicit LegacySceneLoadingVersionScope(std::uint32_t version)
-            : previous(g_sceneLoadingVersion), contextScope(version)
-        {
-            g_sceneLoadingVersion = version;
-        }
-
-        ~LegacySceneLoadingVersionScope()
-        {
-            g_sceneLoadingVersion = previous;
-        }
-
-        std::uint32_t previous;
-        Ditto::RuntimeContext::SceneLoadingVersionScope contextScope;
-    };
-
-    struct SceneHeader
-    {
-        char magic[4];
-        uint32_t version;
-        uint32_t gameObjectCount;
-        uint64_t fileSize;
-    };
-
-    // Development-only scene format. Compatibility with older scene versions is
-    // intentionally not preserved while the engine schema is still moving.
-    constexpr uint32_t SCENE_VERSION = 16;
-    constexpr char SCENE_MAGIC[4] = { 'S', 'C', 'N', '\0' };
+    constexpr int SCENE_VERSION = 17;
+    constexpr const char* SCENE_FORMAT = "DittoScene";
 }
 
 void Scene::WriteToStream(std::ostream& file)
 {
-    SceneHeader header;
-    std::memset(&header, 0, sizeof(header));
-    std::memcpy(header.magic, SCENE_MAGIC, 4);
-    header.version = SCENE_VERSION;
-    header.fileSize = 0;
-    header.gameObjectCount = 1;
+    Ditto::Json::Value::Object json;
+    json["format"] = SCENE_FORMAT;
+    json["version"] = SCENE_VERSION;
+    json["name"] = name;
+    json["root"] = rootGameObject ? Ditto::GameObjectJson::ToJson(*rootGameObject) : Ditto::Json::Value{};
 
-    file.write(reinterpret_cast<const char*>(&header), sizeof(header));
-
-    Ditto::AssetReferenceIO::WriteString(file, name);
-
-    rootGameObject->Serialize(file);
-
-    // Backfill total size into the header.
-    std::streampos endPos = file.tellp();
-    header.fileSize = static_cast<uint64_t>(endPos);
-    file.seekp(0);
-    file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    file << Ditto::Json::Write(json, 2);
+    file << '\n';
 }
 
 bool Scene::SaveScene(const std::string& filepath)
 {
     DITTO_LOG_VERBOSE_STREAM("[Scene::SaveScene] Starting save to: " << filepath);
 
-    std::ofstream file(filepath, std::ios::binary | std::ios::trunc);
+    std::ofstream file(filepath, std::ios::trunc);
     if (!file.is_open())
     {
         DITTO_LOG_ERROR_STREAM("[Scene::SaveScene] Failed to open file for writing: " << filepath);
@@ -80,21 +41,19 @@ bool Scene::SaveScene(const std::string& filepath)
     try
     {
         WriteToStream(file);
-        file.close();
         DITTO_LOG_VERBOSE("[Scene::SaveScene] Save completed.");
-        return true;
+        return file.good();
     }
     catch (const std::exception& e)
     {
         DITTO_LOG_ERROR_STREAM("[Scene::SaveScene] Error saving scene: " << e.what());
-        file.close();
         return false;
     }
 }
 
 std::string Scene::CaptureSnapshot()
 {
-    std::ostringstream oss(std::ios::binary);
+    std::ostringstream oss;
     WriteToStream(oss);
     return oss.str();
 }
@@ -102,7 +61,7 @@ std::string Scene::CaptureSnapshot()
 bool Scene::RestoreSnapshot(const std::string& data)
 {
     if (data.empty()) return false;
-    std::istringstream iss(data, std::ios::binary);
+    std::istringstream iss(data);
     return ReadFromStream(iss);
 }
 
@@ -110,7 +69,7 @@ bool Scene::LoadScene(const std::string& filepath)
 {
     DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Starting load from: " << filepath);
 
-    std::ifstream file(filepath, std::ios::binary);
+    std::ifstream file(filepath);
     if (!file.is_open())
     {
         DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Failed to open file for reading: " << filepath);
@@ -123,89 +82,75 @@ bool Scene::ReadFromStream(std::istream& file)
 {
     try
     {
-        SceneHeader header;
-        file.read(reinterpret_cast<char*>(&header), sizeof(header));
-        DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Header: magic=" << header.magic[0] << header.magic[1] << header.magic[2]
-            << ", version=" << header.version << ", gameObjectCount=" << header.gameObjectCount
-            << ", fileSize=" << header.fileSize);
+        std::ostringstream buffer;
+        buffer << file.rdbuf();
 
-        if (std::memcmp(header.magic, SCENE_MAGIC, 4) != 0)
+        Ditto::Json::Value json;
+        std::string error;
+        if (!Ditto::Json::Parse(buffer.str(), json, &error))
         {
-            DITTO_LOG_ERROR("[Scene::LoadScene] Invalid scene file: wrong magic number");
+            DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Invalid JSON scene: " << error);
             return false;
         }
-        if (header.version != SCENE_VERSION)
+
+        if (!json.IsObject())
         {
-            DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Unsupported scene version: " << header.version
+            DITTO_LOG_ERROR("[Scene::LoadScene] Invalid scene: root JSON is not an object");
+            return false;
+        }
+
+        Ditto::JsonSceneSchema::ValidationResult validation =
+            Ditto::JsonSceneSchema::ValidateScene(json, SCENE_VERSION);
+        if (!validation.ok)
+        {
+            DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Scene schema validation failed: " << validation.Summary());
+            return false;
+        }
+
+        const std::string format = json.Find("format") ? json.Find("format")->String() : std::string();
+        const int version = json.Find("version") ? json.Find("version")->Int(0) : 0;
+        if (format != SCENE_FORMAT)
+        {
+            DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Unsupported scene format: " << format);
+            return false;
+        }
+        if (version != SCENE_VERSION)
+        {
+            DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Unsupported scene version: " << version
                 << " (this development build reads exactly: " << SCENE_VERSION << ")");
             return false;
         }
 
-        // Expose the loading version only while component deserializers run.
-        LegacySceneLoadingVersionScope loadingVersion(header.version);
+        const Ditto::Json::Value* rootJson = json.Find("root");
+        if (!rootJson)
+        {
+            DITTO_LOG_ERROR("[Scene::LoadScene] Invalid scene: missing root GameObject");
+            return false;
+        }
 
-        name = Ditto::AssetReferenceIO::ReadString(file);
-        DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Scene name: " << name);
+        std::string newName = json.Find("name") ? json.Find("name")->String("Default") : "Default";
+        auto newRoot = std::make_unique<GameObject>(false);
+        if (!Ditto::GameObjectJson::FromJson(*newRoot, *rootJson, &error))
+        {
+            DITTO_LOG_ERROR_STREAM("[Scene::LoadScene] Invalid root GameObject: " << error);
+            return false;
+        }
 
-        DestroyAllObjects();
-
-        DITTO_LOG_VERBOSE("[Scene::LoadScene] Deserializing rootGameObject...");
-        rootGameObject->Deserialize(file);
+        name = std::move(newName);
+        rootGameObject = std::move(newRoot);
+        rootGameObject->parent = nullptr;
         rootGameObject->name = name;
-        DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] rootGameObject deserialized: " << rootGameObject->name
-            << ", children: " << rootGameObject->children.size());
 
-        std::function<void(GameObject*)> collectRootObjects = [&](GameObject* obj) {
-            for (const auto& child : obj->children)
-            {
-                if (child->children.empty())
-                {
-                    gameObjects.push_back(child.get());
-                }
-                else
-                {
-                    collectRootObjects(child.get());
-                    gameObjects.push_back(child.get());
-                }
-            }
-        };
-        collectRootObjects(rootGameObject.get());
-        DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Collected " << gameObjects.size() << " objects to gameObjects list");
-
+        gameObjects.clear();
         mainLight = nullptr;
-        std::function<void(GameObject*)> findLight = [&](GameObject* obj) {
-            if (!mainLight && obj->GetComponent<LightComponent>())
-                mainLight = obj;
-            for (const auto& child : obj->children)
-                findLight(child.get());
-        };
-        findLight(rootGameObject.get());
-
         mainCamera = nullptr;
+        for (const auto& child : rootGameObject->children)
+            RegisterSubtree(child.get());
+
         EnsureDefaultCamera();
 
-        DITTO_LOG_VERBOSE("[Scene::LoadScene] === Raycast-capable objects ===");
-        int raycastObjCount = 0;
-        std::function<void(GameObject*)> reportRaycastObjects = [&](GameObject* obj) {
-            if (!obj) return;
-            RendererComponent* renderer = obj->GetComponent<RendererComponent>();
-            TransformComponent* transform = obj->GetComponent<TransformComponent>();
-            if (renderer && transform)
-            {
-                DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Raycast object: " << obj->name
-                    << " (enabled=" << obj->enabled
-                    << ", renderer=" << (renderer->enabled ? "enabled" : "disabled")
-                    << ", transform=" << (transform->enabled ? "enabled" : "disabled")
-                    << ", meshPath=" << renderer->meshPath
-                    << ", pos=[" << transform->position.x << ", " << transform->position.y << ", " << transform->position.z << "])");
-                raycastObjCount++;
-            }
-            for (const auto& child : obj->children)
-                reportRaycastObjects(child.get());
-        };
-        reportRaycastObjects(rootGameObject.get());
-        DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Total raycast-capable objects: " << raycastObjCount);
-
+        DITTO_LOG_VERBOSE_STREAM("[Scene::LoadScene] Loaded scene '" << name << "' with "
+            << gameObjects.size() << " tracked objects");
         return true;
     }
     catch (const std::exception& e)

@@ -14,6 +14,7 @@
 [Dd]ebug/
 [Rr]elease/
 *.vcxproj.user
+*.vcxproj.backup_*
 *.aps
 
 # --- CMake output ---
@@ -57,6 +58,7 @@ CMakeUserPresets.json
 *.module.json
 
 # --- C# build caches ---
+__pycache__/
 *.cache
 *.csproj.FileListAbsolute.txt
 *.AssemblyInfoInputs.cache

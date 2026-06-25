@@ -1,11 +1,17 @@
 #include "../Engine/Core/GameObject.h"
+#include "../Engine/Core/EngineLifecycle.h"
 #include "../Engine/Core/JsonConfig.h"
+#include "../Engine/Core/JsonSceneSchema.h"
+#include "../Engine/Core/JsonValue.h"
 #include "../Engine/Core/Scene.h"
 #include "../Engine/Core/PathUtils.h"
+#include "../Engine/Core/PrefabAsset.h"
 #include "../Engine/Core/RuntimeContext.h"
 #include "../Engine/Core/CSharpScript.h"
 #include "../Engine/Core/ProjectManager.h"
+#include "../Engine/Animation/AnimatorComponent.h"
 #include "../Engine/Graphics/Camera.h"
+#include "../Engine/Graphics/ParticleSystemComponent.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
 #include "../Engine/Graphics/Shaders/ShaderAsset.h"
 #include "../Engine/Physics/Physics.h"
@@ -124,6 +130,7 @@ namespace
         fs::path dir = fs::temp_directory_path() / "ditto_tests_csharp" / "Assets" / "Scripts";
         fs::create_directories(dir);
         fs::path path = dir / name;
+        fs::create_directories(path.parent_path());
         std::ofstream cs(path, std::ios::trunc);
         cs << "using DittoEngine;\n";
         cs << "public class ScriptProbe : MonoBehaviour\n";
@@ -140,6 +147,47 @@ namespace
         cs << "    public static float staticValue = 1.0f;\n";
         cs << "    public float PropertyValue { get; set; }\n";
         cs << "    public override void Update() { Debug.Log(label + privateWeight.ToString()); }\n";
+        cs << "}\n";
+        return path;
+    }
+
+    fs::path WriteTwoDProjectileCapabilityFixture(const std::string& name)
+    {
+        fs::path dir = fs::temp_directory_path() / "ditto_tests_csharp" / "Assets" / "Scripts";
+        fs::create_directories(dir);
+        fs::path path = dir / name;
+        fs::create_directories(path.parent_path());
+        std::ofstream cs(path, std::ios::trunc);
+        cs << "using DittoEngine;\n";
+        cs << "public class ProjectileClientProbe : MonoBehaviour\n";
+        cs << "{\n";
+        cs << "    public GameObject spawned;\n";
+        cs << "    public float launchPower = 12.0f;\n";
+        cs << "    public override void Update()\n";
+        cs << "    {\n";
+        cs << "        Camera camera = Camera.main;\n";
+        cs << "        Vector2 viewport = Input.gameViewportSize;\n";
+        cs << "        Vector2 mouse = Input.mousePosition;\n";
+        cs << "        if (camera == null || viewport.x <= 0.0f || viewport.y <= 0.0f) return;\n";
+        cs << "        Vector3 world = camera.ScreenToWorldPoint(mouse, 0.0f);\n";
+        cs << "        Rigidbody2D body = gameObject.GetComponent<Rigidbody2D>();\n";
+        cs << "        Collider2D collider = gameObject.GetComponent<Collider2D>();\n";
+        cs << "        SpriteRenderer sprite = gameObject.GetComponent<SpriteRenderer>();\n";
+        cs << "        if (sprite != null) sprite.color = new Vector4(1, 1, 1, 1);\n";
+        cs << "        if (body != null && collider != null && Input.GetMouseButtonUp(0))\n";
+        cs << "        {\n";
+        cs << "            Vector2 launch = new Vector2(transform.position.x - world.x, transform.position.y - world.y);\n";
+        cs << "            body.bodyType = Rigidbody2D.BodyType.Dynamic;\n";
+        cs << "            body.useGravity = true;\n";
+        cs << "            body.AddForce(launch * launchPower, ForceMode2D.Impulse);\n";
+        cs << "        }\n";
+        cs << "        if (Input.GetButtonDown(\"Fire2\")) spawned = Object.Instantiate(gameObject);\n";
+        cs << "        if (Input.GetKeyDown(KeyCode.Delete) && spawned != null) Object.Destroy(spawned);\n";
+        cs << "    }\n";
+        cs << "    public override void OnCollisionEnter(Collision collision)\n";
+        cs << "    {\n";
+        cs << "        Debug.Log(collision.depth);\n";
+        cs << "    }\n";
         cs << "}\n";
         return path;
     }
@@ -287,6 +335,26 @@ TEST_CASE("file", CameraProjectionUsesZeroToOneDepthRange)
     REQUIRE(ndcZ <= 1.0f);
 }
 
+TEST_CASE("file", OrthographicCameraScreenRayMapsViewportToWorldPlane)
+{
+    Camera camera(glm::vec3(0.0f, 0.0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f));
+    camera.SetOrthographic(5.0f, 0.1f, 100.0f);
+
+    Camera::Ray center = camera.ScreenPointToRayFull(glm::vec2(400.0f, 300.0f), 800, 600);
+    REQUIRE(NearlyEqual(center.origin.x, 0.0f));
+    REQUIRE(NearlyEqual(center.origin.y, 0.0f));
+    REQUIRE(NearlyEqual(center.origin.z, 10.0f));
+    REQUIRE(NearlyEqual(center.direction.x, 0.0f));
+    REQUIRE(NearlyEqual(center.direction.y, 0.0f));
+    REQUIRE(NearlyEqual(center.direction.z, -1.0f));
+
+    Camera::Ray topRight = camera.ScreenPointToRayFull(glm::vec2(800.0f, 0.0f), 800, 600);
+    REQUIRE(NearlyEqual(topRight.origin.x, 5.0f * (800.0f / 600.0f), 0.0005f));
+    REQUIRE(NearlyEqual(topRight.origin.y, 5.0f, 0.0005f));
+    REQUIRE(NearlyEqual(topRight.direction.z, -1.0f));
+}
+
 TEST_CASE("file", GameObjectComponentsAndRemoval)
 {
     GameObject obj("Actor");
@@ -346,7 +414,6 @@ TEST_CASE("file", SceneSnapshotRoundTrip)
     renderer->color = { 0.25f, 0.5f, 0.75f, 1.0f };
     renderer->meshPath = "Models/Custom.obj";
     renderer->materialPath = "Materials/Test.mat";
-    renderer->shaderName = "Lit_Toon";
     renderer->mainTexturePath = "Textures/Diffuse.png";
 
     auto* body = actor->AddComponent<RigidbodyComponent>();
@@ -602,8 +669,8 @@ TEST_CASE("file", SceneSaveLoadAndCorruptFileHandling)
     namespace fs = std::filesystem;
     fs::path base = fs::temp_directory_path() / "ditto_tests_scene_files";
     fs::create_directories(base);
-    fs::path scenePath = base / "scene.bin";
-    fs::path corruptPath = base / "corrupt.bin";
+    fs::path scenePath = base / "scene.scene";
+    fs::path corruptPath = base / "corrupt.scene";
 
     Scene scene;
     scene.name = "FileRoundTrip";
@@ -615,6 +682,11 @@ TEST_CASE("file", SceneSaveLoadAndCorruptFileHandling)
     REQUIRE(scene.SaveScene(scenePath.string()));
     REQUIRE(fs::exists(scenePath));
     REQUIRE(fs::file_size(scenePath) > 0);
+    {
+        std::ifstream saved(scenePath);
+        std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+        REQUIRE(text.find("\"format\": \"DittoScene\"") != std::string::npos);
+    }
 
     Scene loaded;
     REQUIRE(loaded.LoadScene(scenePath.string()));
@@ -645,7 +717,7 @@ TEST_CASE("file", SceneRejectsOlderDevelopmentVersion)
     fs::path base = fs::temp_directory_path() / "ditto_tests_scene_version";
     fs::remove_all(base);
     fs::create_directories(base);
-    fs::path scenePath = base / "scene.bin";
+    fs::path scenePath = base / "scene.scene";
 
     Scene scene;
     scene.name = "VersionProbe";
@@ -653,11 +725,15 @@ TEST_CASE("file", SceneRejectsOlderDevelopmentVersion)
     REQUIRE(scene.SaveScene(scenePath.string()));
 
     {
-        std::fstream file(scenePath, std::ios::binary | std::ios::in | std::ios::out);
-        REQUIRE(file.is_open());
-        file.seekp(4);
-        const uint32_t oldVersion = 15;
-        file.write(reinterpret_cast<const char*>(&oldVersion), sizeof(oldVersion));
+        std::ifstream in(scenePath);
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const std::string current = "\"version\": 17";
+        const size_t versionPos = text.find(current);
+        REQUIRE(versionPos != std::string::npos);
+        text.replace(versionPos, current.size(), "\"version\": 16");
+
+        std::ofstream out(scenePath, std::ios::trunc);
+        out << text;
     }
 
     Scene loaded;
@@ -668,6 +744,151 @@ TEST_CASE("file", SceneRejectsOlderDevelopmentVersion)
 
     std::error_code ec;
     fs::remove_all(base, ec);
+}
+
+TEST_CASE("file", PrefabAssetSavesLoadsAndInstantiatesGameObjectTrees)
+{
+    fs::path base = fs::temp_directory_path() / "ditto_tests_prefab_asset";
+    fs::remove_all(base);
+    fs::create_directories(base);
+    fs::path prefabPath = base / "Actor.prefab";
+
+    GameObject actor("Actor");
+    actor.enabled = false;
+    auto* renderer = actor.AddComponent<RendererComponent>();
+    renderer->meshPath = "Meshes/Actor.obj";
+    renderer->materialPath = "Materials/Actor.mat";
+
+    auto child = std::make_unique<GameObject>("Child");
+    child->AddComponent<LightComponent>()->intensity = 3.5f;
+    actor.AddChild(std::move(child));
+
+    REQUIRE(Ditto::PrefabAsset::Save(actor, prefabPath));
+    REQUIRE(fs::exists(prefabPath));
+    {
+        std::ifstream saved(prefabPath);
+        std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+        REQUIRE(text.find("\"format\": \"DittoPrefab\"") != std::string::npos);
+    }
+
+    std::unique_ptr<GameObject> loaded = Ditto::PrefabAsset::Load(prefabPath);
+    REQUIRE(loaded != nullptr);
+    REQUIRE(loaded->name == "Actor");
+    REQUIRE(!loaded->enabled);
+    REQUIRE(loaded->parent == nullptr);
+    REQUIRE(loaded->children.size() == 1);
+    REQUIRE(loaded->children[0]->name == "Child");
+    REQUIRE(loaded->children[0]->parent == loaded.get());
+    REQUIRE(loaded->GetComponent<RendererComponent>() != nullptr);
+    REQUIRE(loaded->GetComponent<RendererComponent>()->meshPath == "Meshes/Actor.obj");
+    REQUIRE(loaded->children[0]->GetComponent<LightComponent>() != nullptr);
+    REQUIRE(std::abs(loaded->children[0]->GetComponent<LightComponent>()->intensity - 3.5f) < 0.0001f);
+
+    std::unique_ptr<GameObject> instance = Ditto::PrefabAsset::Instantiate(prefabPath);
+    REQUIRE(instance != nullptr);
+    REQUIRE(instance->name == "Actor");
+    REQUIRE(instance.get() != loaded.get());
+    REQUIRE(!instance->prefabSourcePath.empty());
+    REQUIRE(!instance->prefabSourceGuid.empty());
+    REQUIRE(instance->children.size() == 1);
+    REQUIRE(instance->children[0].get() != loaded->children[0].get());
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("file", PrefabAssetApplyAndRevertRoundTripInstanceState)
+{
+    fs::path base = fs::temp_directory_path() / "ditto_tests_prefab_apply_revert";
+    fs::remove_all(base);
+    fs::create_directories(base);
+    fs::path prefabPath = base / "Actor.prefab";
+
+    GameObject source("Actor");
+    source.AddComponent<RendererComponent>()->meshPath = "Meshes/Original.obj";
+    REQUIRE(Ditto::PrefabAsset::Save(source, prefabPath));
+    Ditto::AssetDatabase::Get().EnsureMetaForAsset(prefabPath);
+
+    std::unique_ptr<GameObject> instance = Ditto::PrefabAsset::Instantiate(prefabPath);
+    REQUIRE(instance != nullptr);
+    REQUIRE(instance->GetComponent<RendererComponent>() != nullptr);
+    instance->GetComponent<RendererComponent>()->meshPath = "Meshes/Applied.obj";
+    instance->AddChild(std::make_unique<GameObject>("AppliedChild"));
+
+    REQUIRE(Ditto::PrefabAsset::Apply(*instance));
+
+    std::unique_ptr<GameObject> applied = Ditto::PrefabAsset::Load(prefabPath);
+    REQUIRE(applied != nullptr);
+    REQUIRE(applied->GetComponent<RendererComponent>() != nullptr);
+    REQUIRE(applied->GetComponent<RendererComponent>()->meshPath == "Meshes/Applied.obj");
+    REQUIRE(applied->children.size() == 1);
+    REQUIRE(applied->children[0]->name == "AppliedChild");
+    REQUIRE(applied->prefabSourcePath.empty());
+
+    instance->name = "DirtyInstance";
+    instance->GetComponent<RendererComponent>()->meshPath = "Meshes/Dirty.obj";
+    instance->children.clear();
+    REQUIRE(Ditto::PrefabAsset::Revert(*instance));
+    REQUIRE(instance->name == "Actor");
+    REQUIRE(instance->GetComponent<RendererComponent>() != nullptr);
+    REQUIRE(instance->GetComponent<RendererComponent>()->meshPath == "Meshes/Applied.obj");
+    REQUIRE(instance->children.size() == 1);
+    REQUIRE(instance->children[0]->parent == instance.get());
+    REQUIRE(!instance->prefabSourcePath.empty());
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("file", PrefabAssetCollectsFieldLevelOverrideSummary)
+{
+    fs::path base = fs::temp_directory_path() / "ditto_tests_prefab_overrides";
+    fs::remove_all(base);
+    fs::create_directories(base);
+    fs::path prefabPath = base / "Actor.prefab";
+
+    GameObject source("Actor");
+    source.AddComponent<RendererComponent>()->meshPath = "Meshes/Base.obj";
+    REQUIRE(Ditto::PrefabAsset::Save(source, prefabPath));
+    Ditto::AssetDatabase::Get().EnsureMetaForAsset(prefabPath);
+
+    std::unique_ptr<GameObject> instance = Ditto::PrefabAsset::Instantiate(prefabPath);
+    REQUIRE(instance != nullptr);
+    instance->name = "ActorInstance";
+    instance->GetComponent<RendererComponent>()->meshPath = "Meshes/Override.obj";
+    instance->AddChild(std::make_unique<GameObject>("ExtraChild"));
+
+    std::vector<Ditto::PrefabAsset::Override> overrides = Ditto::PrefabAsset::CollectOverrides(*instance);
+    REQUIRE(!overrides.empty());
+    REQUIRE(std::find_if(overrides.begin(), overrides.end(), [](const auto& entry) {
+        return entry.path == "root.name" && entry.kind == "changed";
+    }) != overrides.end());
+    REQUIRE(std::find_if(overrides.begin(), overrides.end(), [](const auto& entry) {
+        return entry.path.find("meshPath") != std::string::npos && entry.kind == "changed";
+    }) != overrides.end());
+    REQUIRE(std::find_if(overrides.begin(), overrides.end(), [](const auto& entry) {
+        return entry.path.find("children") != std::string::npos && entry.kind == "added";
+    }) != overrides.end());
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("file", SceneRegisterSubtreeTracksPrefabInstances)
+{
+    Scene scene;
+    auto prefab = std::make_unique<GameObject>("PrefabInstance");
+    prefab->AddChild(std::make_unique<GameObject>("Nested"));
+
+    GameObject* instance = scene.rootGameObject->AddChild(std::move(prefab));
+    scene.RegisterSubtree(instance);
+
+    REQUIRE(std::find(scene.gameObjects.begin(), scene.gameObjects.end(), instance) != scene.gameObjects.end());
+    REQUIRE(std::find(scene.gameObjects.begin(), scene.gameObjects.end(), instance->children[0].get()) != scene.gameObjects.end());
+
+    scene.UnregisterSubtree(instance);
+    REQUIRE(std::find(scene.gameObjects.begin(), scene.gameObjects.end(), instance) == scene.gameObjects.end());
+    REQUIRE(std::find(scene.gameObjects.begin(), scene.gameObjects.end(), instance->children[0].get()) == scene.gameObjects.end());
 }
 
 TEST_CASE("file", PathUtilsFindAncestorContaining)
@@ -758,24 +979,40 @@ TEST_CASE("file", AssetDatabaseCreatesMetaAndResolvesGuidReferences)
     REQUIRE(record != nullptr);
     REQUIRE(record->relativePath == "Textures/GuidProbe.png");
     REQUIRE(record->extension == ".png");
+    REQUIRE(record->importerType == "Texture");
     REQUIRE(record->sizeBytes == 3);
     REQUIRE(!record->contentHash.empty());
-    REQUIRE(record->imported);
+    REQUIRE(!record->imported);
     REQUIRE(std::find(record->artifactPaths.begin(), record->artifactPaths.end(),
         ".ditto/artifacts/" + guid + ".artifact") != record->artifactPaths.end());
-    REQUIRE(std::find(record->dependencies.begin(), record->dependencies.end(),
-        "Textures/GuidProbe.png") != record->dependencies.end());
+    REQUIRE(record->dependencies.empty());
+    REQUIRE(Ditto::AssetDatabase::Get().NeedsReimport(guid));
+    REQUIRE(Ditto::AssetDatabase::Get().AssetsNeedingImport().size() >= 1);
+    REQUIRE(Ditto::AssetDatabase::Get().ImportAsset(guid));
+    REQUIRE(fs::exists(projectPath / ".ditto" / "artifacts" / (guid + ".artifact")));
+    record = Ditto::AssetDatabase::Get().RecordForGuid(guid);
+    REQUIRE(record != nullptr);
+    REQUIRE(record->imported);
+    REQUIRE(!Ditto::AssetDatabase::Get().NeedsReimport(guid));
     REQUIRE(fs::exists(projectPath / ".ditto" / "import-cache.txt"));
     std::vector<Ditto::AssetRecord> cachedRecords;
     REQUIRE(Ditto::AssetDatabase::Get().LoadImportCache(cachedRecords));
     REQUIRE(std::find_if(cachedRecords.begin(), cachedRecords.end(), [&](const Ditto::AssetRecord& cached) {
         return cached.guid == guid && cached.relativePath == "Textures/GuidProbe.png"
             && cached.sizeBytes == 3 && !cached.contentHash.empty() && cached.imported
+            && cached.importerType == "Texture"
             && std::find(cached.artifactPaths.begin(), cached.artifactPaths.end(),
                 ".ditto/artifacts/" + guid + ".artifact") != cached.artifactPaths.end()
-            && std::find(cached.dependencies.begin(), cached.dependencies.end(),
-                "Textures/GuidProbe.png") != cached.dependencies.end();
+            && cached.dependencies.empty();
     }) != cachedRecords.end());
+
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+    REQUIRE(!Ditto::AssetDatabase::Get().NeedsReimport(guid));
+    std::ofstream(texturePath, std::ios::binary | std::ios::app) << "changed";
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+    REQUIRE(Ditto::AssetDatabase::Get().NeedsReimport(guid));
+    REQUIRE(Ditto::AssetDatabase::Get().ImportAsset(guid));
+    REQUIRE(!Ditto::AssetDatabase::Get().NeedsReimport(guid));
 
     fs::path movedPath = projectPath / "Assets" / "Textures" / "MovedProbe.png";
     fs::rename(texturePath, movedPath);
@@ -789,6 +1026,81 @@ TEST_CASE("file", AssetDatabaseCreatesMetaAndResolvesGuidReferences)
         std::string text((std::istreambuf_iterator<char>(meta)), std::istreambuf_iterator<char>());
         REQUIRE(text.find("asset = \"Textures/MovedProbe.png\"") != std::string::npos);
     }
+
+    pm.CloseProject();
+    std::error_code ec;
+    fs::remove_all(projectsRoot, ec);
+}
+
+TEST_CASE("file", AssetDatabaseDependenciesUseGuidGraph)
+{
+    fs::path projectsRoot = fs::temp_directory_path() / "ditto_tests_asset_dependencies";
+    fs::remove_all(projectsRoot);
+    fs::create_directories(projectsRoot);
+
+    ProjectManager& pm = ProjectManager::GetInstance();
+    pm.Initialize(projectsRoot.string());
+    REQUIRE(pm.CreateProject("AssetDependencyProject"));
+
+    fs::path projectPath = projectsRoot / "AssetDependencyProject";
+    REQUIRE(pm.OpenProject(projectPath.string()));
+
+    fs::path shaderPath = projectPath / "Assets" / "Shaders" / "Dependency.shader";
+    fs::path materialPath = projectPath / "Assets" / "Materials" / "Dependent.mat";
+    fs::create_directories(shaderPath.parent_path());
+    fs::create_directories(materialPath.parent_path());
+    std::ofstream(shaderPath, std::ios::binary) << "shader";
+    std::ofstream(materialPath, std::ios::binary) << "material";
+
+    std::string shaderGuid = Ditto::AssetDatabase::Get().EnsureMetaForAsset(shaderPath);
+    std::string materialGuid = Ditto::AssetDatabase::Get().EnsureMetaForAsset(materialPath);
+    REQUIRE(!shaderGuid.empty());
+    REQUIRE(!materialGuid.empty());
+
+    std::vector<Ditto::AssetRecord> records = Ditto::AssetDatabase::Get().Records();
+    for (Ditto::AssetRecord& record : records)
+    {
+        if (record.guid == materialGuid)
+            record.dependencies = { shaderGuid };
+        REQUIRE(std::find(record.dependencies.begin(), record.dependencies.end(),
+            "Shaders/Dependency.shader") == record.dependencies.end());
+    }
+
+    {
+        std::ofstream cache(projectPath / ".ditto" / "import-cache.txt", std::ios::trunc);
+        cache << "DittoImportCache 4\n";
+        for (const Ditto::AssetRecord& record : records)
+        {
+            cache << record.guid << "\t"
+                  << record.relativePath << "\t"
+                  << record.extension << "\t"
+                  << record.sizeBytes << "\t"
+                  << record.contentHash << "\t"
+                  << (record.imported ? "1" : "0") << "\t"
+                  << ".ditto/artifacts/" << record.guid << ".artifact\t";
+            for (size_t i = 0; i < record.dependencies.size(); ++i)
+            {
+                if (i) cache << ";";
+                cache << record.dependencies[i];
+            }
+            cache << "\t" << record.importerType << "\t\n";
+        }
+    }
+
+    Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
+    std::vector<std::string> dependents = Ditto::AssetDatabase::Get().GetDependents(shaderGuid);
+    REQUIRE(std::find(dependents.begin(), dependents.end(), materialGuid) != dependents.end());
+
+    std::vector<std::string> allDeps = Ditto::AssetDatabase::Get().GetAllDependencies(materialGuid);
+    REQUIRE(std::find(allDeps.begin(), allDeps.end(), shaderGuid) != allDeps.end());
+
+    Ditto::AssetDatabase::Get().MarkDependentsForReimport(shaderGuid);
+    std::vector<Ditto::AssetRecord> cachedRecords;
+    REQUIRE(Ditto::AssetDatabase::Get().LoadImportCache(cachedRecords));
+    REQUIRE(std::find_if(cachedRecords.begin(), cachedRecords.end(), [&](const Ditto::AssetRecord& cached) {
+        return cached.guid == materialGuid && !cached.imported
+            && std::find(cached.dependencies.begin(), cached.dependencies.end(), shaderGuid) != cached.dependencies.end();
+    }) != cachedRecords.end());
 
     pm.CloseProject();
     std::error_code ec;
@@ -842,6 +1154,34 @@ TEST_CASE("file", JsonConfigRoundTripsProjectAndGameConfig)
 
     std::error_code ec;
     fs::remove_all(dir, ec);
+}
+
+TEST_CASE("file", JsonSceneSchemaRejectsInvalidGameObjectData)
+{
+    const char* sceneText =
+        "{"
+        "\"format\":\"DittoScene\","
+        "\"version\":17,"
+        "\"name\":\"Bad\","
+        "\"root\":{"
+        "\"name\":\"Bad\","
+        "\"enabled\":true,"
+        "\"components\":[{\"type\":\"MissingComponent\"}],"
+        "\"children\":[]"
+        "}"
+        "}";
+
+    Ditto::Json::Value sceneJson;
+    REQUIRE(Ditto::Json::Parse(sceneText, sceneJson));
+    Ditto::JsonSceneSchema::ValidationResult result =
+        Ditto::JsonSceneSchema::ValidateScene(sceneJson, 17);
+    REQUIRE(!result.ok);
+    REQUIRE(result.Summary().find("MissingComponent") != std::string::npos);
+
+    Scene scene;
+    std::istringstream input(sceneText);
+    ScopedConsoleLogSilence silence;
+    REQUIRE(!scene.ReadFromStream(input));
 }
 
 TEST_CASE("file", RuntimeContextTracksCurrentSceneAndLoadingVersion)
@@ -1197,6 +1537,35 @@ TEST_CASE("csharp", ScriptCompileSmokeUsesCurrentDittoEngineApi)
     REQUIRE(fs::exists(outDll));
 }
 
+TEST_CASE("csharp", TwoDProjectileClientScriptCompilesAgainstEngineApi)
+{
+    fs::path scriptPath = WriteTwoDProjectileCapabilityFixture("ProjectileClientProbe.cs");
+    fs::path outDll = fs::temp_directory_path() / "ditto_tests_csharp" / "ProjectileClientProbe.dll";
+    std::string out = outDll.string();
+    CSharpCompileResult result = CSharpScriptSystem::CompileScriptDetailed(scriptPath.string(), out);
+    REQUIRE(result.ok);
+    REQUIRE(result.warningCount == 0);
+    REQUIRE(result.errorCount == 0);
+    REQUIRE(fs::exists(outDll));
+}
+
+TEST_CASE("csharp", ScriptCompileDefaultOutputUsesProjectTemp)
+{
+    fs::path scriptPath = WriteCSharpFixture("Nested/ScriptProbeTempOutput.cs");
+    fs::path scriptDirDll = scriptPath.parent_path() / "ScriptProbeTempOutput.dll";
+    fs::path tempDll = scriptPath.parent_path().parent_path().parent_path().parent_path() / "Temp" / "ScriptProbeTempOutput.dll";
+    std::error_code ec;
+    fs::remove(scriptDirDll, ec);
+    fs::remove(tempDll, ec);
+
+    std::string out;
+    CSharpCompileResult result = CSharpScriptSystem::CompileScriptDetailed(scriptPath.string(), out);
+    REQUIRE(result.ok);
+    REQUIRE(fs::path(out).lexically_normal() == tempDll.lexically_normal());
+    REQUIRE(fs::exists(tempDll));
+    REQUIRE(!fs::exists(scriptDirDll));
+}
+
 TEST_CASE("csharp", ScriptCompileDetailedReportsErrors)
 {
     fs::path dir = fs::temp_directory_path() / "ditto_tests_csharp" / "Assets" / "Scripts";
@@ -1214,8 +1583,36 @@ TEST_CASE("csharp", ScriptCompileDetailedReportsErrors)
     std::string out = outDll.string();
     CSharpCompileResult result = CSharpScriptSystem::CompileScriptDetailed(scriptPath.string(), out);
     REQUIRE(!result.ok);
+    REQUIRE(fs::path(result.scriptPath).lexically_normal() == scriptPath.lexically_normal());
+    REQUIRE(fs::path(result.outputDllPath).lexically_normal() == outDll.lexically_normal());
     REQUIRE(result.errorCount >= 1);
     REQUIRE(result.output.find("error CS") != std::string::npos);
+    REQUIRE(!result.diagnostics.empty());
+    REQUIRE(result.diagnostics[0].line >= 0);
+    REQUIRE(result.diagnostics[0].column >= 0);
+    REQUIRE(result.diagnostics[0].severity == "error");
+    REQUIRE(result.diagnostics[0].code.rfind("CS", 0) == 0);
+    REQUIRE(!result.diagnostics[0].message.empty());
+
+    int infoBefore = 0, warningBefore = 0, errorBefore = 0;
+    Ditto::Logger::Get().GetCounts(infoBefore, warningBefore, errorBefore);
+    {
+        ScopedConsoleLogSilence silence;
+        REQUIRE(!CSharpScriptSystem::CompileScript(scriptPath.string(), out));
+    }
+    int infoAfter = 0, warningAfter = 0, errorAfter = 0;
+    Ditto::Logger::Get().GetCounts(infoAfter, warningAfter, errorAfter);
+    REQUIRE(errorAfter > errorBefore);
+
+    CSharpScriptComponent component;
+    {
+        ScopedConsoleLogSilence silence;
+        REQUIRE(!CSharpScriptSystem::LoadScript(scriptPath.string(), &component));
+    }
+    REQUIRE(!component.lastCompileResult.ok);
+    REQUIRE(component.lastCompileResult.errorCount >= 1);
+    REQUIRE(component.lastCompileResult.output.find("error CS") != std::string::npos);
+    REQUIRE(!component.lastCompileResult.diagnostics.empty());
 }
 
 TEST_CASE("csharp", ScriptLifecycleIsIdempotentWithoutRuntimeInstance)
@@ -1233,11 +1630,99 @@ TEST_CASE("csharp", ScriptLifecycleIsIdempotentWithoutRuntimeInstance)
     script->Update();
     script->FixedUpdate();
     script->OnDestroy();
+    REQUIRE(!script->started);
+
+    script->Start();
+    REQUIRE(script->started);
 
     script->enabled = false;
     script->started = false;
     script->Start();
     REQUIRE(!script->started);
+}
+
+TEST_CASE("simulation", EngineLifecycleEnterExitOrdersRuntimeState)
+{
+    Scene scene;
+    scene.ClearScene();
+
+    GameObject* actor = scene.rootGameObject->AddChild(std::make_unique<GameObject>("LifecycleActor"));
+    scene.RegisterSubtree(actor);
+    CSharpScriptComponent* script = actor->AddComponent<CSharpScriptComponent>();
+    auto* transform = actor->GetComponent<TransformComponent>();
+    transform->useQuatRotation = true;
+    transform->localDirty = false;
+
+    Physics physics;
+    Physics2DWorld physics2D;
+    float accumulator = 12.0f;
+    CSharpScriptSystem::SetTime(99.0f);
+
+    Ditto::EngineLifecycle::EnterPlayMode(&scene, &physics, &physics2D, accumulator);
+    REQUIRE(script->started);
+    REQUIRE(accumulator == 0.0f);
+    REQUIRE(CSharpScriptSystem::GetTime() == 0.0f);
+
+    Ditto::EngineLifecycle::ExitPlayMode(&scene, &physics, &physics2D, accumulator);
+    REQUIRE(!script->started);
+    REQUIRE(!transform->useQuatRotation);
+    REQUIRE(transform->localDirty);
+    REQUIRE(accumulator == 0.0f);
+}
+
+TEST_CASE("simulation", PlayModeHarnessStepsRuntimeAndRestoresOnExit)
+{
+    Scene scene;
+    Physics physics;
+    Physics2DWorld physics2D;
+    float accumulator = 0.0f;
+
+    auto actor = std::make_unique<GameObject>("AnimatedParticleActor");
+    auto* transform = actor->GetComponent<TransformComponent>();
+    REQUIRE(transform != nullptr);
+
+    auto* animator = actor->AddComponent<AnimatorComponent>();
+    AnimationClip clip;
+    clip.name = "Move";
+    clip.length = 1.0f;
+    clip.loop = false;
+    AnimationKeyframe a;
+    a.time = 0.0f;
+    a.position = glm::vec3(0.0f);
+    a.rotation = glm::vec3(0.0f);
+    a.scale = glm::vec3(1.0f);
+    AnimationKeyframe b = a;
+    b.time = 1.0f;
+    b.position = glm::vec3(10.0f, 0.0f, 0.0f);
+    clip.keyframes = { a, b };
+    animator->AddClip(clip);
+    animator->defaultClip = "Move";
+    animator->playOnAwake = true;
+
+    auto* particles = actor->AddComponent<ParticleSystemComponent>();
+    particles->playOnAwake = true;
+    particles->emissionRate = 100.0f;
+    particles->startLifetime = 1.0f;
+
+    GameObject* actorPtr = scene.rootGameObject->AddChild(std::move(actor));
+    scene.RegisterSubtree(actorPtr);
+
+    Ditto::EngineLifecycle::EnterPlayMode(&scene, &physics, &physics2D, accumulator);
+    REQUIRE(animator->IsPlaying());
+    REQUIRE(particles->IsPlaying());
+
+    Ditto::EngineLifecycle::StepPlayModeFrame(&scene, &physics, &physics2D, 0.25f, accumulator);
+    REQUIRE(CSharpScriptSystem::GetTime() >= 0.249f);
+    REQUIRE(transform->position.x > 2.0f);
+    int alive = 0;
+    for (const Particle& particle : particles->particles)
+        if (particle.alive) ++alive;
+    REQUIRE(alive > 0);
+
+    transform->useQuatRotation = true;
+    Ditto::EngineLifecycle::ExitPlayMode(&scene, &physics, &physics2D, accumulator);
+    REQUIRE(!transform->useQuatRotation);
+    REQUIRE(accumulator == 0.0f);
 }
 
 TEST_CASE("simulation", DynamicBodyGravityIntegratesOnce)
@@ -1350,6 +1835,48 @@ TEST_CASE("simulation", DynamicStaticPositionCorrectionSeparates)
 
     REQUIRE(glm::length(after - before) > 0.0001f);
     REQUIRE(NearlyEqual(staticTransform->position.x, 0.25f));
+}
+
+TEST_CASE("simulation", Physics2DImpulseLaunchMovesDynamicBody)
+{
+    Scene scene;
+    scene.name = "Physics2DImpulseLaunch";
+    scene.rootGameObject->name = scene.name;
+    scene.rootGameObject->children.clear();
+    scene.gameObjects.clear();
+    scene.mainCamera = nullptr;
+
+    auto projectile = std::make_unique<GameObject>("Projectile");
+    auto* transform = projectile->GetComponent<TransformComponent>();
+    REQUIRE(transform != nullptr);
+    transform->position = glm::vec3(0.0f);
+    transform->UpdateTransform();
+
+    auto* rb = projectile->AddComponent<Rigidbody2DComponent>();
+    rb->type = Rigidbody2DComponent::Dynamic;
+    rb->mass = 2.0f;
+    rb->useGravity = false;
+    rb->linearDamping = 0.0f;
+    rb->angularDamping = 0.0f;
+    rb->velocity = glm::vec2(0.0f);
+
+    auto* collider = projectile->AddComponent<Collider2DComponent>(Collider2DComponent::Circle);
+    collider->radius = 0.25f;
+
+    rb->AddForce(glm::vec2(10.0f, 4.0f), Rigidbody2DComponent::Impulse);
+    REQUIRE(NearlyEqual(rb->velocity.x, 5.0f));
+    REQUIRE(NearlyEqual(rb->velocity.y, 2.0f));
+
+    scene.rootGameObject->AddChild(std::move(projectile));
+
+    Physics2DWorld world;
+    world.gravity = glm::vec2(0.0f);
+    world.StepFixed(&scene, 0.1f);
+
+    REQUIRE(NearlyEqual(rb->velocity.x, 5.0f, 0.0005f));
+    REQUIRE(NearlyEqual(rb->velocity.y, 2.0f, 0.0005f));
+    REQUIRE(NearlyEqual(transform->position.x, 0.5f, 0.0005f));
+    REQUIRE(NearlyEqual(transform->position.y, 0.2f, 0.0005f));
 }
 
 TEST_CASE("simulation", Physics2DUsesRigidbodyMaterialAsset)

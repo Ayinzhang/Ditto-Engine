@@ -7,6 +7,8 @@
 #include "Editor.h"
 #include "InspectorWindow.h"
 #include "../Engine/Core/Engine.h"
+#include "../Engine/Core/GameObject.h"
+#include "../Engine/Core/PrefabAsset.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Logger.h"
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
@@ -20,6 +22,7 @@
 #include <thread>
 #include <vector>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <windows.h>
 #include <objbase.h>
@@ -31,6 +34,88 @@ using Ditto::EditorUtils::IsImageExtension;
 using Ditto::EditorUtils::IsMaterialExtension;
 using Ditto::EditorUtils::LoadImageRGBA;
 using Ditto::EditorUtils::MakeUniquePath;
+
+namespace
+{
+    std::string LowerExtension(const fs::path& path)
+    {
+        std::string ext = path.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return ext;
+    }
+
+    bool IsProjectVisibleFile(const fs::path& path)
+    {
+        std::string ext = LowerExtension(path);
+        return ext != ".meta" && ext != ".dll";
+    }
+
+    void GoToVisualStudioLine(IDispatch* dte, int line, int column)
+    {
+        if (!dte || line <= 0) return;
+
+        DISPID activeDocumentId = 0;
+        LPOLESTR activeDocumentName = const_cast<LPOLESTR>(L"ActiveDocument");
+        if (FAILED(dte->GetIDsOfNames(IID_NULL, &activeDocumentName, 1, LOCALE_USER_DEFAULT, &activeDocumentId)))
+            return;
+
+        DISPPARAMS noArgs = { nullptr, nullptr, 0, 0 };
+        VARIANT activeDocument;
+        VariantInit(&activeDocument);
+        if (FAILED(dte->Invoke(activeDocumentId, IID_NULL, LOCALE_USER_DEFAULT,
+            DISPATCH_PROPERTYGET, &noArgs, &activeDocument, nullptr, nullptr))
+            || activeDocument.vt != VT_DISPATCH || !activeDocument.pdispVal)
+        {
+            VariantClear(&activeDocument);
+            return;
+        }
+
+        IDispatch* document = activeDocument.pdispVal;
+        DISPID selectionId = 0;
+        LPOLESTR selectionName = const_cast<LPOLESTR>(L"Selection");
+        if (FAILED(document->GetIDsOfNames(IID_NULL, &selectionName, 1, LOCALE_USER_DEFAULT, &selectionId)))
+        {
+            VariantClear(&activeDocument);
+            return;
+        }
+
+        VARIANT selectionValue;
+        VariantInit(&selectionValue);
+        if (FAILED(document->Invoke(selectionId, IID_NULL, LOCALE_USER_DEFAULT,
+            DISPATCH_PROPERTYGET, &noArgs, &selectionValue, nullptr, nullptr))
+            || selectionValue.vt != VT_DISPATCH || !selectionValue.pdispVal)
+        {
+            VariantClear(&selectionValue);
+            VariantClear(&activeDocument);
+            return;
+        }
+
+        IDispatch* selection = selectionValue.pdispVal;
+        DISPID gotoLineId = 0;
+        LPOLESTR gotoLineName = const_cast<LPOLESTR>(L"GotoLine");
+        if (SUCCEEDED(selection->GetIDsOfNames(IID_NULL, &gotoLineName, 1, LOCALE_USER_DEFAULT, &gotoLineId)))
+        {
+            VARIANT args[2];
+            VariantInit(&args[0]);
+            VariantInit(&args[1]);
+            args[0].vt = VT_BOOL;
+            args[0].boolVal = VARIANT_TRUE;
+            args[1].vt = VT_I4;
+            args[1].lVal = line;
+            DISPPARAMS params = { args, nullptr, 2, 0 };
+            VARIANT result;
+            VariantInit(&result);
+            selection->Invoke(gotoLineId, IID_NULL, LOCALE_USER_DEFAULT,
+                DISPATCH_METHOD, &params, &result, nullptr, nullptr);
+            VariantClear(&result);
+        }
+
+        (void)column;
+        VariantClear(&selectionValue);
+        VariantClear(&activeDocument);
+    }
+}
 
 ProjectWindow::ProjectWindow(Editor* editor)
     : m_editor(editor)
@@ -238,6 +323,70 @@ void ProjectWindow::Draw()
     ImGui::Text(m_currentFolder.c_str());
     ImGui::Separator();
 
+    const auto& assetDiagnostics = Ditto::AssetDatabase::Get().Diagnostics();
+    std::vector<Ditto::AssetRecord> assetsNeedingImport = Ditto::AssetDatabase::Get().AssetsNeedingImport();
+    const int diagnosticCount =
+        static_cast<int>(assetDiagnostics.missingMeta.size()
+            + assetDiagnostics.invalidMeta.size()
+            + assetDiagnostics.duplicateGuid.size()
+            + assetDiagnostics.missingGuidReference.size());
+    ImGui::TextDisabled("Assets: %d diagnostics, %d need import",
+        diagnosticCount, static_cast<int>(assetsNeedingImport.size()));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Scan"))
+        Ditto::AssetDatabase::Get().ScanProjectAssets(proj->path, true);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Import Needed"))
+    {
+        int imported = 0;
+        for (const Ditto::AssetRecord& record : assetsNeedingImport)
+        {
+            if (Ditto::AssetDatabase::Get().ImportAsset(record.guid))
+                ++imported;
+        }
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] Imported " << imported << " changed assets");
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Repair Meta"))
+    {
+        Ditto::AssetDatabase::Get().ScanProjectAssets(proj->path, true);
+        DITTO_LOG_INFO("[ProjectWindow] Repaired missing metadata where possible");
+    }
+    if (diagnosticCount > 0)
+    {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Details"))
+            ImGui::OpenPopup("AssetDiagnosticsPopup");
+    }
+    if (ImGui::BeginPopup("AssetDiagnosticsPopup"))
+    {
+        auto drawList = [](const char* label, const std::vector<std::string>& values) {
+            if (values.empty()) return;
+            ImGui::TextUnformatted(label);
+            for (const std::string& value : values)
+                ImGui::BulletText("%s", value.c_str());
+        };
+        drawList("Missing Meta", assetDiagnostics.missingMeta);
+        drawList("Invalid Meta", assetDiagnostics.invalidMeta);
+        drawList("Duplicate GUID", assetDiagnostics.duplicateGuid);
+        drawList("Missing GUID References", assetDiagnostics.missingGuidReference);
+        if (!assetsNeedingImport.empty())
+        {
+            ImGui::Separator();
+            ImGui::TextUnformatted("Needs Import");
+            for (const Ditto::AssetRecord& record : assetsNeedingImport)
+            {
+                ImGui::BulletText("%s [%s]%s%s",
+                    record.relativePath.c_str(),
+                    record.importerType.empty() ? "Generic" : record.importerType.c_str(),
+                    record.importError.empty() ? "" : " - ",
+                    record.importError.c_str());
+            }
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::Separator();
+
     float panelWidth = ImGui::GetContentRegionAvail().x;
     float panelHeight = ImGui::GetContentRegionAvail().y;
 
@@ -266,7 +415,7 @@ void ProjectWindow::Draw()
                         for (const auto& sub : fs::directory_iterator(fullFsPath)) {
                             if (sub.is_directory()) {
                                 hasSubfolders = true;
-                            } else {
+                            } else if (sub.is_regular_file() && IsProjectVisibleFile(sub.path())) {
                                 hasFiles = true;
                             }
                         }
@@ -481,6 +630,16 @@ void ProjectWindow::Draw()
                 m_showCreateShaderPopup = true;
                 strcpy_s(m_newShaderNameBuffer, "New Shader");
             }
+            if (ImGui::MenuItem("Create Empty Prefab..."))
+            {
+                m_showCreatePrefabPopup = true;
+                strcpy_s(m_newPrefabNameBuffer, "New Prefab");
+            }
+            if (m_editor && m_editor->selectedObject && ImGui::MenuItem("Save Selected As Prefab..."))
+            {
+                m_showCreatePrefabPopup = true;
+                strcpy_s(m_newPrefabNameBuffer, m_editor->selectedObject->name.c_str());
+            }
         }
         ImGui::EndPopup();
     }
@@ -551,7 +710,7 @@ void ProjectWindow::Draw()
             // Then show files
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
-                if (entry.is_regular_file())
+                if (entry.is_regular_file() && IsProjectVisibleFile(entry.path()))
                 {
                     std::string filename = entry.path().filename().string();
                     std::string ext = entry.path().extension().string();
@@ -617,6 +776,10 @@ void ProjectWindow::Draw()
                         else if (ext == ".cs")
                         {
                             OpenCSharpFile(filePath);
+                        }
+                        else if (ext == ".prefab" && m_editor)
+                        {
+                            m_editor->InstantiatePrefabToScene(filePath);
                         }
                         else if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag")
                         {
@@ -898,6 +1061,41 @@ void ProjectWindow::CreateNewShader(const std::string& name)
     DITTO_LOG_INFO_STREAM("[ProjectWindow] Created shader: " << filePath.string());
 }
 
+void ProjectWindow::CreateNewPrefab(const std::string& name)
+{
+    SaveSelectedObjectAsPrefab(name);
+}
+
+void ProjectWindow::SaveSelectedObjectAsPrefab(const std::string& name)
+{
+    auto& pm = ProjectManager::GetInstance();
+    std::string assetsPath = pm.GetProjectAssetsPath();
+
+    std::string targetFolder = assetsPath + "/Prefabs";
+    if (!m_currentFolder.empty() && m_currentFolder != "Assets") {
+        targetFolder = assetsPath + "/" + m_currentFolder.substr(7);
+    }
+
+    fs::create_directories(targetFolder);
+    fs::path filePath = MakeUniquePath(fs::path(targetFolder) / (name + ".prefab"));
+
+    bool saved = false;
+    if (m_editor && m_editor->selectedObject)
+        saved = m_editor->SaveSelectedObjectAsPrefab(filePath.string());
+    else
+    {
+        GameObject emptyPrefab(name);
+        saved = Ditto::PrefabAsset::Save(emptyPrefab, filePath);
+        if (saved)
+            Ditto::AssetDatabase::Get().EnsureMetaForAsset(filePath);
+    }
+
+    if (saved)
+        DITTO_LOG_INFO_STREAM("[ProjectWindow] Created prefab: " << filePath.string());
+    else
+        DITTO_LOG_ERROR_STREAM("[ProjectWindow] Failed to create prefab: " << filePath.string());
+}
+
 void ProjectWindow::CreateNewFolder(const std::string& name)
 {
     auto& pm = ProjectManager::GetInstance();
@@ -1073,6 +1271,12 @@ void ProjectWindow::DrawPopups()
         m_showCreateShaderPopup = false;
     }
 
+    if (m_showCreatePrefabPopup)
+    {
+        ImGui::OpenPopup("Create Prefab");
+        m_showCreatePrefabPopup = false;
+    }
+
     if (ImGui::BeginPopupModal("Create Material", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         ImGui::Text("Material Name:"); ImGui::SameLine();
@@ -1125,6 +1329,27 @@ void ProjectWindow::DrawPopups()
             if (strlen(m_newShaderNameBuffer) > 0)
             {
                 CreateNewShader(m_newShaderNameBuffer);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopupModal("Create Prefab", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Prefab Name:"); ImGui::SameLine();
+        ImGui::InputText("##PrefabName", m_newPrefabNameBuffer, sizeof(m_newPrefabNameBuffer));
+
+        if (ImGui::Button("Create", ImVec2(120, 0)))
+        {
+            if (strlen(m_newPrefabNameBuffer) > 0)
+            {
+                CreateNewPrefab(m_newPrefabNameBuffer);
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -1297,7 +1522,7 @@ void ProjectWindow::ToggleFolderExpanded(const std::string& path)
     }
 }
 
-void ProjectWindow::OpenCSharpFile(const std::string& filePath)
+void ProjectWindow::OpenCSharpFile(const std::string& filePath, int line, int column)
 {
     DITTO_LOG_INFO_STREAM("[ProjectWindow] Opening C# file: " << filePath );
     
@@ -1461,6 +1686,7 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
                         if (SUCCEEDED(openHR))
                         {
                             DITTO_LOG_INFO_STREAM("[ProjectWindow] File opened in existing VS instance" );
+                            GoToVisualStudioLine(pDte, line, column);
                         }
                         else
                         {
@@ -1684,6 +1910,7 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath)
                             if (SUCCEEDED(openHR))
                             {
                                 DITTO_LOG_INFO_STREAM("[ProjectWindow] File opened in new VS instance" );
+                                GoToVisualStudioLine(pNewDte, line, column);
                             }
                             else
                             {

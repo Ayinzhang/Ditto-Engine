@@ -9,6 +9,10 @@
 #include "../Engine/Core/GameObject.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/Logger.h"
+#include "../Engine/Core/RuntimeContext.h"
+#include "../Engine/Audio/AudioEngine.h"
+#include "../Engine/Graphics/Materials/MaterialAsset.h"
+#include "../Engine/Physics/PhysicsMaterial2DAsset.h"
 #include "../Engine/Resources/AssetPath.h"
 #include "../3rdParty/ImGui/imgui.h"
 
@@ -18,16 +22,31 @@
 #include <filesystem>
 #include <unordered_map>
 
+namespace
+{
+    Editor* CurrentEditor()
+    {
+        return Ditto::RuntimeContext::CurrentEditor();
+    }
+
+    Scene* CurrentScene()
+    {
+        return Ditto::RuntimeContext::CurrentScene();
+    }
+}
+
 void TrackUndoableEdit()
 {
-    if (!g_editor) return;
-    if (ImGui::IsItemActivated())            g_editor->BeginInspectorEdit();
-    if (ImGui::IsItemDeactivatedAfterEdit()) g_editor->EndInspectorEdit();
+    Editor* editor = CurrentEditor();
+    if (!editor) return;
+    if (ImGui::IsItemActivated())            editor->BeginInspectorEdit();
+    if (ImGui::IsItemDeactivatedAfterEdit()) editor->EndInspectorEdit();
 }
 
 void DrawComponentSelectionBackground(Component* component)
 {
-    if (!g_editor || g_editor->selectedComponent != component) return;
+    Editor* editor = CurrentEditor();
+    if (!editor || editor->selectedComponent != component) return;
     ImVec2 min = ImGui::GetCursorScreenPos();
     ImVec2 max(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 8.0f, min.y + ImGui::GetFrameHeight());
     ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(45, 105, 175, 95), 3.0f);
@@ -35,22 +54,23 @@ void DrawComponentSelectionBackground(Component* component)
 
 void SelectComponentOnLastItem(Component* component)
 {
-    if (g_editor && ImGui::IsItemClicked())
-        g_editor->selectedComponent = component;
+    if (Editor* editor = CurrentEditor(); editor && ImGui::IsItemClicked())
+        editor->selectedComponent = component;
 }
 
 void SelectComponentArea(Component* component, const ImVec2& start)
 {
-    if (!g_editor) return;
+    Editor* editor = CurrentEditor();
+    if (!editor) return;
 
     ImVec2 end(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 8.0f, ImGui::GetCursorScreenPos().y);
     if (end.y < start.y + ImGui::GetFrameHeight())
         end.y = start.y + ImGui::GetFrameHeight();
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsMouseHoveringRect(start, end, true))
-        g_editor->selectedComponent = component;
+        editor->selectedComponent = component;
 
-    if (g_editor->selectedComponent == component)
+    if (editor->selectedComponent == component)
     {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         drawList->AddRectFilled(start, end, IM_COL32(45, 105, 175, 24), 3.0f);
@@ -73,7 +93,7 @@ bool DrawComponentHeader(Component* component, const char* title, bool removable
         ImGui::SameLine(ImGui::GetWindowWidth() - 30);
         if (ImGui::SmallButton(("X##Remove" + std::string(title)).c_str()))
         {
-            if (g_editor) g_editor->PushUndoSnapshot();
+            if (Editor* editor = CurrentEditor()) editor->PushUndoSnapshot();
             if (component->gameObject) component->gameObject->RemoveComponent(component);
             return false;
         }
@@ -202,37 +222,37 @@ bool DrawObjectFieldButton(const char* label, void* iconTexture, const std::stri
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
 
-    if (doubleClicked && !fullPath.empty() && g_editor)
+    if (doubleClicked && !fullPath.empty() && CurrentEditor())
     {
         DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Double clicked: " << fullPath);
-        g_editor->selectedFile.path = fullPath;
-        g_editor->selectedFile.name = value;
+        CurrentEditor()->selectedFile.path = fullPath;
+        CurrentEditor()->selectedFile.name = value;
         std::string ext;
         size_t dotPos = fullPath.find_last_of('.');
         if (dotPos != std::string::npos)
             ext = fullPath.substr(dotPos);
-        g_editor->selectedFile.extension = ext;
-        g_editor->selectedObject = nullptr;
+        CurrentEditor()->selectedFile.extension = ext;
+        CurrentEditor()->selectedObject = nullptr;
     }
-    else if (clicked && !fullPath.empty() && g_editor)
+    else if (clicked && !fullPath.empty() && CurrentEditor())
     {
         DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Single clicked: " << fullPath);
-        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Before: selectedObject=" << (g_editor->selectedObject ? "valid" : "null"));
+        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] Before: selectedObject=" << (CurrentEditor()->selectedObject ? "valid" : "null"));
 
-        if (auto* projectWindow = g_editor->GetProjectWindow())
+        if (auto* projectWindow = CurrentEditor()->GetProjectWindow())
             projectWindow->NavigateToFile(fullPath);
 
-        g_editor->selectedObject = nullptr;
+        CurrentEditor()->selectedObject = nullptr;
 
-        g_editor->selectedFile.path = fullPath;
-        g_editor->selectedFile.name = value;
+        CurrentEditor()->selectedFile.path = fullPath;
+        CurrentEditor()->selectedFile.name = value;
         std::string ext;
         size_t dotPos = fullPath.find_last_of('.');
         if (dotPos != std::string::npos)
             ext = fullPath.substr(dotPos);
-        g_editor->selectedFile.extension = ext;
+        CurrentEditor()->selectedFile.extension = ext;
 
-        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] After: selectedFile.path=" << g_editor->selectedFile.path << " selectedObject=" << (g_editor->selectedObject ? "valid" : "null"));
+        DITTO_LOG_INFO_STREAM("[DrawObjectFieldButton] After: selectedFile.path=" << CurrentEditor()->selectedFile.path << " selectedObject=" << (CurrentEditor()->selectedObject ? "valid" : "null"));
     }
 
     if (droppedPath && ImGui::BeginDragDropTarget())
@@ -250,7 +270,7 @@ bool DrawObjectFieldButton(const char* label, void* iconTexture, const std::stri
     ImVec2 pickerButtonPos = ImGui::GetCursorScreenPos();
     bool pickerClicked = ImGui::Button(("##picker" + std::string(popupId)).c_str(), ImVec2(circleButtonWidth, buttonHeight));
 
-    void* pickerIcon = g_editor ? g_editor->GetIconByExtension(".objectpicker") : nullptr;
+    void* pickerIcon = CurrentEditor() ? CurrentEditor()->GetIconByExtension(".objectpicker") : nullptr;
 
     if (pickerIcon)
     {
@@ -405,7 +425,7 @@ bool DrawAssetObjectField(const char* label, std::string& assetPath, const char*
     bool changed = false;
     if (!droppedPath.empty() && ExtensionMatches(droppedPath, extensions))
     {
-        if (g_editor) g_editor->PushUndoSnapshot();
+        if (CurrentEditor()) CurrentEditor()->PushUndoSnapshot();
         assetPath = ToAssetRelativePath(droppedPath);
         changed = true;
     }
@@ -423,7 +443,7 @@ bool DrawAssetObjectField(const char* label, std::string& assetPath, const char*
         std::string search(searchBuffer.data());
         if (SearchMatches("None", search) && ImGui::MenuItem("None", nullptr, assetPath.empty()))
         {
-            if (g_editor) g_editor->PushUndoSnapshot();
+            if (CurrentEditor()) CurrentEditor()->PushUndoSnapshot();
             assetPath.clear();
             changed = true;
         }
@@ -432,7 +452,7 @@ bool DrawAssetObjectField(const char* label, std::string& assetPath, const char*
         std::string selectedPath;
         if (DrawFilteredAssetMenuItems(FindProjectAssets(extensions), assetPath, search, selectedPath))
         {
-            if (g_editor) g_editor->PushUndoSnapshot();
+            if (CurrentEditor()) CurrentEditor()->PushUndoSnapshot();
             assetPath = selectedPath;
             changed = true;
         }

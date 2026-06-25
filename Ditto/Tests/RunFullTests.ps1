@@ -1,5 +1,5 @@
 param(
-    [string]$BuildDir = "build-tests",
+    [string]$BuildDir = "x64",
     [string]$Config = "Debug"
 )
 
@@ -40,14 +40,33 @@ function Invoke-Native {
     }
 }
 
+function Resolve-MSBuild {
+    $candidates = @(
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+    )
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    $cmd = Get-Command msbuild -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+
+    throw "MSBuild not found. Install Visual Studio 2022 or run from a Developer PowerShell."
+}
+
 Normalize-ProcessPathEnvironment
+$msbuild = Resolve-MSBuild
 
-Write-Host "[DittoTests] Configure"
-Invoke-Native cmake -S Ditto -B $BuildDir
-
-Write-Host "[DittoTests] Build"
-Invoke-Native cmake --build $BuildDir --target DittoTests --config $Config
-Invoke-Native cmake --build $BuildDir --target DittoRenderSmoke --config $Config
+Write-Host "[DittoTests] Build via Visual Studio"
+Invoke-Native $msbuild Ditto.sln /p:Configuration=$Config /p:Platform=x64 /t:DittoTests /m:1 /v:minimal /nologo
+Invoke-Native $msbuild Ditto.sln /p:Configuration=$Config /p:Platform=x64 /t:DittoRenderSmoke /m:1 /v:minimal /nologo
 
 $testsExe = Join-Path $BuildDir "$Config\DittoTests.exe"
 $renderExe = Join-Path $BuildDir "$Config\DittoRenderSmoke.exe"
@@ -60,11 +79,9 @@ if (!(Test-Path $renderExe)) {
 
 $renderOut = Join-Path $BuildDir "TestOutput\RenderSmoke"
 $builtFlow = Join-Path $PSScriptRoot "RunBuiltTests.ps1"
-$cmakeCache = Join-Path $BuildDir "CMakeCache.txt"
-$runVulkan = $false
-if (Test-Path $cmakeCache) {
-    $runVulkan = Select-String -Path $cmakeCache -Pattern "^Vulkan_LIBRARY:FILEPATH=.+vulkan-1\.lib$" -Quiet
-}
+$vulkanSdk = if ($env:VULKAN_SDK) { $env:VULKAN_SDK } else { "C:\VulkanSDK\1.4.350.0" }
+$runVulkan = (Test-Path (Join-Path $vulkanSdk "Include\vulkan\vulkan.h")) -and
+             (Test-Path (Join-Path $vulkanSdk "Lib\vulkan-1.lib"))
 & $builtFlow -TestsExe $testsExe -RenderExe $renderExe -RenderOut $renderOut -RunVulkan:$runVulkan
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

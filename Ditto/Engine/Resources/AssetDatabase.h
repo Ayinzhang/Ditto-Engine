@@ -16,6 +16,8 @@ namespace Ditto
         std::string extension;
         std::uintmax_t sizeBytes = 0;
         std::string contentHash;
+        std::string importerType;
+        std::string importError;
         bool imported = false;
         std::vector<std::string> artifactPaths;
         std::vector<std::string> dependencies;
@@ -45,7 +47,23 @@ namespace Ditto
         const AssetRecord* RecordForGuid(const std::string& guid) const;
         std::vector<AssetRecord> Records() const;
         const AssetDatabaseDiagnostics& Diagnostics() const { return diagnostics; }
+        AssetDatabaseDiagnostics Diagnose();
         std::vector<std::string> ValidateReferences(const std::vector<std::string>& guids);
+        bool NeedsReimport(const std::string& guid) const;
+        std::vector<AssetRecord> AssetsNeedingImport() const;
+        bool ImportAsset(const std::string& guid);
+
+        // Incremental import dependency helpers. Dependencies are stored as
+        // GUID strings without the "guid:" prefix.
+        std::vector<std::string> GetDependents(const std::string& guid) const;
+        std::vector<std::string> GetAllDependencies(const std::string& guid) const;
+        void MarkDependentsForReimport(const std::string& guid);
+        bool ImportAssetWithDependents(const std::string& guid, std::vector<std::string>& importedGuids);
+
+        // Asset repair helpers used by the editor health window.
+        bool CreateAssetMetaFile(const std::string& assetPath);
+        bool RegenerateGuid(const std::string& assetPath);
+
         bool SaveImportCache() const;
         bool LoadImportCache(std::vector<AssetRecord>& recordsOut) const;
 
@@ -62,9 +80,14 @@ namespace Ditto
         std::filesystem::path assetsRoot;
         std::unordered_map<std::string, AssetRecord> byGuid;
         std::unordered_map<std::string, std::string> guidByNormalizedPath;
+        std::unordered_map<std::string, AssetRecord> cachedByGuid;
+        std::unordered_map<std::string, AssetRecord> cachedByRelativePath;
         AssetDatabaseDiagnostics diagnostics;
 
         std::string RegisterAsset(const std::filesystem::path& assetPath, bool createMissingMeta, bool updateMetaAssetPath);
+        bool ArtifactExists(const AssetRecord& record) const;
+        bool DependenciesMatchCache(const AssetRecord& current, const AssetRecord& cached) const;
+        std::filesystem::path ArtifactAbsolutePath(const std::string& artifactPath) const;
         std::string ReadGuidFromMeta(const std::filesystem::path& metaPath) const;
         std::string ReadAssetPathFromMeta(const std::filesystem::path& metaPath) const;
         bool WriteMetaFile(const std::filesystem::path& metaPath, const std::string& guid) const;
