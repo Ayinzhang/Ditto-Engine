@@ -47,6 +47,7 @@ THIRD_PARTY_SOURCES = [
 ]
 
 VULKAN_CONDITION = "'$(EnableVulkan)'=='true'"
+DX12_CONDITION = "'$(EnableDX12)'=='true'"
 
 
 def project_path(path):
@@ -128,6 +129,8 @@ def insert_file_item_groups(root, ns, headers, sources):
         elem.set("Include", project_path(source))
         if source == "3rdParty/ImGui/imgui_impl_vulkan.cpp" or source.startswith("Engine/Graphics/RHI/Vulkan/"):
             elem.set("Condition", VULKAN_CONDITION)
+        elif source.startswith("Engine/Graphics/RHI/DirectX12/"):
+            elem.set("Condition", DX12_CONDITION)
 
     root.insert(insert_index, header_group)
     root.insert(insert_index + 1, source_group)

@@ -1029,6 +1029,18 @@ namespace DittoEngine
         Menu = 348,
     }
 
+    public enum MouseButton
+    {
+        Left = 0,
+        Right = 1,
+        Middle = 2,
+        Button4 = 3,
+        Button5 = 4,
+        Button6 = 5,
+        Button7 = 6,
+        Button8 = 7,
+    }
+
     // Input 类 - 键盘/鼠标查询（每帧由引擎快照，Down/Up 为边沿检测）
     // 鼠标坐标相对 Game 视口左上角（像素）。
     public static class Input
@@ -1065,6 +1077,9 @@ namespace DittoEngine
         public static bool GetMouseButton(int button) => GetMouseButtonNative(button) != 0;
         public static bool GetMouseButtonDown(int button) => GetMouseButtonDownNative(button) != 0;
         public static bool GetMouseButtonUp(int button) => GetMouseButtonUpNative(button) != 0;
+        public static bool GetMouseButton(MouseButton button) => GetMouseButtonNative((int)button) != 0;
+        public static bool GetMouseButtonDown(MouseButton button) => GetMouseButtonDownNative((int)button) != 0;
+        public static bool GetMouseButtonUp(MouseButton button) => GetMouseButtonUpNative((int)button) != 0;
 
         public static Vector2 mousePosition
         {

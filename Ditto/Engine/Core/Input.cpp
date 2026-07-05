@@ -1,21 +1,7 @@
 #include "Input.h"
 #include "IWindow.h"
+#include "InputKeyCodes.h"
 #include <cstring>
-
-namespace
-{
-    constexpr int KeySpace = 32;
-    constexpr int KeyA = 65;
-    constexpr int KeyD = 68;
-    constexpr int KeyS = 83;
-    constexpr int KeyW = 87;
-    constexpr int KeyEscape = 256;
-    constexpr int KeyEnter = 257;
-    constexpr int KeyRight = 262;
-    constexpr int KeyLeft = 263;
-    constexpr int KeyDown = 264;
-    constexpr int KeyUp = 265;
-}
 
 Ditto::IWindow* Input::s_window = nullptr;
 bool Input::s_cur[Input::kMaxKeyCode + 1] = {};
@@ -139,15 +125,15 @@ float Input::GetAxisRaw(const char* axisName)
     if (StrEq(axisName, "Horizontal"))
     {
         float v = 0.0f;
-        if (GetKey(KeyD) || GetKey(KeyRight)) v += 1.0f;
-        if (GetKey(KeyA) || GetKey(KeyLeft))  v -= 1.0f;
+        if (GetKey(Ditto::KeyCode::D) || GetKey(Ditto::KeyCode::RightArrow)) v += 1.0f;
+        if (GetKey(Ditto::KeyCode::A) || GetKey(Ditto::KeyCode::LeftArrow))  v -= 1.0f;
         return v;
     }
     if (StrEq(axisName, "Vertical"))
     {
         float v = 0.0f;
-        if (GetKey(KeyW) || GetKey(KeyUp))   v += 1.0f;
-        if (GetKey(KeyS) || GetKey(KeyDown)) v -= 1.0f;
+        if (GetKey(Ditto::KeyCode::W) || GetKey(Ditto::KeyCode::UpArrow))   v += 1.0f;
+        if (GetKey(Ditto::KeyCode::S) || GetKey(Ditto::KeyCode::DownArrow)) v -= 1.0f;
         return v;
     }
     return 0.0f;
@@ -165,9 +151,9 @@ static bool ResolveButton(const char* name, int& kind, int& code)
 {
     struct Binding { const char* name; int kind; int code; };
     static const Binding bindings[] = {
-        { "Jump",   0, KeySpace },
-        { "Submit", 0, KeyEnter },
-        { "Cancel", 0, KeyEscape },
+        { "Jump",   0, Ditto::KeyCode::Space },
+        { "Submit", 0, Ditto::KeyCode::Enter },
+        { "Cancel", 0, Ditto::KeyCode::Escape },
         { "Fire1",  1, 0 },   // left mouse
         { "Fire2",  1, 1 },   // right mouse
         { "Fire3",  1, 2 },   // middle mouse

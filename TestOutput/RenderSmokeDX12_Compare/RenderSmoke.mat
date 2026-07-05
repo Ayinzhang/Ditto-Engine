@@ -1,0 +1,6 @@
+DittoMaterial 1
+shader = "C:/Users/CodexSandboxOffline/.codex/.sandbox/cwd/f39a96d804b5ff7b/TestOutput/RenderSmokeDX12_Compare/UnlitSmoke.shader"
+shaderGuid = "61f97ac2e49050016aff2fd8ac5c90d5"
+color = 1, 0.05, 0.02, 1
+mainTexture = ""
+mainTextureGuid = ""

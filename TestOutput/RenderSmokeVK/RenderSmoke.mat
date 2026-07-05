@@ -1,0 +1,6 @@
+DittoMaterial 1
+shader = "E:/Engine Source/Ditto/TestOutput/RenderSmokeVK/UnlitSmoke.shader"
+shaderGuid = "2d361696ffd6bbb95872acb8955524d6"
+color = 1, 0.05, 0.02, 1
+mainTexture = ""
+mainTextureGuid = ""

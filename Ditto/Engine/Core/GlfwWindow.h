@@ -36,9 +36,11 @@ namespace Ditto
         int CreateVulkanSurface(VkInstanceHandle instance,
                                 const VkAllocationCallbacks* allocator,
                                 VkSurfaceHandle* surface) const override;
+        void* GetNativeWindowHandle() const override;
 
         bool ImGuiInitForOpenGL(bool installCallbacks) override;
         bool ImGuiInitForVulkan(bool installCallbacks) override;
+        bool ImGuiInitForOther(bool installCallbacks) override;
         void ImGuiNewFrame() override;
         void ImGuiShutdown() override;
 

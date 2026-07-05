@@ -1,11 +1,17 @@
 #include "GlfwWindow.h"
 
+#ifdef _WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
 #ifdef DITTO_ENABLE_VULKAN
 #define GLFW_INCLUDE_VULKAN
 #else
 #define GLFW_INCLUDE_NONE
 #endif
 #include "../../3rdParty/GLFW/glfw3.h"
+#ifdef _WIN32
+#include "../../3rdParty/GLFW/glfw3native.h"
+#endif
 #include "../../3rdParty/ImGui/imgui_impl_glfw.h"
 
 #include <cstdint>
@@ -35,7 +41,8 @@ namespace Ditto
 
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, desc.visible ? GLFW_TRUE : GLFW_FALSE);
-        if (desc.backendHint == WindowBackendHint::Vulkan)
+        if (desc.backendHint == WindowBackendHint::Vulkan ||
+            desc.backendHint == WindowBackendHint::DirectX12)
         {
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         }
@@ -174,6 +181,15 @@ namespace Ditto
 #endif
     }
 
+    void* GlfwWindow::GetNativeWindowHandle() const
+    {
+#ifdef _WIN32
+        return m_window ? static_cast<void*>(glfwGetWin32Window(m_window)) : nullptr;
+#else
+        return nullptr;
+#endif
+    }
+
     bool GlfwWindow::ImGuiInitForOpenGL(bool installCallbacks)
     {
         return m_window && ImGui_ImplGlfw_InitForOpenGL(m_window, installCallbacks);
@@ -182,6 +198,11 @@ namespace Ditto
     bool GlfwWindow::ImGuiInitForVulkan(bool installCallbacks)
     {
         return m_window && ImGui_ImplGlfw_InitForVulkan(m_window, installCallbacks);
+    }
+
+    bool GlfwWindow::ImGuiInitForOther(bool installCallbacks)
+    {
+        return m_window && ImGui_ImplGlfw_InitForOther(m_window, installCallbacks);
     }
 
     void GlfwWindow::ImGuiNewFrame()

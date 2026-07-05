@@ -1,0 +1,11 @@
+DittoImportCache 4
+8c880ff624c61e5da5e634e89792de60	Materials/Lit_Sprite.mat	.mat	93	986deeb5aabbb55f	0	.ditto/artifacts/8c880ff624c61e5da5e634e89792de60.artifact		Material	
+ae2478df6d39b17c4f08aef10e95d526	Materials/Lit_Toon.mat	.mat	91	04a6d72cb1c364ce	0	.ditto/artifacts/ae2478df6d39b17c4f08aef10e95d526.artifact		Material	
+87fb030b212994602e42f20503aa78f1	Models/Cube.obj	.obj	1022	0af89b6a3b47affb	0	.ditto/artifacts/87fb030b212994602e42f20503aa78f1.artifact		Model	
+d6140ccc0f033a114daf9c1173253ca0	Models/Sphere.obj	.obj	6925	828d40fb936fa054	0	.ditto/artifacts/d6140ccc0f033a114daf9c1173253ca0.artifact		Model	
+35692f0a1ce1c933c37addf6367984b9	PhysicsMaterials2D/Default.physmat2d	.physmat2d	61	9478a334e2db3b7f	0	.ditto/artifacts/35692f0a1ce1c933c37addf6367984b9.artifact		PhysicsMaterial2D	
+1b7b825ba3499cbbf1173d5db42556ec	Scenes/Default.bin	.bin	1786	040c41db7d046989	0	.ditto/artifacts/1b7b825ba3499cbbf1173d5db42556ec.artifact		Scene	
+dbd1cc97c2d02206b9c6ca1e78a9c2a1	Shaders/Lit_Sprite.shader	.shader	1076	b16e7ee7d866ff9b	0	.ditto/artifacts/dbd1cc97c2d02206b9c6ca1e78a9c2a1.artifact		Shader	
+15354280a62c441b55d058af6bc95f53	Shaders/Lit_Toon.shader	.shader	1623	a009370ae8d8c6f4	0	.ditto/artifacts/15354280a62c441b55d058af6bc95f53.artifact		Shader	
+a732ecc0cdb590836e56a7e4dd637936	Sprites/Circle.png	.png	223	259f3bc989961bf4	0	.ditto/artifacts/a732ecc0cdb590836e56a7e4dd637936.artifact		Texture	
+23978bb2552d997552aa642ebd39fdd8	Sprites/Square.png	.png	153	66806db130ec537a	0	.ditto/artifacts/23978bb2552d997552aa642ebd39fdd8.artifact		Texture	

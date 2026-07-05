@@ -8,8 +8,7 @@
 // Ditto Render Hardware Interface (RHI)
 //
 // A thin abstraction over the graphics API so engine/editor code never calls
-// gl*/vk* directly. Runtime backend scope is intentionally limited to Vulkan
-// and OpenGL: Vulkan is the default when available, OpenGL is the fallback.
+// gl*/vk* directly.
 // ---------------------------------------------------------------------------
 namespace Ditto
 {
@@ -19,6 +18,7 @@ namespace Ditto
     {
         OpenGL,
         Vulkan,
+        DirectX12,
     };
 
     // Opaque resource handles. id == 0 means invalid. The value indexes into a

@@ -16,6 +16,7 @@ const char* BuildSettings::GetPlatformName(BuildPlatform platform)
     switch (platform)
     {
         case BuildPlatform::Windows: return "Windows";
+        case BuildPlatform::Android: return "Android";
         default: return "Unknown";
     }
 }
@@ -35,6 +36,12 @@ bool BuildSystem::ValidateSettings(const BuildSettings& settings, std::string& e
     if (settings.scenes.empty())
     {
         error = "No scenes selected for build";
+        return false;
+    }
+
+    if (settings.platform == BuildPlatform::Android)
+    {
+        error = "Android build target is visible, but the Android runtime/exporter is not implemented yet";
         return false;
     }
     
@@ -59,11 +66,11 @@ bool BuildSystem::ValidateSettings(const BuildSettings& settings, std::string& e
     return true;
 }
 
-std::string BuildSystem::GetDefaultOutputPath(const std::string& projectPath)
+std::string BuildSystem::GetDefaultOutputPath(const std::string& projectPath, BuildPlatform platform)
 {
     std::string path = projectPath;
     std::replace(path.begin(), path.end(), '\\', '/');
-    return path + "/Build/Windows";
+    return path + "/Build/" + BuildSettings::GetPlatformName(platform);
 }
 
 std::vector<std::string> BuildSystem::GetProjectScenes(const std::string& projectPath)

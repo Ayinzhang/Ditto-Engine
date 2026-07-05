@@ -5,6 +5,7 @@
 #include "SceneWindow.h"
 #include "../Engine/Core/Logger.h"
 #include "Editor.h"
+#include "RenderTargetImageUV.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/Input.h"
 #include "../Engine/Graphics/Camera.h"
@@ -654,12 +655,16 @@ void SceneWindow::Draw()
     ImVec2 min = window->InnerRect.Min;
     ImVec2 max = window->InnerRect.Max;
 
-    // Scene renders into an offscreen target, displayed as an ImGui image
-    // (flipped V: both backends produce GL bottom-up memory order).
+    // Scene renders into an offscreen target, displayed as an ImGui image.
+    // GL/Vulkan RT textures are shown with flipped V; DX12 RT textures are not.
     void* sceneTex = m_editor->engine->RenderSceneToTexture(
         (int)(max.x - min.x), (int)(max.y - min.y), false);
     if (sceneTex)
-        ImGui::GetWindowDrawList()->AddImage((ImTextureID)sceneTex, min, max, ImVec2(0, 1), ImVec2(1, 0));
+    {
+        ImVec2 uv0, uv1;
+        EditorRHI::RenderTargetImageUV(m_editor && m_editor->engine ? m_editor->engine->renderer.get() : nullptr, uv0, uv1);
+        ImGui::GetWindowDrawList()->AddImage((ImTextureID)sceneTex, min, max, uv0, uv1);
+    }
 
     DrawSceneGrid(min, max);
 

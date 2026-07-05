@@ -1,0 +1,9 @@
+{
+  "ok":true,
+  "name":"C:\\Users\\CodexSandboxOffline\\.codex\\.sandbox\\cwd\\f39a96d804b5ff7b\\TestOutput\\RenderSmokeDX12_Compare\\UnlitSmoke.shader",
+  "source":"C:\\Users\\CodexSandboxOffline\\.codex\\.sandbox\\cwd\\f39a96d804b5ff7b\\TestOutput\\RenderSmokeDX12_Compare\\UnlitSmoke.shader",
+  "renderQueue":2000,
+  "blend":false,
+  "depthTest":true,
+  "properties":["_Color"]
+}

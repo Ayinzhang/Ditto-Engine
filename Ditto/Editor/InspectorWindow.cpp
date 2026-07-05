@@ -5,6 +5,7 @@
 #include "InspectorWindow.h"
 #include "../Engine/Core/Logger.h"
 #include "Editor.h"
+#include "RenderTargetImageUV.h"
 #include "../Engine/Core/Engine.h"
 #include "../Engine/Core/GameObject.h"
 #include "../Engine/Core/ProjectManager.h"
@@ -728,7 +729,11 @@ void InspectorWindow::Draw()
                 // implemented on the active backend) -- passing null to ImGui::Image
                 // can crash the Vulkan backend.
                 if (previewTexId)
-                    ImGui::Image(previewTexId, ImVec2(btnWidth, btnHeight), ImVec2(0, 1), ImVec2(1, 0));
+                {
+                    ImVec2 uv0, uv1;
+                    EditorRHI::RenderTargetImageUV(previewR, uv0, uv1);
+                    ImGui::Image(previewTexId, ImVec2(btnWidth, btnHeight), uv0, uv1);
+                }
                 else
                     ImGui::TextDisabled("(preview unavailable on this backend)");
 

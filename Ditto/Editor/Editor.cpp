@@ -15,6 +15,7 @@
 #include "InspectorWindow.h"
 #include "SceneWindow.h"
 #include "BuildSystem.h"
+#include "RenderTargetImageUV.h"
 #include "../Engine/Core/ProjectManager.h"
 #include "../Engine/Core/PrefabAsset.h"
 #include "../Engine/Core/Input.h"
@@ -1580,8 +1581,12 @@ void Editor::DrawGame()
         (float)glm::max(1, renderW), (float)glm::max(1, renderH));
     void* gameTex = engine->RenderSceneToTexture(glm::max(1, renderW), glm::max(1, renderH), true);
     if (gameTex)
+    {
+        ImVec2 uv0, uv1;
+        EditorRHI::RenderTargetImageUV(engine ? engine->renderer.get() : nullptr, uv0, uv1);
         ImGui::GetWindowDrawList()->AddImage((ImTextureID)gameTex,
-            gameViewportRect.Min, gameViewportRect.Max, ImVec2(0, 1), ImVec2(1, 0));
+            gameViewportRect.Min, gameViewportRect.Max, uv0, uv1);
+    }
     ImGui::GetWindowDrawList()->AddRect(gameViewportRect.Min, gameViewportRect.Max, IM_COL32(0, 0, 0, 180));
     if (gameStats)
     {
@@ -1766,11 +1771,12 @@ void Editor::DrawBuildSettingsWindow()
         
         // Platform selection
         ImGui::Text("Platform:");
-        const char* platforms[] = { "Windows" };
+        const char* platforms[] = { "Windows", "Android" };
         int currentPlatform = (int)buildSettings.platform;
         if (ImGui::Combo("##Platform", &currentPlatform, platforms, IM_ARRAYSIZE(platforms)))
         {
             buildSettings.platform = (BuildPlatform)currentPlatform;
+            buildSettings.outputPath = BuildSystem::GetDefaultOutputPath(proj->path, buildSettings.platform);
         }
         
         // Configuration selection

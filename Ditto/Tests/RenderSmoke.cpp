@@ -8,6 +8,9 @@
 #ifdef DITTO_ENABLE_VULKAN
 #include "../Engine/Graphics/RHI/Vulkan/VulkanRenderer.h"
 #endif
+#ifdef DITTO_ENABLE_DX12
+#include "../Engine/Graphics/RHI/DirectX12/DirectX12Renderer.h"
+#endif
 #include "../Engine/Graphics/Materials/MaterialAsset.h"
 #include "../Engine/Graphics/Shaders/ShaderAsset.h"
 
@@ -220,6 +223,17 @@ int main(int argc, char** argv)
         return 1;
 #endif
     }
+    else if (runOpt.backend == "dx12" || runOpt.backend == "directx" || runOpt.backend == "dx")
+    {
+#ifdef DITTO_ENABLE_DX12
+        runOpt.backend = "dx12";
+        windowDesc.backendHint = Ditto::WindowBackendHint::DirectX12;
+#else
+        std::cerr << "[FAIL][render] DirectX 12 backend requested, but this build has no DX12 support\n";
+        Ditto::ShutdownWindowSystem();
+        return 1;
+#endif
+    }
     else
     {
         runOpt.backend = "opengl";
@@ -245,6 +259,20 @@ int main(int argc, char** argv)
             return 1;
         }
         renderer = std::move(vk);
+#endif
+    }
+    else if (runOpt.backend == "dx12")
+    {
+#ifdef DITTO_ENABLE_DX12
+        auto dx12 = std::make_unique<Ditto::DirectX12Renderer>(&window);
+        if (!dx12->IsValid())
+        {
+            std::cerr << "[FAIL][render] DirectX 12 renderer initialization failed\n";
+            window.Destroy();
+            Ditto::ShutdownWindowSystem();
+            return 1;
+        }
+        renderer = std::move(dx12);
 #endif
     }
     else
@@ -347,7 +375,7 @@ int main(int argc, char** argv)
             Ditto::RenderTargetHandle recreatedRt = renderer->CreateRenderTarget(opt.width, opt.height);
             renderer->DestroyRenderTarget(recreatedRt);
             recreatedRt = renderer->CreateRenderTarget(opt.width / 2, opt.height / 2);
-            const bool needsSubmittedReadback = (runOpt.backend == "vulkan" || runOpt.backend == "vk");
+            const bool needsSubmittedReadback = (runOpt.backend == "vulkan" || runOpt.backend == "vk" || runOpt.backend == "dx12");
 
             renderer->BeginFrame();
             renderer->BeginRenderTarget(rt);
@@ -355,7 +383,7 @@ int main(int argc, char** argv)
             renderer->Clear(Ditto::ClearColor | Ditto::ClearDepth, glm::vec4(0.02f, 0.03f, 0.04f, 1.0f));
 
             glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            const bool useZeroToOneDepth = (runOpt.backend == "vulkan" || runOpt.backend == "vk");
+            const bool useZeroToOneDepth = (runOpt.backend == "vulkan" || runOpt.backend == "vk" || runOpt.backend == "dx12");
             glm::mat4 proj = useZeroToOneDepth
                 ? glm::perspectiveZO(glm::radians(45.0f), 1.0f, 0.1f, 100.0f)
                 : glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);

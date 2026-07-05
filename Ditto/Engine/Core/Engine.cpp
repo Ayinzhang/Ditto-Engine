@@ -14,6 +14,7 @@
 #include "EngineLifecycle.h"
 #include "GlfwWindow.h"
 #include "Input.h"
+#include "InputKeyCodes.h"
 #include "PathUtils.h"
 #include "Logger.h"
 #include "JsonConfig.h"
@@ -23,6 +24,9 @@
 #include "../Graphics/RHI/GLRenderer.h"
 #ifdef DITTO_ENABLE_VULKAN
 #include "../Graphics/RHI/Vulkan/VulkanRenderer.h"
+#endif
+#ifdef DITTO_ENABLE_DX12
+#include "../Graphics/RHI/DirectX12/DirectX12Renderer.h"
 #endif
 #include <algorithm>
 #include <cctype>
@@ -40,23 +44,11 @@ static void* LoadGLProcAddress(const char* name)
     return g_gladLoadWindow ? g_gladLoadWindow->GetProcAddress(name) : nullptr;
 }
 
-namespace EngineKey
-{
-    constexpr int Escape = 256;
-    constexpr int Delete = 261;
-    constexpr int D = 68;
-    constexpr int R = 82;
-    constexpr int Z = 90;
-    constexpr int Y = 89;
-    constexpr int LeftControl = 341;
-    constexpr int RightControl = 345;
-    constexpr int LeftAlt = 342;
-}
-
 static const char* BackendName(Engine::Backend backend)
 {
     switch (backend)
     {
+    case Engine::Backend::DirectX12: return "DirectX 12";
     case Engine::Backend::Vulkan: return "Vulkan";
     case Engine::Backend::OpenGL: return "OpenGL";
     }
@@ -95,7 +87,13 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
     if (!Ditto::InitializeWindowSystem()) throw runtime_error("Window system init failed");
 
     std::vector<Backend> backendCandidates;
+#ifdef DITTO_ENABLE_DX12
+    backendCandidates = { Backend::DirectX12,
 #ifdef DITTO_ENABLE_VULKAN
+        Backend::Vulkan,
+#endif
+        Backend::OpenGL };
+#elif defined(DITTO_ENABLE_VULKAN)
     backendCandidates = { Backend::Vulkan, Backend::OpenGL };
 #else
     backendCandidates = { Backend::OpenGL };
@@ -121,7 +119,22 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 #endif
         }
         else if (v == "dx" || v == "dx12" || v == "directx")
-            Ditto::Logger::Get().Warning("[Engine] DITTO_RHI requested DirectX, but this build only supports Vulkan/OpenGL.");
+        {
+#ifdef DITTO_ENABLE_DX12
+            backendCandidates = { Backend::DirectX12,
+#ifdef DITTO_ENABLE_VULKAN
+                Backend::Vulkan,
+#endif
+                Backend::OpenGL };
+#else
+            Ditto::Logger::Get().Warning("[Engine] DITTO_RHI=dx12 ignored; this build was compiled without DirectX 12 support.");
+            backendCandidates = {
+#ifdef DITTO_ENABLE_VULKAN
+                Backend::Vulkan,
+#endif
+                Backend::OpenGL };
+#endif
+        }
     }
 
     // Create the window + renderer for `backend`; returns false on failure so the
@@ -135,7 +148,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         desc.title = "Ditto";
         desc.backendHint = (b == Backend::Vulkan)
             ? Ditto::WindowBackendHint::Vulkan
-            : Ditto::WindowBackendHint::OpenGL;
+            : (b == Backend::DirectX12 ? Ditto::WindowBackendHint::DirectX12 : Ditto::WindowBackendHint::OpenGL);
         if (!window->Create(desc)) return false;
         window->SetCursorCallback([this](double xpos, double ypos)
         {
@@ -146,7 +159,17 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
             lastX = xpos;
             lastY = ypos;
         });
-        if (b == Backend::Vulkan)
+        if (b == Backend::DirectX12)
+        {
+#ifdef DITTO_ENABLE_DX12
+            auto dx12 = std::make_unique<Ditto::DirectX12Renderer>(window.get());
+            if (!dx12->IsValid()) return false;
+            renderer = std::move(dx12);
+#else
+            return false;
+#endif
+        }
+        else if (b == Backend::Vulkan)
         {
 #ifdef DITTO_ENABLE_VULKAN
             auto vk = std::make_unique<Ditto::VulkanRenderer>(window.get());
@@ -533,15 +556,15 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
 void Engine::ProcessInput()
 {
     if (!window) return;
-    if (window->IsKeyPressed(EngineKey::Escape)) state = Exit;
+    if (window->IsKeyPressed(Ditto::KeyCode::Escape)) state = Exit;
 
     static bool altPressedLastFrame = false;
-    bool altPressedNow = window->IsKeyPressed(EngineKey::LeftAlt);
+    bool altPressedNow = window->IsKeyPressed(Ditto::KeyCode::LeftAlt);
     if (altPressedNow && !altPressedLastFrame) enableMouse = !enableMouse;
     altPressedLastFrame = altPressedNow;
 
     static bool deletePressedLastFrame = false;
-    bool deletePressedNow = window->IsKeyPressed(EngineKey::Delete);
+    bool deletePressedNow = window->IsKeyPressed(Ditto::KeyCode::Delete);
     if (deletePressedNow && !deletePressedLastFrame && editor) {
         if (editor->selectedFile.IsValid())
             editor->DeleteSelectedFile();
@@ -551,7 +574,7 @@ void Engine::ProcessInput()
     deletePressedLastFrame = deletePressedNow;
 
     static bool ctrlDPressedLastFrame = false;
-    bool ctrlDPressedNow = window->IsKeyPressed(EngineKey::LeftControl) && window->IsKeyPressed(EngineKey::D);
+    bool ctrlDPressedNow = window->IsKeyPressed(Ditto::KeyCode::LeftControl) && window->IsKeyPressed(Ditto::KeyCode::D);
     if (ctrlDPressedNow && !ctrlDPressedLastFrame && editor) {
         if (editor->selectedFile.IsValid())
             editor->DuplicateSelectedFile();
@@ -561,7 +584,7 @@ void Engine::ProcessInput()
     ctrlDPressedLastFrame = ctrlDPressedNow;
 
     static bool ctrlRPressedLastFrame = false;
-    bool ctrlRPressedNow = window->IsKeyPressed(EngineKey::LeftControl) && window->IsKeyPressed(EngineKey::R);
+    bool ctrlRPressedNow = window->IsKeyPressed(Ditto::KeyCode::LeftControl) && window->IsKeyPressed(Ditto::KeyCode::R);
     if (ctrlRPressedNow && !ctrlRPressedLastFrame) {
         ForEachGameObject(scene.get(), [](GameObject* obj)
         {
@@ -580,18 +603,18 @@ void Engine::ProcessInput()
     // text field so the shortcuts don't fight ImGui's own text editing.
     // Game mode has NO ImGui context (only the editor calls CreateContext), so
     // guard the GetIO() call -- it asserts/crashes on a null context otherwise.
-    bool ctrlDown = window->IsKeyPressed(EngineKey::LeftControl) ||
-                    window->IsKeyPressed(EngineKey::RightControl);
+    bool ctrlDown = window->IsKeyPressed(Ditto::KeyCode::LeftControl) ||
+                    window->IsKeyPressed(Ditto::KeyCode::RightControl);
     bool textInputActive = ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput;
 
     static bool ctrlZLastFrame = false;
-    bool ctrlZNow = ctrlDown && window->IsKeyPressed(EngineKey::Z);
+    bool ctrlZNow = ctrlDown && window->IsKeyPressed(Ditto::KeyCode::Z);
     if (ctrlZNow && !ctrlZLastFrame && editor && state == Edit && !textInputActive)
         editor->Undo();
     ctrlZLastFrame = ctrlZNow;
 
     static bool ctrlYLastFrame = false;
-    bool ctrlYNow = ctrlDown && window->IsKeyPressed(EngineKey::Y);
+    bool ctrlYNow = ctrlDown && window->IsKeyPressed(Ditto::KeyCode::Y);
     if (ctrlYNow && !ctrlYLastFrame && editor && state == Edit && !textInputActive)
         editor->Redo();
     ctrlYLastFrame = ctrlYNow;

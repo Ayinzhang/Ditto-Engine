@@ -784,17 +784,12 @@ float4 PSMain(v2f i) : SV_Target
             return {};
 
         const std::string params = program.substr(paramsBegin, paramsEnd - paramsBegin);
-        const std::string body = program.substr(bodyBegin, bodyEnd - bodyBegin);
         VertexLayoutUsage usage;
 
         std::regex paramRe(R"(\b[_A-Za-z]\w*(?:\s*<[^>]+>)?\s+([_A-Za-z]\w*)\s*:\s*([_A-Za-z]\w*)\b)");
         for (std::sregex_iterator it(params.begin(), params.end(), paramRe), end; it != end; ++it)
         {
-            const std::string paramName = (*it)[1].str();
             const std::string semantic = (*it)[2].str();
-            if (!BodyUsesToken(body, paramName))
-                continue;
-
             if (SemanticMatches(semantic, "POSITION"))
             {
                 usage.position = true;
@@ -824,16 +819,14 @@ float4 PSMain(v2f i) : SV_Target
         if (!ExtractFunctionRanges(program, functionName, paramsBegin, paramsEnd, bodyBegin, bodyEnd))
             return {};
 
-        const std::string body = program.substr(bodyBegin, bodyEnd - bodyBegin);
         const std::vector<std::string> positionFields = StructFieldsForSemantic(program, vertexParam.type, "POSITION");
         const std::vector<std::string> normalFields = StructFieldsForSemantic(program, vertexParam.type, "NORMAL");
         const std::vector<std::string> texcoordFields = StructFieldsForSemantic(program, vertexParam.type, "TEXCOORD0");
 
-        const bool ambiguousParamUse = BodyUsesParamWithoutField(body, vertexParam.name);
         VertexLayoutUsage usage;
-        usage.position = !positionFields.empty() && (ambiguousParamUse || BodyUsesAnyField(body, vertexParam.name, positionFields));
-        usage.normal = !normalFields.empty() && (ambiguousParamUse || BodyUsesAnyField(body, vertexParam.name, normalFields));
-        usage.texcoord0 = !texcoordFields.empty() && (ambiguousParamUse || BodyUsesAnyField(body, vertexParam.name, texcoordFields));
+        usage.position = !positionFields.empty();
+        usage.normal = !normalFields.empty();
+        usage.texcoord0 = !texcoordFields.empty();
         usage.known = !positionFields.empty() || !normalFields.empty() || !texcoordFields.empty();
         return usage;
     }

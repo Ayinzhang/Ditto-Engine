@@ -1,0 +1,4 @@
+DittoMaterial 1
+shader = "Shaders/Lit_Toon.shader"
+color = 1, 1, 1, 1
+mainTexture = ""

@@ -17,6 +17,7 @@ namespace Ditto
     {
         OpenGL,
         Vulkan,
+        DirectX12,
     };
 
     struct WindowDesc
@@ -60,9 +61,11 @@ namespace Ditto
         virtual int CreateVulkanSurface(VkInstanceHandle instance,
                                         const VkAllocationCallbacks* allocator,
                                         VkSurfaceHandle* surface) const = 0;
+        virtual void* GetNativeWindowHandle() const = 0;
 
         virtual bool ImGuiInitForOpenGL(bool installCallbacks) = 0;
         virtual bool ImGuiInitForVulkan(bool installCallbacks) = 0;
+        virtual bool ImGuiInitForOther(bool installCallbacks) = 0;
         virtual void ImGuiNewFrame() = 0;
         virtual void ImGuiShutdown() = 0;
     };

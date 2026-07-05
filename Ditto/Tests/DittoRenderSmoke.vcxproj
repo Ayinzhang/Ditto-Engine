@@ -45,6 +45,7 @@
     <VulkanSDK Condition="'$(VulkanSDK)' == ''">C:\VulkanSDK\1.4.350.0</VulkanSDK>
     <EnableVulkan Condition="'$(EnableVulkan)'=='' and Exists('$(VulkanSDK)\Include\vulkan\vulkan.h') and Exists('$(VulkanSDK)\Lib\vulkan-1.lib')">true</EnableVulkan>
     <EnableVulkan Condition="'$(EnableVulkan)'==''">false</EnableVulkan>
+    <EnableDX12 Condition="'$(EnableDX12)'==''">true</EnableDX12>
     <AssimpRoot>$(MSBuildThisFileDirectory)..\3rdParty\Assimp</AssimpRoot>
     <EnableAssimp Condition="'$(EnableAssimp)'=='' and Exists('$(AssimpRoot)\include\assimp\Importer.hpp') and Exists('$(AssimpRoot)\lib\assimp-vc143-mt.lib')">true</EnableAssimp>
     <EnableAssimp Condition="'$(EnableAssimp)'==''">false</EnableAssimp>
@@ -63,6 +64,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;DITTO_HEADLESS_TESTS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableDX12)'=='true'">DITTO_ENABLE_DX12=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -81,6 +83,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>$(MSBuildThisFileDirectory)..\3rdParty\GLFW\glfw3.lib;opengl32.lib;gdi32.lib;user32.lib;shell32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(EnableVulkan)'=='true'">vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(EnableDX12)'=='true'">d3d12.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -104,6 +107,7 @@ cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build 
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;DITTO_HEADLESS_TESTS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(EnableVulkan)'=='true'">DITTO_ENABLE_VULKAN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(EnableDX12)'=='true'">DITTO_ENABLE_DX12=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(EnableAssimp)'=='true'">DITTO_ENABLE_ASSIMP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -120,6 +124,7 @@ cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build 
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>$(MSBuildThisFileDirectory)..\3rdParty\GLFW\glfw3.lib;opengl32.lib;gdi32.lib;user32.lib;shell32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(EnableVulkan)'=='true'">vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(EnableDX12)'=='true'">d3d12.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories Condition="'$(EnableVulkan)'=='true'">$(VulkanSDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies Condition="'$(EnableAssimp)'=='true'">assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories Condition="'$(EnableAssimp)'=='true'">$(AssimpRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -173,6 +178,7 @@ cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build 
     <ClCompile Include="..\Engine\Animation\AnimatorComponent.cpp" />
     <ClCompile Include="..\Engine\Graphics\ParticleSystemComponent.cpp" />
     <ClCompile Include="..\Engine\Graphics\RHI\GLRenderer.cpp" />
+    <ClCompile Include="..\Engine\Graphics\RHI\DirectX12\DirectX12Renderer.cpp" Condition="'$(EnableDX12)'=='true'" />
     <ClCompile Include="..\Engine\Graphics\UI\FontAtlas.cpp" />
     <ClCompile Include="..\Engine\Graphics\UI\UIRenderer.cpp" />
     <ClCompile Include="..\3rdParty\GLAD\glad.c" />

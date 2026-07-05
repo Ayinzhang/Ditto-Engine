@@ -6,6 +6,7 @@
 enum class BuildPlatform
 {
     Windows,
+    Android,
     Count
 };
 
@@ -40,7 +41,7 @@ class BuildSystem
 public:
     static bool Build(const BuildSettings& settings, BuildProgressCallback callback = nullptr);
     static bool ValidateSettings(const BuildSettings& settings, std::string& error);
-    static std::string GetDefaultOutputPath(const std::string& projectPath);
+    static std::string GetDefaultOutputPath(const std::string& projectPath, BuildPlatform platform = BuildPlatform::Windows);
     static std::vector<std::string> GetProjectScenes(const std::string& projectPath);
     
 private:

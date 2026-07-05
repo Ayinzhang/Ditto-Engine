@@ -29,6 +29,9 @@
     <Filter Include="Header Files\Engine\Graphics\RHI">
       <UniqueIdentifier>{8303B3A5-6015-7E94-628F-B1BD5F0EA8B6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Engine\Graphics\RHI\DirectX12">
+      <UniqueIdentifier>{811E5796-2A1C-1D44-F7CC-D129F4BB751E}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\Engine\Graphics\RHI\Vulkan">
       <UniqueIdentifier>{8F70A3B9-3A38-963F-1F48-C3D7C084ECBA}</UniqueIdentifier>
     </Filter>
@@ -115,6 +118,9 @@
     <Filter Include="Source Files\Engine\Graphics\RHI">
       <UniqueIdentifier>{B8350549-A2E1-49DD-484B-EA2206257F07}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Engine\Graphics\RHI\DirectX12">
+      <UniqueIdentifier>{F9AE9415-ADCF-4B34-0522-BBEF075379E0}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\Engine\Graphics\RHI\Vulkan">
       <UniqueIdentifier>{C3F9B944-E0A1-1D47-E2E8-34F971EA5D94}</UniqueIdentifier>
     </Filter>
@@ -156,6 +162,9 @@
     <ClInclude Include="Editor\ProjectWindow.h">
       <Filter>Header Files\Editor</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\RenderTargetImageUV.h">
+      <Filter>Header Files\Editor</Filter>
+    </ClInclude>
     <ClInclude Include="Editor\SceneWindow.h">
       <Filter>Header Files\Editor</Filter>
     </ClInclude>
@@ -193,6 +202,9 @@
       <Filter>Header Files\Engine\Core</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Core\Input.h">
+      <Filter>Header Files\Engine\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Core\InputKeyCodes.h">
       <Filter>Header Files\Engine\Core</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Core\JsonConfig.h">
@@ -236,6 +248,9 @@
     </ClInclude>
     <ClInclude Include="Engine\Graphics\ParticleSystemComponent.h">
       <Filter>Header Files\Engine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Graphics\RHI\DirectX12\DirectX12Renderer.h">
+      <Filter>Header Files\Engine\Graphics\RHI\DirectX12</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Graphics\RHI\GLRenderer.h">
       <Filter>Header Files\Engine\Graphics\RHI</Filter>
@@ -454,6 +469,9 @@
     </ClCompile>
     <ClCompile Include="Engine\Graphics\ParticleSystemComponent.cpp">
       <Filter>Source Files\Engine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\RHI\DirectX12\DirectX12Renderer.cpp">
+      <Filter>Source Files\Engine\Graphics\RHI\DirectX12</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\RHI\GLRenderer.cpp">
       <Filter>Source Files\Engine\Graphics\RHI</Filter>

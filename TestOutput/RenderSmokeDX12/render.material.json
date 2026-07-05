@@ -1,0 +1,8 @@
+{
+  "ok":true,
+  "name":"RenderSmoke",
+  "source":"E:\\Engine Source\\Ditto\\TestOutput\\RenderSmokeDX12\\RenderSmoke.mat",
+  "shader":"E:/Engine Source/Ditto/TestOutput/RenderSmokeDX12/UnlitSmoke.shader",
+  "mainTexture":"",
+  "color":[1,0.05,0.02,1]
+}

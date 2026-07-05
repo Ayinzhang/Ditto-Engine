@@ -15,11 +15,14 @@ struct Engine
 {
     enum State { Edit, Play, Pause, Stop, Exit } state = Edit;
 
-    // Render backend. Scope is intentionally limited to Vulkan + OpenGL:
-    // Vulkan is the default when compiled in, OpenGL is the fallback.
-    // DITTO_RHI=opengl forces GL; DITTO_RHI=vulkan requests Vulkan.
-    enum class Backend { OpenGL, Vulkan };
-#ifdef DITTO_ENABLE_VULKAN
+    // Render backend. DirectX 12 is wired as an experimental backend slot but
+    // should not be compiled in by default until the renderer is implemented.
+    // Compiled runtime order is DX12 -> Vulkan -> OpenGL; DITTO_RHI can force
+    // a specific backend.
+    enum class Backend { OpenGL, Vulkan, DirectX12 };
+#ifdef DITTO_ENABLE_DX12
+    Backend backend = Backend::DirectX12;
+#elif defined(DITTO_ENABLE_VULKAN)
     Backend backend = Backend::Vulkan;
 #else
     Backend backend = Backend::OpenGL;
@@ -42,8 +45,8 @@ struct Engine
     double lastX, lastY;
     std::unique_ptr<Physics> physics;
     std::unique_ptr<Physics2DWorld> physics2D;
-    // RHI: all rendering goes through this. Startup selects Vulkan first when
-    // available, then falls back to OpenGL.
+    // RHI: all rendering goes through this. Startup selects the preferred
+    // compiled backend first, then falls back to a supported backend.
     std::unique_ptr<Ditto::IRenderer> renderer;
     // Offscreen render targets for the editor's Scene/Game viewports (owned by
     // the renderer; recreated on viewport resize by RenderSceneToTexture).

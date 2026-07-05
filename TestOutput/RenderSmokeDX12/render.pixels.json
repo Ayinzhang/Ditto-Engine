@@ -1,0 +1,16 @@
+{
+  "backend":"dx12",
+  "width":256,
+  "height":256,
+  "nonBackgroundPixels":23868,
+  "orthographicNonBackgroundPixels":6748,
+  "smallRenderTargetNonBackgroundPixels":1700,
+  "recreatedRenderTargetNonBackgroundPixels":1700,
+  "stressPasses":1,
+  "stressNonBackgroundTotal":1700,
+  "resizeStressPasses":1,
+  "spritePixels":2652,
+  "uiPixels":4096,
+  "centerRGBA":[255,13,5,255],
+  "averageRGB":[63,28,26]
+}
