@@ -1,9 +1,0 @@
-{
-  "ok":true,
-  "name":"E:\\Engine Source\\Ditto\\TestOutput\\RenderSmokeVK\\UnlitSmoke.shader",
-  "source":"E:\\Engine Source\\Ditto\\TestOutput\\RenderSmokeVK\\UnlitSmoke.shader",
-  "renderQueue":2000,
-  "blend":false,
-  "depthTest":true,
-  "properties":["_Color"]
-}

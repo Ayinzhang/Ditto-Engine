@@ -71,6 +71,13 @@ namespace Ditto
                 m_uboBuf[i], m_uboMem[i], &m_uboMapped[i]);
         if (!CreateUboDescriptors()) return;
 
+        auto testShader = ShaderCompiler::Compile("float4 VSMain(float4 p: POSITION) : SV_Position { return p; }", ShaderStage::Vertex, "VSMain", false);
+        if (!testShader.ok)
+        {
+            Logger::Get().Error("[Vulkan] Shader compiler test failed. Disabling Vulkan backend.");
+            return;
+        }
+
         m_ready = true;
         Logger::Get().Verbose("[Vulkan] Renderer initialized (swapchain + depth + frame resources ready).");
     }

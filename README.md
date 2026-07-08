@@ -69,12 +69,25 @@ DX12 notes:
 
 - DX12 is enabled by default through `EnableDX12=true`.
 - DX12 itself does not require the Vulkan runtime.
-- The current DX12 shader path compiles HLSL with `dxc.exe` at runtime. The easiest way to satisfy that tool dependency is installing the Vulkan SDK. A `dxc.exe` on `PATH` or a Windows SDK copy also works.
+- Runtime HLSL compilation normally uses `dxc.exe`. The engine will now try to locate `dxc.exe` (Vulkan SDK or Windows Kits) and, if `dxc` fails to compile a shader, automatically fall back to `fxc.exe` (Shader Model 5.0) where possible. If DX12 initialization (device/swapchain/shader compile) fails at runtime, the engine will mark the DX12 backend as unavailable and automatically try the next backend in the list (see "Runtime RHI fallback" below).
 
 Vulkan notes:
 
 - Vulkan is optional and auto-enabled only when the project finds `$(VULKAN_SDK)\Include\vulkan\vulkan.h` and `$(VULKAN_SDK)\Lib\vulkan-1.lib`.
-- If Vulkan is not installed, the build can still use DX12/OpenGL.
+- The Vulkan shader path uses `dxc.exe` to produce SPIR-V (`-spirv`) and `spirv-cross` when GLSL output is needed. The engine now validates the Vulkan shader toolchain during initialization; if the tools are missing or shader compilation fails, Vulkan will be disabled at runtime and the engine will fall back to the next available backend.
+- If neither Vulkan nor DX12 can initialize properly, the engine will automatically fall back to the OpenGL backend, so the editor stays usable on systems without a full modern toolchain.
+
+Window resizing and ImGui docking:
+
+- The editor now detects display/framebuffer size changes and triggers a docking/layout rebuild when the ImGui display size changes. This fixes cases where inspector panels or other docked windows appear cropped at startup or after resizing.
+- The engine notifies the active renderer when the framebuffer size changes so swapchains/backbuffers and GPU render targets are resized before rendering. This keeps ImGui and scene viewports synchronized with the window size.
+- On high-DPI systems you may still need to enable per-monitor DPI awareness (application manifest or early Win32 DPI APIs) to get exact pixel-perfect scaling; see next section.
+
+Runtime RHI fallback and shader tool notes:
+
+- Runtime RHI order (default): DirectX 12 -> Vulkan -> OpenGL. The engine will attempt each candidate in order and move to the next if initialization fails.
+- To force a specific backend use the `DITTO_RHI` environment variable (e.g., `dx12`, `vulkan`, or `opengl`).
+- Recommended: install the Vulkan SDK to get `dxc.exe` and `spirv-cross.exe` for the smoothest shader toolchain; however the engine now provides safer fallback behavior when tools are missing or compilation fails.
 
 ## Build
 

@@ -81,6 +81,32 @@ namespace
         };
         for (const char* c : candidates)
             if (fs::exists(c)) return c;
+
+        std::string winKitsPath = "C:\\Program Files (x86)\\Windows Kits\\10\\bin";
+        if (fs::exists(winKitsPath))
+        {
+            try
+            {
+                std::vector<std::string> versions;
+                for (const auto& entry : fs::directory_iterator(winKitsPath))
+                {
+                    if (entry.is_directory())
+                    {
+                        std::string name = entry.path().filename().string();
+                        if (name.find("10.") == 0)
+                            versions.push_back(name);
+                    }
+                }
+                std::sort(versions.rbegin(), versions.rend());
+                for (const std::string& v : versions)
+                {
+                    std::string p = winKitsPath + "\\" + v + "\\x64\\dxc.exe";
+                    if (fs::exists(p)) return p;
+                }
+            }
+            catch (...) {}
+        }
+
         return "dxc.exe";
     }
 
@@ -147,6 +173,15 @@ namespace Ditto
         if (!CreateDescriptorHeaps()) return false;
         if (!CreateRootSignature()) return false;
         if (!CreateUploadBuffer(kUniformBufferSize, m_uniformBuffer, reinterpret_cast<void**>(&m_uniformMapped))) return false;
+
+        std::vector<uint8_t> vs;
+        std::string err;
+        if (!CompileHlsl("float4 VSMain(float4 p: POSITION) : SV_Position { return p; }", "VSMain", "vs_6_0", vs, err))
+        {
+            Logger::Get().Error("[DX12] Shader compiler test failed: " + err + ". Disabling DX12 backend.");
+            return false;
+        }
+
         return true;
     }
 
@@ -366,9 +401,23 @@ namespace Ditto
         fs::path errPath = tmp / (id + ".err");
         { std::ofstream f(hlslPath, std::ios::binary); f << hlsl; }
 
-        std::string cmd = "\"" + FindDxc() + "\" -T " + profile + " -E " + entry + " -Zpc \"" +
+
+        std::string dxcCmd = "\"" + FindDxc() + "\" -T " + profile + " -E " + entry + " -Zpc \"" +
             hlslPath.string() + "\" -Fo \"" + csoPath.string() + "\" 2>\"" + errPath.string() + "\"";
-        int rc = std::system(("\"" + cmd + "\"").c_str());
+        int rc = std::system(("\"" + dxcCmd + "\"").c_str());
+
+        if (rc != 0 || !fs::exists(csoPath))
+        {
+            // Fallback to fxc.exe (which uses sm 5_0)
+            std::string fallbackProfile = profile;
+            if (fallbackProfile == "vs_6_0") fallbackProfile = "vs_5_0";
+            if (fallbackProfile == "ps_6_0") fallbackProfile = "ps_5_0";
+
+            std::string fxcCmd = "fxc.exe -T " + fallbackProfile + " -E " + entry + " -Zpc \"" +
+                hlslPath.string() + "\" -Fo \"" + csoPath.string() + "\" 2>\"" + errPath.string() + "\"";
+            rc = std::system(("\"" + fxcCmd + "\"").c_str());
+        }
+
         outBytes = ReadBytes(csoPath);
         outError = ReadText(errPath);
 

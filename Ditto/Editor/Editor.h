@@ -101,6 +101,7 @@ struct Editor
     static constexpr size_t kUndoDepth = 64;
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
+    ImVec2 lastDisplaySize = ImVec2(0.0f, 0.0f);
     Ditto::IWindow* m_window = nullptr; 
     bool m_imguiBackendInit = false;    
     int frame; float fps, ppf, deltaTime;

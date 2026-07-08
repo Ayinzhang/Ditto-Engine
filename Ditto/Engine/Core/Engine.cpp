@@ -79,7 +79,7 @@ void ForEachGameObject(Scene* scene, Func&& func)
 void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 {
     enableMouse = false;
-    window_width = 1200; window_height = 900;
+    window_width = 1600; window_height = 1200;
     keySpeed = 0.01f, mouseSpeed = 1.0f;
     editor = nullptr;
     window.reset();
@@ -163,7 +163,11 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         {
 #ifdef DITTO_ENABLE_DX12
             auto dx12 = std::make_unique<Ditto::DirectX12Renderer>(window.get());
-            if (!dx12->IsValid()) return false;
+            if (!dx12->IsValid())
+            {
+                Ditto::Logger::Get().Warning("[Engine] DirectX 12 renderer failed to initialize. Falling back...");
+                return false;
+            }
             renderer = std::move(dx12);
 #else
             return false;
@@ -173,7 +177,11 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         {
 #ifdef DITTO_ENABLE_VULKAN
             auto vk = std::make_unique<Ditto::VulkanRenderer>(window.get());
-            if (!vk->IsValid()) return false;   
+            if (!vk->IsValid())
+            {
+                Ditto::Logger::Get().Warning("[Engine] Vulkan renderer failed to initialize. Falling back...");
+                return false;
+            }
             renderer = std::move(vk);
 #else
             return false;
@@ -496,8 +504,23 @@ void Engine::UpdateRuntimeComponents()
 
 bool Engine::BeginRenderFrame()
 {
-    if (window) window->GetFramebufferSize(window_width, window_height);
-    if (window_width <= 0 || window_height <= 0) return false;
+    int fbw = window_width, fbh = window_height;
+    if (window) window->GetFramebufferSize(fbw, fbh);
+    if (fbw <= 0 || fbh <= 0) return false;
+
+    // If the framebuffer size changed, notify the renderer so backbuffers/swapchain can be resized
+    if (fbw != window_width || fbh != window_height)
+    {
+        window_width = fbw; window_height = fbh;
+        if (renderer)
+        {
+            if (!renderer->NotifyWindowResized(window_width, window_height))
+            {
+                // Renderer failed to resize; try to continue but abort this frame
+                return false;
+            }
+        }
+    }
 
     renderer->BeginFrame();
     renderer->SetViewport(0, 0, window_width, window_height);

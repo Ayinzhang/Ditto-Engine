@@ -17,7 +17,7 @@ namespace Ditto
         ~VulkanRenderer() override;
 
         
-        bool IsValid() const { return m_device != VK_NULL_HANDLE; }
+        bool IsValid() const { return m_ready; }
         RendererBackend Backend() const override { return RendererBackend::Vulkan; }
 
         

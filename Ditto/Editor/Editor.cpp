@@ -693,11 +693,17 @@ void Editor::SetupDocking()
 {
     ImGuiIO& io = ImGui::GetIO();
 
-    
+
     float menuBarHeight = ImGui::GetFrameHeight();
     ImVec2 displaySize = io.DisplaySize;
 
-    
+    // If the display size changed (window resized or DPI changed), rebuild the docking layout
+    if (displaySize.x != lastDisplaySize.x || displaySize.y != lastDisplaySize.y)
+    {
+        dockingInitialized = false;
+        lastDisplaySize = displaySize;
+    }
+
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(displaySize.x, displaySize.y - menuBarHeight));
 

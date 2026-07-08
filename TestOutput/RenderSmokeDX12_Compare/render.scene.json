@@ -1,6 +1,0 @@
-{
-  "scene":"RenderSmoke",
-  "objects":[
-    {"name":"ShaderCube","components":["Transform","Renderer"],"shader":"C:\\Users\\CodexSandboxOffline\\.codex\\.sandbox\\cwd\\f39a96d804b5ff7b\\TestOutput\\RenderSmokeDX12_Compare\\UnlitSmoke.shader","material":"RenderSmoke.mat","mesh":"Cube"}
-  ]
-}

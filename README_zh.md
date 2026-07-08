@@ -69,12 +69,25 @@ DX12 说明：
 
 - DX12 默认启用：`EnableDX12=true`。
 - DX12 本身不需要 Vulkan runtime。
-- 但当前 DX12 shader 路径运行时会调用 `dxc.exe` 编译 HLSL。最省事的做法仍然是安装 Vulkan SDK；如果系统 `PATH` 中已有 `dxc.exe`，或 Windows SDK 中存在可用的 `dxc.exe`，也可以工作。
+- 运行时 HLSL 编译通常使用 `dxc.exe`。引擎现在会尝试定位 `dxc.exe`（Vulkan SDK 或 Windows Kits 路径），并在 `dxc` 编译失败时回退到 `fxc.exe`（Shader Model 5.0）以提高兼容性。如果 DX12 在运行时（设备、交换链或 Shader 编译）初始化失败，引擎会将 DX12 标记为不可用并自动尝试下一个候选后端（见下文“运行时 RHI 回退”）。
 
 Vulkan 说明：
 
 - Vulkan 是可选后端，只有检测到 `$(VULKAN_SDK)\Include\vulkan\vulkan.h` 和 `$(VULKAN_SDK)\Lib\vulkan-1.lib` 时才会自动启用。
-- 没装 Vulkan SDK 时，仍然可以使用 DX12/OpenGL 构建和运行。
+- Vulkan 的 Shader 路径会用 `dxc.exe` 生成 SPIR-V（`-spirv`），并在需要 GLSL 输出时使用 `spirv-cross`。引擎会在初始化期间验证 Vulkan 的 Shader 工具链；如果工具缺失或编译失败，Vulkan 会在运行时被禁用，且引擎会回退到可用的下一个后端。
+- 如果 DX12 和 Vulkan 都无法正常初始化，引擎会自动回退到 OpenGL 后端，从而在缺乏完整现代工具链的系统上仍能保持编辑器可用。
+
+窗口大小与 ImGui 停靠：
+
+- 编辑器现在会检测显示 / 帧缓冲尺寸变化，并在 ImGui 显示尺寸发生变化时触发停靠布局重建，修复启动或调整窗口大小后 Inspector 等面板被裁剪的问题。
+- 引擎会在帧缓冲尺寸变化时通知渲染器，以便在渲染前重建交换链 / 后备缓冲和 GPU 资源，从而保持 ImGui 与场景视图口一致。
+- 在高 DPI 系统上，你仍然可能需要在应用清单或启动早期调用 Win32 DPI API（SetProcessDpiAwarenessContext / SetProcessDpiAwareness）来实现精确像素缩放。
+
+运行时 RHI 回退与 Shader 工具：
+
+- 运行时默认顺序：DirectX 12 -> Vulkan -> OpenGL。引擎会按顺序尝试候选后端，若初始化失败则继续尝试下一项。
+- 强制使用某个后端请设置环境变量 `DITTO_RHI`（例如 `dx12`、`vulkan`、`opengl`）。
+- 建议安装 Vulkan SDK 获取 `dxc.exe` 和 `spirv-cross.exe`，以获得最顺畅的 Shader 工具链；不过引擎现在在工具缺失或编译失败时有更稳健的回退策略。
 
 ## 构建
 

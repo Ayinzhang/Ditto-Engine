@@ -1,6 +1,0 @@
-{
-  "scene":"RenderSmoke",
-  "objects":[
-    {"name":"ShaderCube","components":["Transform","Renderer"],"shader":"E:\\Engine Source\\Ditto\\TestOutput\\RenderSmokeDX12_Direction\\UnlitSmoke.shader","material":"RenderSmoke.mat","mesh":"Cube"}
-  ]
-}

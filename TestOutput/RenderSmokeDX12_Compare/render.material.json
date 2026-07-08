@@ -1,8 +1,0 @@
-{
-  "ok":true,
-  "name":"RenderSmoke",
-  "source":"C:\\Users\\CodexSandboxOffline\\.codex\\.sandbox\\cwd\\f39a96d804b5ff7b\\TestOutput\\RenderSmokeDX12_Compare\\RenderSmoke.mat",
-  "shader":"C:/Users/CodexSandboxOffline/.codex/.sandbox/cwd/f39a96d804b5ff7b/TestOutput/RenderSmokeDX12_Compare/UnlitSmoke.shader",
-  "mainTexture":"",
-  "color":[1,0.05,0.02,1]
-}
