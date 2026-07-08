@@ -1,6 +1,6 @@
 # Ditto Engine
 
-[中文版本](README_zh.md)
+[中文版](README_zh.md)
 
 Ditto is a small C++ game engine and editor inspired by Unity-style workflows. It has a GameObject/component scene model, C# scripting through Mono, a custom RHI with DirectX 12/Vulkan/OpenGL backends, materials and shaders, 2D/3D physics, audio, UI, prefabs, project assets, and an ImGui-based editor.
 
