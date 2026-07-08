@@ -48,46 +48,10 @@ x64/                      Visual Studio 输出目录，git 忽略
 - MSVC C++ 工具链，当前工程使用 `PlatformToolset v143`。
 - Windows 10/11 SDK。DX12 使用 Windows SDK 里的 `d3d12.lib`、`dxgi.lib`、`dxguid.lib`，不需要单独安装旧版 DirectX SDK。
 
-推荐的最省事配置：
+可选（推荐）：
 
-- Visual Studio 2022，安装 C++ desktop workload；或者安装带 C++ workload 的 Visual Studio Build Tools。
-- .NET SDK：用于重新生成 `DittoEngine.dll` 和编译 C# 脚本。
-- Vulkan SDK：需要手动安装，并确保 `VULKAN_SDK` 环境变量对 shell/IDE 可见。它会启用 Vulkan 后端，也提供本项目当前 shader 编译会用到的 `dxc.exe` 和 `spirv-cross.exe`。
-
-已随仓库引入的依赖：
-
-- Assimp 已经在 `Ditto/3rdParty/Assimp` 下包含 headers、`assimp-vc143-mt.lib` 和 `assimp-vc143-mt.dll`，通常不需要额外安装。
-- GLFW、GLAD、GLM、ImGui、ImGuizmo、miniaudio、VMA、stb、Mono runtime 文件也在 `Ditto/3rdParty` 下。
-
-工具链说明：
-
-- Visual Studio 2022 是当前测试基线，因为工程文件使用 `PlatformToolset v143`。
-- 更新的 Visual Studio 版本也可以用，只要它能安装/使用 `v143` toolset；或者你可以把工程 retarget 到更新 toolset 后自行验证。
-- VS Code 可以作为编辑器使用，但它不是编译器/构建工具。用 VS Code 时仍然需要 Visual Studio Build Tools 或完整 Visual Studio 提供 MSVC/MSBuild。
-
-DX12 说明：
-
-- DX12 默认启用：`EnableDX12=true`。
-- DX12 本身不需要 Vulkan runtime。
-- 运行时 HLSL 编译通常使用 `dxc.exe`。引擎现在会尝试定位 `dxc.exe`（Vulkan SDK 或 Windows Kits 路径），并在 `dxc` 编译失败时回退到 `fxc.exe`（Shader Model 5.0）以提高兼容性。如果 DX12 在运行时（设备、交换链或 Shader 编译）初始化失败，引擎会将 DX12 标记为不可用并自动尝试下一个候选后端（见下文“运行时 RHI 回退”）。
-
-Vulkan 说明：
-
-- Vulkan 是可选后端，只有检测到 `$(VULKAN_SDK)\Include\vulkan\vulkan.h` 和 `$(VULKAN_SDK)\Lib\vulkan-1.lib` 时才会自动启用。
-- Vulkan 的 Shader 路径会用 `dxc.exe` 生成 SPIR-V（`-spirv`），并在需要 GLSL 输出时使用 `spirv-cross`。引擎会在初始化期间验证 Vulkan 的 Shader 工具链；如果工具缺失或编译失败，Vulkan 会在运行时被禁用，且引擎会回退到可用的下一个后端。
-- 如果 DX12 和 Vulkan 都无法正常初始化，引擎会自动回退到 OpenGL 后端，从而在缺乏完整现代工具链的系统上仍能保持编辑器可用。
-
-窗口大小与 ImGui 停靠：
-
-- 编辑器现在会检测显示 / 帧缓冲尺寸变化，并在 ImGui 显示尺寸发生变化时触发停靠布局重建，修复启动或调整窗口大小后 Inspector 等面板被裁剪的问题。
-- 引擎会在帧缓冲尺寸变化时通知渲染器，以便在渲染前重建交换链 / 后备缓冲和 GPU 资源，从而保持 ImGui 与场景视图口一致。
-- 在高 DPI 系统上，你仍然可能需要在应用清单或启动早期调用 Win32 DPI API（SetProcessDpiAwarenessContext / SetProcessDpiAwareness）来实现精确像素缩放。
-
-运行时 RHI 回退与 Shader 工具：
-
-- 运行时默认顺序：DirectX 12 -> Vulkan -> OpenGL。引擎会按顺序尝试候选后端，若初始化失败则继续尝试下一项。
-- 强制使用某个后端请设置环境变量 `DITTO_RHI`（例如 `dx12`、`vulkan`、`opengl`）。
-- 建议安装 Vulkan SDK 获取 `dxc.exe` 和 `spirv-cross.exe`，以获得最顺畅的 Shader 工具链；不过引擎现在在工具缺失或编译失败时有更稳健的回退策略。
+- .NET SDK — 仅当您希望引擎构建/重新生成 C# 运行时 DLL 并编译 C# 脚本时才要。
+- Vulkan SDK — 用于 Vulkan 后端，并提供着色器工具链使用的 `dxc.exe`/`spirv-cross.exe`。
 
 ## 构建
 
@@ -158,17 +122,3 @@ Ditto\Tests\x64\Debug\DittoRenderSmoke.exe --backend opengl --out TestOutput\Ren
 ```
 
 render smoke 会创建 3D cube、2D sprite 和 UI image，渲染到离屏 RenderTarget，读回像素并输出 `render.ppm`、`render.scene.json`、`render.pixels.json` 等诊断文件。
-
-## 打包状态
-
-- Windows desktop：已支持，走编辑器 Build Settings 和 MSBuild。
-- DX12/OpenGL 桌面渲染：已支持。
-- Vulkan 桌面渲染：安装 Vulkan SDK 后支持。
-- Android：构建 UI 入口已存在，但 exporter/runtime 尚未实现。
-
-## 常见问题
-
-- `No .NET SDKs were found`：安装 .NET SDK；如果只是编 native 测试，可临时加 `/p:PreBuildEventUseInBuild=false` 跳过 C# pre-build。
-- Vulkan 后端没启用：安装 Vulkan SDK，并重启 shell/Visual Studio，确保 `VULKAN_SDK` 环境变量可见。
-- DX12 shader 编译失败：确认 `dxc.exe` 可用。当前最简单的配置是安装 Vulkan SDK。
-- 运行时缺 Assimp DLL：确认 `Ditto/3rdParty/Assimp/bin` 下有 `assimp-vc143-mt.dll`；启用 Assimp 时 post-build 会复制它。

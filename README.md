@@ -42,52 +42,18 @@ x64/                      Visual Studio build output, ignored by git
 
 ## Requirements
 
-Required for the native editor build:
+Minimal required to build the native editor:
 
 - Windows 10/11.
-- MSVC C++ toolchain with platform toolset `v143`.
-- Windows 10/11 SDK. DirectX 12 uses the SDK-provided `d3d12.lib`, `dxgi.lib`, and `dxguid.lib`; there is no separate legacy DirectX SDK install.
+- Windows 10/11 SDK (for DirectX 12 headers/libs).
+- MSVC C++ toolchain (Platform Toolset v143) — Visual Studio with the C++ workload or Build Tools.
 
-Recommended for the easiest setup:
 
-- Visual Studio 2022 with the C++ desktop workload, or Visual Studio Build Tools with the same C++ workload.
-- .NET SDK, so the build can regenerate `DittoEngine.dll` and compile C# scripts.
-- Vulkan SDK, installed manually with `VULKAN_SDK` visible to your shell/IDE. This enables the Vulkan backend and provides `dxc.exe`/`spirv-cross.exe`, which this project currently uses for shader compilation.
+Optional (recommended):
 
-Bundled dependencies:
+- .NET SDK — needed only if you want the engine to build/regenerate the C# runtime DLLs and compile C# scripts.
+- Vulkan SDK — required for the Vulkan backend and useful for providing `dxc.exe`/`spirv-cross.exe` used by the shader toolchain.
 
-- Assimp is already included under `Ditto/3rdParty/Assimp` with headers, `assimp-vc143-mt.lib`, and `assimp-vc143-mt.dll`. You normally do not need to install Assimp separately.
-- GLFW, GLAD, GLM, ImGui, ImGuizmo, miniaudio, VMA, stb, and Mono runtime files are also vendored under `Ditto/3rdParty`.
-
-Toolchain notes:
-
-- Visual Studio 2022 is the tested baseline because the project file uses `PlatformToolset v143`.
-- Newer Visual Studio versions can be used if they can install/use the `v143` toolset, or if you retarget the project to a newer toolset and verify the build.
-- VS Code is fine as an editor, but it does not replace MSVC/MSBuild. Use it together with Visual Studio Build Tools or a full Visual Studio install.
-
-DX12 notes:
-
-- DX12 is enabled by default through `EnableDX12=true`.
-- DX12 itself does not require the Vulkan runtime.
-- Runtime HLSL compilation normally uses `dxc.exe`. The engine will now try to locate `dxc.exe` (Vulkan SDK or Windows Kits) and, if `dxc` fails to compile a shader, automatically fall back to `fxc.exe` (Shader Model 5.0) where possible. If DX12 initialization (device/swapchain/shader compile) fails at runtime, the engine will mark the DX12 backend as unavailable and automatically try the next backend in the list (see "Runtime RHI fallback" below).
-
-Vulkan notes:
-
-- Vulkan is optional and auto-enabled only when the project finds `$(VULKAN_SDK)\Include\vulkan\vulkan.h` and `$(VULKAN_SDK)\Lib\vulkan-1.lib`.
-- The Vulkan shader path uses `dxc.exe` to produce SPIR-V (`-spirv`) and `spirv-cross` when GLSL output is needed. The engine now validates the Vulkan shader toolchain during initialization; if the tools are missing or shader compilation fails, Vulkan will be disabled at runtime and the engine will fall back to the next available backend.
-- If neither Vulkan nor DX12 can initialize properly, the engine will automatically fall back to the OpenGL backend, so the editor stays usable on systems without a full modern toolchain.
-
-Window resizing and ImGui docking:
-
-- The editor now detects display/framebuffer size changes and triggers a docking/layout rebuild when the ImGui display size changes. This fixes cases where inspector panels or other docked windows appear cropped at startup or after resizing.
-- The engine notifies the active renderer when the framebuffer size changes so swapchains/backbuffers and GPU render targets are resized before rendering. This keeps ImGui and scene viewports synchronized with the window size.
-- On high-DPI systems you may still need to enable per-monitor DPI awareness (application manifest or early Win32 DPI APIs) to get exact pixel-perfect scaling; see next section.
-
-Runtime RHI fallback and shader tool notes:
-
-- Runtime RHI order (default): DirectX 12 -> Vulkan -> OpenGL. The engine will attempt each candidate in order and move to the next if initialization fails.
-- To force a specific backend use the `DITTO_RHI` environment variable (e.g., `dx12`, `vulkan`, or `opengl`).
-- Recommended: install the Vulkan SDK to get `dxc.exe` and `spirv-cross.exe` for the smoothest shader toolchain; however the engine now provides safer fallback behavior when tools are missing or compilation fails.
 
 ## Build
 
@@ -158,17 +124,3 @@ Ditto\Tests\x64\Debug\DittoRenderSmoke.exe --backend opengl --out TestOutput\Ren
 ```
 
 The render smoke creates a cube, sprite, and UI image, renders to offscreen targets, reads back pixels, and writes diagnostics such as `render.ppm`, `render.scene.json`, and `render.pixels.json`.
-
-## Build/Packaging Status
-
-- Windows desktop: supported through the editor build window and MSBuild.
-- DX12/OpenGL desktop rendering: supported.
-- Vulkan desktop rendering: supported when the Vulkan SDK is installed.
-- Android: UI entry exists, but exporter/runtime support is not implemented yet.
-
-## Common Issues
-
-- `No .NET SDKs were found`: install the .NET SDK or skip the C# pre-build only for native-only test builds with `/p:PreBuildEventUseInBuild=false`.
-- Vulkan backend missing: install the Vulkan SDK and restart the shell/IDE so `VULKAN_SDK` is visible.
-- DX12 shader compile failure: make sure `dxc.exe` is available. Installing the Vulkan SDK is the simplest current setup.
-- Assimp DLL missing at runtime: ensure `Ditto/3rdParty/Assimp/bin` contains `assimp-vc143-mt.dll`; the post-build step copies it when Assimp is enabled.
