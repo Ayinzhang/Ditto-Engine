@@ -11,9 +11,9 @@ namespace fs = std::filesystem;
 
 namespace Ditto
 {
-    // Locate the Vulkan SDK Bin dir (dxc.exe + spirv-cross.exe live there).
-    // Prefer the VULKAN_SDK env var; fall back to the known install path until
-    // the env var propagates to new processes (a reboot picks it up).
+    
+    
+    
     static std::string SdkBinDir()
     {
         char* env = nullptr; size_t len = 0;
@@ -44,17 +44,17 @@ namespace Ditto
         return data;
     }
 
-    // ------------------------------------------------------------------
-    // Disk cache. Keyed by an FNV-1a hash of the HLSL source + stage +
-    // entry point + compile flags, stored as <exe>/ShaderCache/<hash>.spv
-    // (+ .glsl when cross-compiled). A cache hit skips the dxc/spirv-cross
-    // subprocesses entirely, so a shipped build does not need the Vulkan
-    // SDK installed unless a shader actually changed.
-    // ------------------------------------------------------------------
+    
+    
+    
+    
+    
+    
+    
 
-    // Bump when the dxc/spirv-cross flags below change, so stale artifacts
-    // compiled with old flags are not reused.
-    // v2: --combined-samplers-inherit-bindings (UI shader texture sampling).
+    
+    
+    
     static constexpr uint32_t kCacheVersion = 2;
 
     static uint64_t Fnv1a64(const void* data, size_t len, uint64_t h = 14695981039346656037ull)
@@ -86,8 +86,8 @@ namespace Ditto
         return h;
     }
 
-    // Try to satisfy the compile from cache. Returns true and fills `out`
-    // on a full hit (SPIR-V present, plus GLSL when requested).
+    
+    
     static bool TryLoadCached(uint64_t key, bool needGLSL, CompiledShader& out)
     {
         std::error_code ec;
@@ -116,7 +116,7 @@ namespace Ditto
     {
         std::error_code ec;
         fs::create_directories(CacheDir(), ec);
-        if (ec) return;   // cache is best-effort; never fail the compile over it
+        if (ec) return;   
 
         {
             std::ofstream f(CachePath(key, ".spv"), std::ios::binary | std::ios::trunc);
@@ -140,8 +140,8 @@ namespace Ditto
     {
         CompiledShader out;
 
-        // Cache first: a hit needs no SDK tools at all (shipped builds run
-        // entirely from the cache populated at development time).
+        
+        
         const uint64_t key = CacheKey(hlslSource, stage, entryPoint);
         if (TryLoadCached(key, generateGLSL, out))
             return out;
@@ -154,8 +154,8 @@ namespace Ditto
             return out;
         }
 
-        // Unique temp file set (counter avoids needing Date/random, which are
-        // unavailable here, and keeps names stable per process).
+        
+        
         static int s_counter = 0;
         const std::string id = std::to_string(s_counter++);
         const fs::path tmp     = fs::temp_directory_path();
@@ -175,17 +175,17 @@ namespace Ditto
 
         const std::string profile = (stage == ShaderStage::Vertex) ? "vs_6_0" : "ps_6_0";
 
-        // NOTE: system() runs `cmd /c <command>`, and cmd strips the outer pair of
-        // quotes when the command both starts and ends with one. Our commands do
-        // (quoted exe path ... quoted redirect), so wrap the WHOLE command in an
-        // extra pair of quotes -- cmd strips those and leaves the inner quoting intact.
+        
+        
+        
+        
         auto run = [](const std::string& cmd) { return std::system(("\"" + cmd + "\"").c_str()); };
 
-        // HLSL -> SPIR-V. -Zpc packs matrices column-major; explicit [[vk::binding]]
-        // in the HLSL pins set/binding so no shift flags are needed.
-        // -fspv-entrypoint-name=main: the emitted SPIR-V entry point is always
-        // "main", so the Vulkan backend can reference it without guessing. (GL's
-        // SPIRV-Cross output uses main() regardless, so this is harmless there.)
+        
+        
+        
+        
+        
         std::string dxc = "\"" + bin + "\\dxc.exe\" -spirv -T " + profile + " -E " + entryPoint +
             " -fspv-entrypoint-name=main -Zpc \"" + hlslP.string() + "\" -Fo \"" + spvP.string() + "\" 2>\"" + errP.string() + "\"";
         if (run(dxc) != 0)
@@ -206,11 +206,11 @@ namespace Ditto
 
         if (generateGLSL)
         {
-            // SPIR-V -> desktop GLSL 460 for the OpenGL backend.
-            // --combined-samplers-inherit-bindings: GLSL has no separate
-            // texture/sampler, so SPIRV-Cross fuses them; this flag makes the
-            // fused sampler keep the TEXTURE's binding so BindTexture(unit)
-            // matches the shader (otherwise the combined sampler lands on 0).
+            
+            
+            
+            
+            
             std::string sc = "\"" + bin + "\\spirv-cross.exe\" \"" + spvP.string() +
                 "\" --version 460 --no-es --combined-samplers-inherit-bindings --output \"" + glslP.string() + "\" 2>\"" + errP.string() + "\"";
             if (run(sc) != 0)

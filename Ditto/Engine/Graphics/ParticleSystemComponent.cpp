@@ -111,7 +111,7 @@ void ParticleSystemComponent::Update(float deltaTime)
 {
     if (!enabled || !playing || paused) return;
 
-    // Resize pool if maxParticles changed in the inspector.
+    
     if (static_cast<int>(particles.size()) != maxParticles && maxParticles > 0)
         particles.resize(maxParticles);
 

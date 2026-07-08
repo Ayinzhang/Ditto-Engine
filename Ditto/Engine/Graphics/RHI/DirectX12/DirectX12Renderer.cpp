@@ -1068,7 +1068,7 @@ namespace Ditto
         }
     }
 
-    // ---------------- ImGui DX12 renderer ----------------
+    
     void DirectX12Renderer::ImGuiInit(IWindow* window)
     {
         if (m_imguiInit || !m_valid) return;

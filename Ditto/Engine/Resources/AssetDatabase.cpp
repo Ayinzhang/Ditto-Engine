@@ -853,7 +853,7 @@ namespace Ditto
     {
         importedGuids.clear();
 
-        // Import dependencies first, then the requested asset.
+        
         std::vector<std::string> deps = GetAllDependencies(guid);
         for (const std::string& depGuid : deps)
         {

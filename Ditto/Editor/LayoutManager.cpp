@@ -32,7 +32,7 @@ bool LayoutManager::SaveLayout(const std::string& layoutName)
     
     std::string filePath = GetLayoutFilePath(layoutName);
     
-    // Use ImGui built-in function to get current INI configuration
+    
     size_t iniSize = 0;
     const char* iniData = ImGui::SaveIniSettingsToMemory(&iniSize);
     
@@ -42,7 +42,7 @@ bool LayoutManager::SaveLayout(const std::string& layoutName)
         return false;
     }
     
-    // Write to file
+    
     std::ofstream file(filePath, std::ios::binary);
     if (!file.is_open())
     {
@@ -61,7 +61,7 @@ bool LayoutManager::LoadLayout(const std::string& layoutName)
 {
     std::string filePath = GetLayoutFilePath(layoutName);
     
-    // Read file
+    
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
@@ -80,10 +80,10 @@ bool LayoutManager::LoadLayout(const std::string& layoutName)
     }
     file.close();
     
-    // Use ImGui built-in function to load INI configuration
+    
     ImGui::LoadIniSettingsFromMemory(buffer.data(), size);
     
-    // Mark needs reinitialization of Dock
+    
     needsReloadDock = true;
     
     DITTO_LOG_INFO_STREAM("Layout loaded: " << filePath << " (" << size << " bytes)" );

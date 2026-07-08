@@ -1,12 +1,4 @@
-# ============================================================
-#  Ditto-Engine .gitignore
-#  Strategy: ignore build outputs by DIRECTORY + compiler
-#  intermediates by EXTENSION. Vendored runtime binaries under
-#  Ditto/3rdParty (mono*.dll, mscorlib.dll, glfw3.dll/.lib) live
-#  OUTSIDE these directories and remain tracked on purpose.
-# ============================================================
 
-# --- Visual Studio / MSBuild output & cache ---
 .vs/
 [Xx]64/
 [Xx]86/
@@ -17,7 +9,6 @@
 *.vcxproj.backup_*
 *.aps
 
-# --- CMake output ---
 /build/
 /build-*/
 [Bb]uild/
@@ -26,18 +17,12 @@ CMakeFiles/
 cmake_install.cmake
 CMakeUserPresets.json
 
-# --- .NET / C# project output (engine C# API + game scripts) ---
 [Bb]in/
 [Oo]bj/
 
-# --- Vendored 3rd-party runtime binaries: keep tracked ---
-# Re-include bin/ dirs under Ditto/3rdParty and the DLLs directly inside
-# them (e.g. Assimp/bin/assimp-vc143-mt.dll). C# build outputs like
-# 3rdParty/Mono/bin/Release/ stay ignored via [Rr]elease/.
 !Ditto/3rdParty/**/[Bb]in/
 !Ditto/3rdParty/**/[Bb]in/*.dll
 
-# --- Compiler / linker intermediates (safe by extension) ---
 *.obj
 !Assets/**/*.obj
 !**/Assets/**/*.obj
@@ -57,7 +42,6 @@ CMakeUserPresets.json
 *.ifc.d.json
 *.module.json
 
-# --- C# build caches ---
 __pycache__/
 *.cache
 *.csproj.FileListAbsolute.txt
@@ -65,12 +49,10 @@ __pycache__/
 project.assets.json
 project.nuget.cache
 
-# --- Engine runtime temp / editor layout cache ---
 /Ditto/Temp/
 imgui.ini
 *.layout.backup
 .claude/
 
-# --- OS junk ---
 Thumbs.db
 .DS_Store

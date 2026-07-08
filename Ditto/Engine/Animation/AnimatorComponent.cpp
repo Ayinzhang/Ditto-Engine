@@ -7,7 +7,7 @@
 #include <istream>
 #include <cmath>
 
-// ----- AnimationClip -----
+
 
 void AnimationClip::Evaluate(float time, glm::vec3& outPos, glm::vec3& outRot, glm::vec3& outScale) const
 {
@@ -19,7 +19,7 @@ void AnimationClip::Evaluate(float time, glm::vec3& outPos, glm::vec3& outRot, g
         return;
     }
 
-    // Before first / single keyframe.
+    
     if (keyframes.size() == 1 || time <= keyframes.front().time)
     {
         outPos = keyframes.front().position;
@@ -27,7 +27,7 @@ void AnimationClip::Evaluate(float time, glm::vec3& outPos, glm::vec3& outRot, g
         outScale = keyframes.front().scale;
         return;
     }
-    // After last keyframe.
+    
     if (time >= keyframes.back().time)
     {
         outPos = keyframes.back().position;
@@ -36,7 +36,7 @@ void AnimationClip::Evaluate(float time, glm::vec3& outPos, glm::vec3& outRot, g
         return;
     }
 
-    // Find the bracketing pair and lerp.
+    
     for (size_t i = 1; i < keyframes.size(); ++i)
     {
         const AnimationKeyframe& b = keyframes[i];
@@ -53,7 +53,7 @@ void AnimationClip::Evaluate(float time, glm::vec3& outPos, glm::vec3& outRot, g
     }
 }
 
-// ----- AnimatorComponent -----
+
 
 AnimatorComponent::AnimatorComponent()
 {
@@ -113,7 +113,7 @@ void AnimatorComponent::Update(float deltaTime)
     else if (currentTime >= clip.length)
     {
         evalTime = clip.length;
-        playing = false; // one-shot finished
+        playing = false; 
     }
 
     glm::vec3 pos, rot, scale;
@@ -158,7 +158,7 @@ void AnimatorComponent::OnInspectorGUI()
 
     ImGui::Separator();
 
-    // Add a new clip from the object's current transform as a 2-keyframe demo.
+    
     static char newClipName[64] = "NewClip";
     ImGui::InputText("##NewClipName", newClipName, sizeof(newClipName));
     ImGui::SameLine();
@@ -168,7 +168,7 @@ void AnimatorComponent::OnInspectorGUI()
         clip.name = newClipName[0] ? newClipName : "Clip";
         clip.length = 1.0f;
         clip.loop = true;
-        // Seed two keyframes from the current transform so the clip is valid.
+        
         AnimationKeyframe k0, k1;
         if (gameObject)
         {
@@ -188,7 +188,7 @@ void AnimatorComponent::OnInspectorGUI()
 
     ImGui::Separator();
 
-    // Playback control + keyframe editing for the current clip.
+    
     if (!currentClip.empty() && clips.count(currentClip))
     {
         AnimationClip& clip = clips[currentClip];

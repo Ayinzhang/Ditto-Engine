@@ -1,6 +1,6 @@
-// VMA implementation lives in this TU (the header is included via VulkanRenderer.h).
+
 #pragma warning(push)
-#pragma warning(disable: 4100 4189 4127 4324)   // VMA: unreferenced params/locals, const conditionals, padding
+#pragma warning(disable: 4100 4189 4127 4324)   
 #define VMA_IMPLEMENTATION
 #include "../../../../3rdParty/VMA/vk_mem_alloc.h"
 #pragma warning(pop)
@@ -18,12 +18,12 @@
 
 namespace Ditto
 {
-    // ---- Debug messenger plumbing (extension functions are loaded at runtime) ----
+    
     static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-        VkDebugUtilsMessageTypeFlagsEXT /*type*/,
+        VkDebugUtilsMessageTypeFlagsEXT ,
         const VkDebugUtilsMessengerCallbackDataEXT* data,
-        void* /*user*/)
+        void* )
     {
         if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
             Logger::Get().Error(std::string("[Vulkan] ") + data->pMessage);
@@ -62,12 +62,12 @@ namespace Ditto
         if (!CreateCommandResources()) return;
         if (!CreateSyncObjects()) return;
 
-        // FrameUniforms UBO ring (one per frame in flight), host-visible + mapped.
-        // Each frame's buffer holds kUboSlots slots so the Scene and Game viewports
-        // can each write their own uniforms within a frame (see SetFrameUniforms).
+        
+        
+        
         constexpr VkDeviceSize kUboBufSize = (VkDeviceSize)kUboSlots * kUboSlotSize;
         for (int i = 0; i < kFramesInFlight; ++i)
-            CreateBuffer(kUboBufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, /*hostVisible=*/true,
+            CreateBuffer(kUboBufSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true,
                 m_uboBuf[i], m_uboMem[i], &m_uboMapped[i]);
         if (!CreateUboDescriptors()) return;
 
@@ -79,11 +79,11 @@ namespace Ditto
     {
         if (m_device) vkDeviceWaitIdle(m_device);
 
-        CleanupSwapchain();   // framebuffers + image views + swapchain
+        CleanupSwapchain();   
 
         if (m_device)
         {
-            // Defensive ImGui/texture teardown (normally done by ImGuiShutdown()).
+            
             for (auto& t : m_textures)
             {
                 if (t.view)  vkDestroyImageView(m_device, t.view, nullptr);
@@ -92,7 +92,7 @@ namespace Ditto
             if (m_sampler)   vkDestroySampler(m_device, m_sampler, nullptr);
             if (m_imguiPool) vkDestroyDescriptorPool(m_device, m_imguiPool, nullptr);
 
-            // Scene resources.
+            
             for (auto& m : m_meshes)
             {
                 if (m.vbuf) vmaDestroyBuffer(m_allocator, m.vbuf, m.vmem);
@@ -115,7 +115,7 @@ namespace Ditto
             if (m_uboPool) vkDestroyDescriptorPool(m_device, m_uboPool, nullptr);
             if (m_uboSetLayout) vkDestroyDescriptorSetLayout(m_device, m_uboSetLayout, nullptr);
 
-            // Render targets (their color textures were freed by the texture loop).
+            
             for (auto& rt : m_renderTargets)
             {
                 if (rt.framebuffer) vkDestroyFramebuffer(m_device, rt.framebuffer, nullptr);
@@ -165,7 +165,7 @@ namespace Ditto
         app.engineVersion = VK_MAKE_VERSION(1, 0, 0);
         app.apiVersion = VK_API_VERSION_1_3;
 
-        // Extensions we will need for windowed presentation (surface) + debug.
+        
         std::vector<const char*> extensions =
             m_window ? m_window->GetRequiredVulkanInstanceExtensions() : std::vector<const char*>{};
         if (extensions.empty())
@@ -218,8 +218,8 @@ namespace Ditto
         std::vector<VkPhysicalDevice> devices(count);
         vkEnumeratePhysicalDevices(m_instance, &count, devices.data());
 
-        // For a device, find a graphics queue family and a present-capable family
-        // (preferring one family that does both). Returns false if either is missing.
+        
+        
         auto findQueues = [&](VkPhysicalDevice dev, uint32_t& gfx, uint32_t& present) -> bool
         {
             uint32_t qCount = 0;
@@ -234,7 +234,7 @@ namespace Ditto
                 VkBool32 canPresent = VK_FALSE;
                 vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, m_surface, &canPresent);
 
-                if (isGfx && canPresent) { gfx = present = i; return true; }   // unified queue: ideal
+                if (isGfx && canPresent) { gfx = present = i; return true; }   
                 if (isGfx && gfx == UINT32_MAX) gfx = i;
                 if (canPresent && present == UINT32_MAX) present = i;
             }
@@ -276,7 +276,7 @@ namespace Ditto
         float priority = 1.0f;
         std::vector<VkDeviceQueueCreateInfo> queueInfos;
 
-        // One queue create-info per unique family (graphics + present may share).
+        
         std::vector<uint32_t> families = { m_graphicsQueueFamily };
         if (m_presentQueueFamily != m_graphicsQueueFamily) families.push_back(m_presentQueueFamily);
         for (uint32_t fam : families)
@@ -288,9 +288,9 @@ namespace Ditto
             queueInfos.push_back(qci);
         }
 
-        // Enable swapchain + push-descriptor (scene draws push UBO/SSBO descriptors
-        // inline, avoiding descriptor-pool management). Push-descriptor is enabled
-        // only if the device supports it.
+        
+        
+        
         std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         {
             uint32_t extCount = 0;
@@ -312,7 +312,7 @@ namespace Ditto
         }
 
         VkPhysicalDeviceFeatures features{};
-        features.fillModeNonSolid = VK_TRUE;   // wireframe (model preview parity)
+        features.fillModeNonSolid = VK_TRUE;   
 
         VkDeviceCreateInfo ci{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
         ci.queueCreateInfoCount = (uint32_t)queueInfos.size();
@@ -332,7 +332,7 @@ namespace Ditto
         if (m_pushDescriptorOK)
             m_pushDescriptor = (PFN_vkCmdPushDescriptorSetKHR)vkGetDeviceProcAddr(m_device, "vkCmdPushDescriptorSetKHR");
 
-        // VMA allocator: every buffer/image allocation below goes through it.
+        
         VmaAllocatorCreateInfo aci{};
         aci.instance = m_instance;
         aci.physicalDevice = m_physicalDevice;
@@ -344,21 +344,21 @@ namespace Ditto
             return false;
         }
 
-        m_depthFormat = VK_FORMAT_D32_SFLOAT;   // universally supported as a depth attachment
+        m_depthFormat = VK_FORMAT_D32_SFLOAT;   
         return true;
     }
 
-    // ----------------------------------------------------------------------
-    // IRenderer methods. Frame/clear/viewport are live; resource + draw paths
-    // are implemented in later steps (pipelines, descriptor sets, etc.).
-    // ----------------------------------------------------------------------
+    
+    
+    
+    
     void VulkanRenderer::SetViewport(int x, int y, int w, int h)
     {
         if (!m_frameActive) return;
-        // Incoming coords are GL bottom-left origin; convert to Vulkan top-left.
-        // Swapchain target: negative-height viewport flips Y to match GL (the
-        // presented image must be top-up). Offscreen RT: positive height so the
-        // image keeps GL's bottom-up memory order (see BeginRenderTarget).
+        
+        
+        
+        
         const float fbH = (float)(m_rtActive ? m_rtExtent.height : m_swapchainExtent.height);
         const float topY = fbH - (float)y - (float)h;
         VkViewport vp{};
@@ -385,11 +385,11 @@ namespace Ditto
     }
     void VulkanRenderer::Clear(uint32_t flags, const glm::vec4& color)
     {
-        if (flags & ClearColor) m_clearColor = color;   // also feeds the next pass's loadOp clear
+        if (flags & ClearColor) m_clearColor = color;   
         if (!m_frameActive) return;
 
-        // Mid-pass clear of the current target (offscreen RT or swapchain), so
-        // GL-style "Clear() after BeginRenderTarget" works on Vulkan too.
+        
+        
         VkClearAttachment atts[2]{};
         uint32_t n = 0;
         if (flags & ClearColor)
@@ -414,7 +414,7 @@ namespace Ditto
     void VulkanRenderer::SetWireframe(bool) {}
     void VulkanRenderer::SetCullState(bool) {}
 
-    // ----------------------------- Helpers --------------------------------
+    
     bool VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, bool hostVisible,
                                       VkBuffer& outBuf, VmaAllocation& outAlloc, void** outMapped)
     {
@@ -429,8 +429,8 @@ namespace Ditto
         {
             aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
                       | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-            // COHERENT required so persistently-mapped writes need no manual flush
-            // (matches the previous explicit HOST_VISIBLE|HOST_COHERENT behavior).
+            
+            
             aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
         }
 
@@ -446,10 +446,10 @@ namespace Ditto
 
     bool VulkanRenderer::CreateUboDescriptors()
     {
-        // Shared set-0 layout (UBO @ binding 0), used by all pipelines. Regular
-        // (not push), so set 1 can be the single allowed push-descriptor set.
-        // DYNAMIC so the per-viewport UBO slot is selected via a dynamic offset at
-        // bind time (one descriptor set, many slots within the frame's buffer).
+        
+        
+        
+        
         VkDescriptorSetLayoutBinding ub{};
         ub.binding = 0; ub.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC; ub.descriptorCount = 1;
         ub.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -468,8 +468,8 @@ namespace Ditto
         ai.descriptorPool = m_uboPool; ai.descriptorSetCount = kFramesInFlight; ai.pSetLayouts = layouts;
         if (vkAllocateDescriptorSets(m_device, &ai, m_uboSets) != VK_SUCCESS) return false;
 
-        // Point each frame's set at its UBO buffer (contents update via mapped memory).
-        // range = one slot; the active slot is chosen by the dynamic offset at bind.
+        
+        
         for (int i = 0; i < kFramesInFlight; ++i)
         {
             VkDescriptorBufferInfo bi{ m_uboBuf[i], 0, kUboSlotSize };
@@ -496,7 +496,7 @@ namespace Ditto
 
         VmaAllocationCreateInfo aci{};
         aci.usage = VMA_MEMORY_USAGE_AUTO;
-        aci.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;   // full-screen attachment: dedicated is optimal
+        aci.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;   
         if (vmaCreateImage(m_allocator, &ici, &aci, &m_depthImage, &m_depthMem, nullptr) != VK_SUCCESS) return false;
 
         VkImageViewCreateInfo vci{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
@@ -521,22 +521,22 @@ namespace Ditto
         return m;
     }
 
-    // ----------------------------- Mesh -----------------------------------
+    
     MeshHandle VulkanRenderer::CreateMesh(const float* vertexData, size_t floatCount, int strideFloats,
                                           const std::vector<VertexAttrib>&, const uint32_t* indices, size_t indexCount)
     {
         if (!vertexData || floatCount == 0 || strideFloats <= 0) return {};
 
-        // Upload one block of data into a fresh device-local buffer via staging.
+        
         auto uploadDeviceLocal = [&](const void* data, VkDeviceSize size, VkBufferUsageFlags usage,
                                      VkBuffer& outBuf, VmaAllocation& outAlloc)
         {
             VkBuffer staging; VmaAllocation stagingAlloc; void* p = nullptr;
-            CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, /*hostVisible=*/true,
+            CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true,
                 staging, stagingAlloc, &p);
             memcpy(p, data, (size_t)size);
 
-            CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, /*hostVisible=*/false,
+            CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, false,
                 outBuf, outAlloc);
 
             VkCommandBuffer cmd = BeginSingleTime();
@@ -563,13 +563,13 @@ namespace Ditto
         return MeshHandle{ (uint32_t)m_meshes.size() };
     }
 
-    // Outside a frame, the last kFramesInFlight submissions may still be
-    // executing on the GPU -- nothing has waited their fences yet (BeginFrame
-    // only ever waits the next frame's, and teardown paths like Scene::~Scene
-    // run after the loop with the final frame still pending). Freeing a
-    // resource those command buffers reference is invalid (e.g. descriptor
-    // sets trip VUID-vkFreeDescriptorSets-pDescriptorSets-00309). Idle the
-    // device first; on an already-idle device this returns immediately.
+    
+    
+    
+    
+    
+    
+    
     void VulkanRenderer::WaitGpuIdleForDestroy()
     {
         if (m_device && !m_frameActive) vkDeviceWaitIdle(m_device);
@@ -585,13 +585,13 @@ namespace Ditto
         m = VkMeshRes{};
     }
 
-    // ------------------------- Storage buffers ----------------------------
+    
     StorageBufferHandle VulkanRenderer::CreateStorageBuffer(size_t sizeBytes, bool)
     {
         VkStorageRes s;
-        s.size = sizeBytes < 4096 ? 4096 : sizeBytes;   // start with headroom; grow on demand
+        s.size = sizeBytes < 4096 ? 4096 : sizeBytes;   
         for (int i = 0; i < kFramesInFlight; ++i)
-            CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, /*hostVisible=*/true,
+            CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true,
                 s.buf[i], s.mem[i], &s.mapped[i]);
         m_storage.push_back(s);
         return StorageBufferHandle{ (uint32_t)m_storage.size() };
@@ -602,14 +602,14 @@ namespace Ditto
         if (h.id == 0 || h.id > m_storage.size() || !data || sizeBytes == 0) return;
         VkStorageRes& s = m_storage[h.id - 1];
 
-        if (sizeBytes > s.size)   // grow (rare: instance count increased)
+        if (sizeBytes > s.size)   
         {
             vkDeviceWaitIdle(m_device);
             for (int i = 0; i < kFramesInFlight; ++i)
                 if (s.buf[i]) vmaDestroyBuffer(m_allocator, s.buf[i], s.mem[i]);
             s.size = sizeBytes;
             for (int i = 0; i < kFramesInFlight; ++i)
-                CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, /*hostVisible=*/true,
+                CreateBuffer(s.size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true,
                     s.buf[i], s.mem[i], &s.mapped[i]);
         }
         memcpy(s.mapped[m_currentFrame], data, sizeBytes);
@@ -625,7 +625,7 @@ namespace Ditto
         s = VkStorageRes{};
     }
 
-    // ------------------------------ Pipeline ------------------------------
+    
     PipelineHandle VulkanRenderer::CreatePipeline(const std::string& hlslSource, const PipelineState& state)
     {
         if (!m_pushDescriptorOK)
@@ -644,14 +644,14 @@ namespace Ditto
         p.vs = CreateShaderModule(vs.spirv);
         p.fs = CreateShaderModule(ps.spirv);
 
-        // set 0 = shared UBO layout (regular, bound). set 1 = 2 storage buffers (push,
-        // the single allowed push-descriptor set). p.setLayouts[0] stays null (shared,
-        // not owned by the pipeline); only set 1 is created/destroyed per pipeline.
-        // Every binding is visible to BOTH stages: the engine prelude exposes
-        // ModelMatrices/PropertyColors/MainTex to user code in either stage (e.g.
-        // PSMain reads PropertyColors via _Color), and a layout that declares
-        // fewer stages than the SPIR-V actually uses is invalid
-        // (VUID-VkGraphicsPipelineCreateInfo-layout-07988) -> broken draws.
+        
+        
+        
+        
+        
+        
+        
+        
         if (p.usesSceneResources)
         {
             const VkShaderStageFlags vsfs = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -708,7 +708,7 @@ namespace Ditto
         ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
         VkPipelineViewportStateCreateInfo vp{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
-        vp.viewportCount = 1; vp.scissorCount = 1;   // dynamic
+        vp.viewportCount = 1; vp.scissorCount = 1;   
 
         VkPipelineRasterizationStateCreateInfo rs{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
         rs.polygonMode = state.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
@@ -778,9 +778,9 @@ namespace Ditto
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->pipeline);
 
-        // Bind set 0 (this frame's FrameUniforms UBO) at the current ring slot's
-        // dynamic offset. SetFrameUniforms (called next) writes that slot and rebinds
-        // with the same offset. Set 1 (storage buffers) is pushed per-draw in DrawInstanced.
+        
+        
+        
         const uint32_t dynOffset = m_uboSlot * kUboSlotSize;
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boundPipeline->layout,
             0, 1, &m_uboSets[m_currentFrame], 1, &dynOffset);
@@ -788,8 +788,8 @@ namespace Ditto
 
     void VulkanRenderer::SetFrameUniforms(const FrameUniforms& u)
     {
-        // std140 mirror matching Scene.hlsl's cbuffer (same bytes as the GL path,
-        // GLM column-major; the SPIR-V's matrix decorations make it consistent).
+        
+        
         struct Std140
         {
             glm::mat4 view;
@@ -815,10 +815,10 @@ namespace Ditto
 
         static_assert(sizeof(Std140) <= kUboSlotSize, "FrameUniforms exceeds UBO slot size");
 
-        // Write this viewport's uniforms into its own ring slot, then point set 0 at
-        // that slot. Without per-call slots, a second viewport's SetFrameUniforms would
-        // overwrite the first's bytes before the GPU executes either draw (everything
-        // is recorded into one command buffer), stretching the earlier viewport.
+        
+        
+        
+        
         const uint32_t dynOffset = m_uboSlot * kUboSlotSize;
         if (m_uboMapped[m_currentFrame])
             memcpy((char*)m_uboMapped[m_currentFrame] + dynOffset, &d, sizeof(d));
@@ -900,7 +900,7 @@ namespace Ditto
             return;
         }
 
-        // Push set 1 (this frame's storage buffers + material texture).
+        
         VkDescriptorBufferInfo bi[2] = {
             { model->buf[m_currentFrame], 0, VK_WHOLE_SIZE },
             { color->buf[m_currentFrame], 0, VK_WHOLE_SIZE },

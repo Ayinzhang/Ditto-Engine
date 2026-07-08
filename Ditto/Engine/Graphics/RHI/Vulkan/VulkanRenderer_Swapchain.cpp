@@ -7,7 +7,7 @@
 
 namespace Ditto
 {
-    // ----------------------------- Swapchain ------------------------------
+    
     bool VulkanRenderer::CreateSwapchain()
     {
         VkSurfaceCapabilitiesKHR caps;
@@ -17,11 +17,11 @@ namespace Ditto
         vkGetPhysicalDeviceSurfaceFormatsKHR(m_physicalDevice, m_surface, &fmtCount, nullptr);
         std::vector<VkSurfaceFormatKHR> formats(fmtCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(m_physicalDevice, m_surface, &fmtCount, formats.data());
-        // Prefer a UNORM (non-sRGB) surface format: the engine and ImGui write raw
-        // color values with no gamma handling, exactly like the GL backend (no
-        // GL_FRAMEBUFFER_SRGB). An *_SRGB swapchain re-encodes those values on
-        // store, washing the whole editor out to grey. Same policy as ImGui's own
-        // Vulkan example.
+        
+        
+        
+        
+        
         VkSurfaceFormatKHR chosen = formats.empty() ? VkSurfaceFormatKHR{ VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR } : formats[0];
         for (const auto& f : formats)
             if ((f.format == VK_FORMAT_B8G8R8A8_UNORM || f.format == VK_FORMAT_R8G8B8A8_UNORM)
@@ -31,7 +31,7 @@ namespace Ditto
         vkGetPhysicalDeviceSurfacePresentModesKHR(m_physicalDevice, m_surface, &pmCount, nullptr);
         std::vector<VkPresentModeKHR> modes(pmCount);
         vkGetPhysicalDeviceSurfacePresentModesKHR(m_physicalDevice, m_surface, &pmCount, modes.data());
-        VkPresentModeKHR present = VK_PRESENT_MODE_FIFO_KHR;   // always available (vsync)
+        VkPresentModeKHR present = VK_PRESENT_MODE_FIFO_KHR;   
         for (auto m : modes) if (m == VK_PRESENT_MODE_MAILBOX_KHR) { present = m; break; }
 
         VkExtent2D extent = caps.currentExtent;
@@ -115,7 +115,7 @@ namespace Ditto
 
         VkAttachmentReference colorRef{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
 
-        // Depth attachment (cleared each frame, not stored).
+        
         VkAttachmentDescription depth{};
         depth.format = m_depthFormat;
         depth.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -215,7 +215,7 @@ namespace Ditto
                 Logger::Get().Error("[Vulkan] sync object creation failed");
                 return false;
             }
-        // Per-swapchain-image render-finished semaphores (avoids reuse-while-pending).
+        
         for (size_t i = 0; i < m_renderFinished.size(); ++i)
             if (vkCreateSemaphore(m_device, &sci, nullptr, &m_renderFinished[i]) != VK_SUCCESS)
             {
@@ -238,7 +238,7 @@ namespace Ditto
 
     bool VulkanRenderer::RecreateSwapchain()
     {
-        // Pause while minimized (zero-size framebuffer).
+        
         int w = 0, h = 0;
         if (m_window)
             m_window->GetFramebufferSize(w, h);
@@ -255,7 +255,7 @@ namespace Ditto
         if (!CreateDepthResources()) return false;
         CreateFramebuffers();
 
-        // Image count may change 鈫?rebuild per-image render-finished semaphores.
+        
         for (auto s : m_renderFinished) if (s) vkDestroySemaphore(m_device, s, nullptr);
         m_renderFinished.assign(m_swapchainImages.size(), VK_NULL_HANDLE);
         VkSemaphoreCreateInfo sci{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
@@ -263,7 +263,7 @@ namespace Ditto
         return true;
     }
 
-    // ------------------------------- Frame --------------------------------
+    
     void VulkanRenderer::BeginFrame()
     {
         if (!m_ready) return;
@@ -278,7 +278,7 @@ namespace Ditto
 
         vkResetFences(m_device, 1, &m_inFlight[m_currentFrame]);
 
-        m_uboSlot = 0;   // restart the per-frame UBO ring (one slot per viewport)
+        m_uboSlot = 0;   
 
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
         vkResetCommandBuffer(cmd, 0);
@@ -296,7 +296,7 @@ namespace Ditto
         rp.pClearValues = clears;
         vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
-        // Negative-height viewport flips Y so Vulkan matches the GL Y-up convention.
+        
         VkViewport vp{ 0.0f, (float)m_swapchainExtent.height,
                        (float)m_swapchainExtent.width, -(float)m_swapchainExtent.height, 0.0f, 1.0f };
         VkRect2D sc{ {0, 0}, m_swapchainExtent };

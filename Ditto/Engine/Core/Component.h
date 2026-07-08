@@ -5,10 +5,10 @@
 
 struct GameObject;
 
-// Component type identifiers. Each component carries one of these in its
-// `index` field; `GameObject::compMask` is the bitwise-OR of the indices of
-// the components it owns. Kept as distinct bit flags so a mask can answer
-// "does this object have component X?" with a single AND.
+
+
+
+
 namespace ComponentIndex
 {
     constexpr int Transform    = 1 << 0;

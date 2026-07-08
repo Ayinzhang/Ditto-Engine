@@ -60,14 +60,14 @@ void ForEachGameObject(Scene* scene, Func&& func)
 {
     if (!scene) return;
 
-    // Single-ownership: always traverse from rootGameObject.
+    
     std::function<void(GameObject*)> traverse = [&](GameObject* obj)
     {
         if (!obj) return;
-        // Skip invoking on an object that has a component pending removal this
-        // frame, but ALWAYS recurse into its children: a pending removal on one
-        // object must not silently freeze script/physics iteration for its whole
-        // subtree.
+        
+        
+        
+        
         if (obj->removeComps.empty())
             func(obj);
         for (const auto& child : obj->children)
@@ -137,8 +137,8 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         }
     }
 
-    // Create the window + renderer for `backend`; returns false on failure so the
-    // caller can fall back to OpenGL.
+    
+    
     auto makeWindowRenderer = [&](Backend b) -> bool
     {
         window = std::make_unique<Ditto::GlfwWindow>();
@@ -173,7 +173,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
         {
 #ifdef DITTO_ENABLE_VULKAN
             auto vk = std::make_unique<Ditto::VulkanRenderer>(window.get());
-            if (!vk->IsValid()) return false;   // device/swapchain init failed
+            if (!vk->IsValid()) return false;   
             renderer = std::move(vk);
 #else
             return false;
@@ -236,7 +236,7 @@ void Engine::InitCommon(bool createEditor, const std::string& shaderBaseDir)
 Engine::Engine()
 {
     gameMode = false;
-    InitCommon(/*createEditor=*/true, /*shaderBaseDir=*/"");
+    InitCommon(true, "");
 }
 
 Engine::Engine(bool isGameMode, const std::string& projectPath, const std::string& startupScene)
@@ -249,7 +249,7 @@ Engine::Engine(bool isGameMode, const std::string& projectPath, const std::strin
     DITTO_LOG_INFO_STREAM("[Engine] Project path: " << projectPath);
     DITTO_LOG_INFO_STREAM("[Engine] Startup scene: " << startupScene);
 
-    InitCommon(/*createEditor=*/false, /*shaderBaseDir=*/projectPath);
+    InitCommon(false, projectPath);
 
     LoadGameScene();
 }
@@ -259,17 +259,17 @@ Engine::~Engine()
     CSharpScriptSystem::Shutdown();
     AudioEngine::Shutdown();
 
-    // Destruction order is load-bearing -- reset explicitly instead of relying
-    // on member declaration order: the Scene frees its GPU handles through
-    // `renderer`, so it must die first; the renderer must die while the GL
-    // context is still current (before the window).
+    
+    
+    
+    
     editor.reset();
     sceneCamera.reset(); gameCamera.reset();
     scene.reset();
 
-    // Release the renderer (owns all GL objects: pipelines, meshes, buffers,
-    // textures) while the context is STILL current, before tearing down the
-    // window. The Scene/editor were destroyed above and freed their handles first.
+    
+    
+    
     renderer.reset();
 
     if (window) { window->Destroy(); window.reset(); }
@@ -300,13 +300,27 @@ bool Engine::BeginRuntimeFrame()
     bool enteredPlay = (state == Play && previousFrameState != Play);
     previousFrameState = state;
 
-    // Poll window events and snapshot input state BEFORE gameplay runs so
-    // C# scripts see this frame's key edges (GetKeyDown/Up) correctly.
+    
+    
     if (window) window->PollEvents();
     Input::NewFrame();
     ProcessInput();
-    if (gameMode)
-        Input::SetGameViewport(0.0f, 0.0f, (float)window_width, (float)window_height);
+    if (!gameMode && editor)
+    {
+        editor->ApplyGameViewportToInput();
+    }
+    else if (gameMode)
+    {
+        int inputW = window_width;
+        int inputH = window_height;
+        if (window)
+            window->GetWindowSize(inputW, inputH);
+        inputW = inputW > 1 ? inputW : 1;
+        inputH = inputH > 1 ? inputH : 1;
+        Input::SetGameViewport(0.0f, 0.0f,
+            static_cast<float>(inputW),
+            static_cast<float>(inputH));
+    }
 
     return enteredPlay;
 }
@@ -353,9 +367,9 @@ void Engine::StepPhysics2D()
 
 void Engine::DispatchCollisionEvents()
 {
-    // Dispatch collision/trigger Enter/Exit events to C# scripts
-    // (before Update so scripts see the events for this frame).
-    // kind: 0=CollisionEnter 1=CollisionExit 2=TriggerEnter 3=TriggerExit
+    
+    
+    
     auto dispatch = [](GameObject* self, GameObject* other,
         const ContactEvent& ev, bool flipNormal, bool isEnter)
     {
@@ -371,8 +385,8 @@ void Engine::DispatchCollisionEvents()
         });
     };
 
-    // ev.normal points from a towards b. Unity convention: the collision normal
-    // points away from the other collider.
+    
+    
     for (const ContactEvent& ev : physics->enterEvents)
     {
         dispatch(ev.a, ev.b, ev, true, true);
@@ -419,9 +433,9 @@ void Engine::DispatchCollisionEvents()
 
 void Engine::UpdateUIButtonInteractions()
 {
-    // UI button interaction (hover/press/click), using the viewport-relative
-    // mouse position. Runs before script Update so scripts observe clicks in
-    // the same frame.
+    
+    
+    
     glm::vec2 mouse = Input::GetMousePosition();
     glm::vec2 vp = Input::GetGameViewportSize();
     bool lmbDown = Input::GetMouseButton(0);
@@ -465,8 +479,8 @@ void Engine::UpdateScriptComponents()
 
 void Engine::UpdateRuntimeComponents()
 {
-    // Animator runs only in Play mode; ParticleSystem also ticks in Edit mode
-    // for Inspector preview playback.
+    
+    
     float frameDt = static_cast<float>(deltaTime);
     bool isPlay = (state == Play);
     ForEachGameObject(scene.get(), [frameDt, isPlay](GameObject* obj)
@@ -520,7 +534,7 @@ void* Engine::RenderSceneToTexture(int w, int h, bool isGameView)
     int& rtW = isGameView ? gameViewW : sceneViewW;
     int& rtH = isGameView ? gameViewH : sceneViewH;
 
-    // (Re)create the render target when the viewport size changes.
+    
     if (rt && (rtW != w || rtH != h))
     {
         renderer->DestroyRenderTarget(rt);
@@ -599,10 +613,10 @@ void Engine::ProcessInput()
     }
     ctrlRPressedLastFrame = ctrlRPressedNow;
 
-    // Ctrl+Z Undo / Ctrl+Y Redo (editor, edit-mode only). Skip while typing in a
-    // text field so the shortcuts don't fight ImGui's own text editing.
-    // Game mode has NO ImGui context (only the editor calls CreateContext), so
-    // guard the GetIO() call -- it asserts/crashes on a null context otherwise.
+    
+    
+    
+    
     bool ctrlDown = window->IsKeyPressed(Ditto::KeyCode::LeftControl) ||
                     window->IsKeyPressed(Ditto::KeyCode::RightControl);
     bool textInputActive = ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput;

@@ -17,7 +17,7 @@ struct ContactEvent2D
     GameObject* a = nullptr;
     GameObject* b = nullptr;
     glm::vec2 point{ 0.0f };
-    glm::vec2 normal{ 0.0f };   // from A towards B
+    glm::vec2 normal{ 0.0f };   
     float depth = 0.0f;
     bool isTrigger = false;
 };
@@ -69,6 +69,7 @@ private:
     void DetectCollisions();
     void SolveVelocity(float dt);
     void SolvePositions();
+    void UpdateSleeping(float dt);
     void SyncTransforms();
     void DetectContactEvents();
 

@@ -51,10 +51,10 @@ struct CollisonPairs
 struct BVHNode
 {
 	AABB aabb; bool isLeaf;
-	BVHNode* parent = nullptr;                 // observer (back-pointer)
+	BVHNode* parent = nullptr;                 
 
-	// Internal nodes own their children; leaf nodes observe their collider.
-	// (Was a union of the two -- a union cannot hold unique_ptr members.)
+	
+	
 	std::unique_ptr<BVHNode> left, right;
 	Collider* collider = nullptr;
 
@@ -68,7 +68,7 @@ struct BVHNode
 struct BVHTree
 {
     std::unique_ptr<BVHNode> root;
-    std::vector<BVHNode*> leafNodes;   // observers; lifetime owned by the tree
+    std::vector<BVHNode*> leafNodes;   
     size_t currentSampleIndex = 0;
 	BVHTree(std::vector<Collider*> colliders);
     ~BVHTree();
@@ -84,8 +84,8 @@ private:
     BVHNode* FindBestInsertionNode(AABB bounds);
     float CalculateInsertionCost(BVHNode* node, AABB bounds);
     void RefitUpwards(BVHNode* node);
-    // Unlink `node` (a leaf) from the tree and return its ownership; its
-    // now-single-child parent is collapsed away. Was RemoveNodeFromTree.
+    
+    
     std::unique_ptr<BVHNode> DetachLeaf(BVHNode* node);
     void QueryRecursive(BVHNode* node, AABB bounds, std::vector<Collider*>& results);
 };

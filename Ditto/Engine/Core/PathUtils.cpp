@@ -20,14 +20,14 @@ namespace PathUtils
     static fs::path ComputeExecutableDir()
     {
 #ifdef _WIN32
-        // Use the wide-char API and a growable buffer so non-ASCII install
-        // paths resolve correctly and long paths are not silently truncated.
+        
+        
         std::wstring buffer(MAX_PATH, L'\0');
         for (;;)
         {
             DWORD len = GetModuleFileNameW(nullptr, buffer.data(),
                                            static_cast<DWORD>(buffer.size()));
-            if (len == 0) break; // query failed -> fall through to cwd
+            if (len == 0) break; 
             if (len < buffer.size())
             {
                 buffer.resize(len);
@@ -37,7 +37,7 @@ namespace PathUtils
                 if (!dir.empty()) return dir;
                 break;
             }
-            buffer.resize(buffer.size() * 2); // truncated -> grow and retry
+            buffer.resize(buffer.size() * 2); 
         }
 #elif defined(__APPLE__)
         uint32_t size = 0;
@@ -74,7 +74,7 @@ namespace PathUtils
             if (fs::exists(current / marker, ec))
                 return current;
             fs::path parent = current.parent_path();
-            if (parent == current) break; // reached filesystem root
+            if (parent == current) break; 
             current = parent;
         }
         return {};
@@ -89,17 +89,17 @@ namespace PathUtils
         if (!preferredRoot.empty())
         {
             candidates.push_back(preferredRoot / "Assets" / relativeToAssets);
-            candidates.push_back(preferredRoot / relativeToAssets); // root already an Assets dir
+            candidates.push_back(preferredRoot / relativeToAssets); 
         }
 
-        // Project layout: exe in <root>/x64/Debug, engine assets in <root>/Ditto/Assets.
-        // Anchored to the exe so it resolves regardless of the working directory.
+        
+        
         fs::path dittoRoot = FindAncestorContaining(exeDir, "Ditto");
         if (!dittoRoot.empty())
             candidates.push_back(dittoRoot / "Ditto" / "Assets" / relativeToAssets);
 
-        // Development layout: binary sits in a build subdir while Assets lives
-        // higher up in the source tree. Anchor the walk to the exe, not cwd.
+        
+        
         fs::path assetRoot = FindAncestorContaining(exeDir, "Assets");
         if (!assetRoot.empty())
             candidates.push_back(assetRoot / "Assets" / relativeToAssets);
@@ -117,8 +117,8 @@ namespace PathUtils
                 return candidate;
         }
 
-        // Nothing found: return the exe-anchored path so logs show an absolute,
-        // diagnosable location rather than a bare relative guess.
+        
+        
         return exeAssets;
     }
 }

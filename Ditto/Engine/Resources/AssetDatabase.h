@@ -53,14 +53,14 @@ namespace Ditto
         std::vector<AssetRecord> AssetsNeedingImport() const;
         bool ImportAsset(const std::string& guid);
 
-        // Incremental import dependency helpers. Dependencies are stored as
-        // GUID strings without the "guid:" prefix.
+        
+        
         std::vector<std::string> GetDependents(const std::string& guid) const;
         std::vector<std::string> GetAllDependencies(const std::string& guid) const;
         void MarkDependentsForReimport(const std::string& guid);
         bool ImportAssetWithDependents(const std::string& guid, std::vector<std::string>& importedGuids);
 
-        // Asset repair helpers used by the editor health window.
+        
         bool CreateAssetMetaFile(const std::string& assetPath);
         bool RegenerateGuid(const std::string& assetPath);
 

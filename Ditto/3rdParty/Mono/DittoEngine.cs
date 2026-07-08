@@ -1,5 +1,5 @@
-// DittoEngine C# 辅助库源码
-// 用户需要编译成 DittoEngine.dll 并放到 3rdParty/Mono/ 目录
+
+
 
 using System;
 using System.Runtime.CompilerServices;
@@ -16,7 +16,7 @@ namespace DittoEngine
     {
     }
 
-    // Vector2
+    
     public struct Vector2
     {
         public float x, y;
@@ -43,7 +43,7 @@ namespace DittoEngine
         public override string ToString() => $"({x}, {y})";
     }
     
-    // Vector3
+    
     public struct Vector3
     {
         public float x, y, z;
@@ -71,7 +71,7 @@ namespace DittoEngine
         public override string ToString() => $"({x}, {y}, {z})";
     }
     
-    // Vector4
+    
     public struct Vector4
     {
         public float x, y, z, w;
@@ -96,7 +96,7 @@ namespace DittoEngine
         public override string ToString() => $"({x}, {y}, {z}, {w})";
     }
     
-    // Transform 组件
+    
     public class Transform
     {
         private IntPtr _nativeTransform;
@@ -187,7 +187,7 @@ namespace DittoEngine
         public void Translate(float x, float y, float z) => position += new Vector3(x, y, z);
     }
     
-    // Renderer 组件
+    
     public class Renderer
     {
         public enum ShapeType { Cube, Sphere }
@@ -242,7 +242,7 @@ namespace DittoEngine
         private static extern void SetColor(IntPtr renderer, float r, float g, float b, float a);
     }
     
-    // Light 组件
+    
     public class SpriteRenderer
     {
         private IntPtr _nativeSpriteRenderer;
@@ -465,12 +465,12 @@ namespace DittoEngine
         private static extern void ScreenToWorldPointOnPlaneNative(IntPtr camera, float x, float y, float worldZ, float[] outPoint);
     }
     
-    // Rigidbody 组件
+    
     public class Rigidbody
     {
-        // Must match RigidbodyComponent::Type on the native side (values are
-        // passed as ints across the interop boundary). Kinematic = follows the
-        // Transform/parent, infinite mass, no gravity.
+        
+        
+        
         public enum BodyType { Static, Dynamic, Kinematic }
         
         private IntPtr _nativeRigidbody;
@@ -625,7 +625,7 @@ namespace DittoEngine
         private static extern void SetAngularVelocity(IntPtr rigidbody, float x, float y, float z);
     }
     
-    // AudioSource 组件
+    
     public enum ForceMode2D
     {
         Force = 0,
@@ -814,7 +814,7 @@ namespace DittoEngine
         private static extern int IsPlayingNative(IntPtr audioSource);
     }
 
-    // UI Text 组件
+    
     public class UIText
     {
         private IntPtr _native;
@@ -842,7 +842,7 @@ namespace DittoEngine
         private static extern void SetColorNative(IntPtr uiText, float r, float g, float b, float a);
     }
 
-    // UI Image 组件
+    
     public class UIImage
     {
         private IntPtr _native;
@@ -868,12 +868,12 @@ namespace DittoEngine
         private static extern void GetColorNative(IntPtr uiImage, float[] outColor);
     }
 
-    // UI Button 组件
+    
     public class UIButton
     {
         private IntPtr _native;
 
-        // 自上次读取以来是否被点击过（读取后自动清零）
+        
         public bool wasClicked
         {
             get => _native != IntPtr.Zero && ConsumeClick(_native) != 0;
@@ -901,7 +901,7 @@ namespace DittoEngine
         private static extern void SetLabelNative(IntPtr uiButton, string label);
     }
 
-    // GameObject 类
+    
     public class GameObject
     {
         private IntPtr _nativePtr;
@@ -934,7 +934,7 @@ namespace DittoEngine
             _nativePtr = nativePtr;
         }
         
-        // 泛型 GetComponent
+        
         public T GetComponent<T>() where T : class
         {
             if (_nativePtr == IntPtr.Zero) return null;
@@ -983,7 +983,7 @@ namespace DittoEngine
         private static extern IntPtr GetComponentByType(IntPtr gameObject, string typeName);
     }
     
-    // Time 类
+    
     public class Time
     {
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -997,7 +997,7 @@ namespace DittoEngine
         public static float fixedDeltaTime => 0.02f;
     }
 
-    // 按键码（值与 GLFW key code 一致，跨边界直接传 int）
+    
     public enum KeyCode
     {
         Space = 32,
@@ -1041,8 +1041,8 @@ namespace DittoEngine
         Button8 = 7,
     }
 
-    // Input 类 - 键盘/鼠标查询（每帧由引擎快照，Down/Up 为边沿检测）
-    // 鼠标坐标相对 Game 视口左上角（像素）。
+    
+    
     public static class Input
     {
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -1073,7 +1073,7 @@ namespace DittoEngine
         public static bool GetKeyDown(KeyCode key) => GetKeyDownNative((int)key) != 0;
         public static bool GetKeyUp(KeyCode key) => GetKeyUpNative((int)key) != 0;
 
-        // button: 0=左键 1=右键 2=中键
+        
         public static bool GetMouseButton(int button) => GetMouseButtonNative(button) != 0;
         public static bool GetMouseButtonDown(int button) => GetMouseButtonDownNative(button) != 0;
         public static bool GetMouseButtonUp(int button) => GetMouseButtonUpNative(button) != 0;
@@ -1116,19 +1116,19 @@ namespace DittoEngine
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern int GetButtonUpNative(string buttonName);
 
-        // 虚拟轴: "Horizontal" (A/D, Left/Right), "Vertical" (W/S, Up/Down)。
-        // GetAxis 带平滑过渡, GetAxisRaw 返回瞬时 -1/0/+1。
+        
+        
         public static float GetAxis(string axisName) => GetAxisNative(axisName);
         public static float GetAxisRaw(string axisName) => GetAxisRawNative(axisName);
 
-        // 命名按钮: "Jump"(Space), "Fire1"(左键), "Fire2"(右键), "Fire3"(中键),
-        // "Submit"(Enter), "Cancel"(Esc)。
+        
+        
         public static bool GetButton(string buttonName) => GetButtonNative(buttonName) != 0;
         public static bool GetButtonDown(string buttonName) => GetButtonDownNative(buttonName) != 0;
         public static bool GetButtonUp(string buttonName) => GetButtonUpNative(buttonName) != 0;
     }
     
-    // Debug 类
+    
     public class Debug
     {
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -1139,18 +1139,18 @@ namespace DittoEngine
         public static void LogError(object msg) => Log("[Error] " + msg?.ToString());
     }
     
-    // 碰撞信息（OnCollisionEnter/Exit 的参数）
+    
     public class Collision
     {
-        public GameObject gameObject;       // 对方对象
-        public Vector3 contactPoint;        // 接触点（世界坐标，Exit 时为零）
-        public Vector3 normal;              // 法线，指向远离对方的方向
-        public float depth;                 // 穿透深度
+        public GameObject gameObject;       
+        public Vector3 contactPoint;        
+        public Vector3 normal;              
+        public float depth;                 
 
         public Transform transform => gameObject?.transform;
     }
 
-    // Raycast 命中信息
+    
     public struct RaycastHit
     {
         public GameObject gameObject;
@@ -1159,7 +1159,7 @@ namespace DittoEngine
         public float distance;
     }
 
-    // Physics 静态 API（仅 Play 模式有效，物理碰撞体在进入 Play 时构建）
+    
     public static class Physics
     {
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -1196,7 +1196,7 @@ namespace DittoEngine
         }
     }
 
-    // Animator Component
+    
     public class Animator
     {
         private IntPtr _nativePtr;
@@ -1257,7 +1257,7 @@ namespace DittoEngine
         private static extern int IsPlayingNative(IntPtr animator);
     }
 
-    // ParticleSystem Component
+    
     public class ParticleSystem
     {
         private IntPtr _nativePtr;
@@ -1297,7 +1297,7 @@ namespace DittoEngine
         private static extern int IsPlayingNative(IntPtr particleSystem);
     }
 
-    // MonoBehaviour 基类
+    
     public static class Object
     {
         public static GameObject Instantiate(GameObject original)
@@ -1355,15 +1355,15 @@ namespace DittoEngine
         public virtual void OnEnable() { }
         public virtual void OnDisable() { }
 
-        // 物理事件回调（由引擎在物理步进后、Update 前派发）
+        
         public virtual void OnCollisionEnter(Collision collision) { }
         public virtual void OnCollisionExit(Collision collision) { }
         public virtual void OnTriggerEnter(GameObject other) { }
         public virtual void OnTriggerExit(GameObject other) { }
 
-        // 引擎派发桥：C++ 只调这个方法（全部基础类型参数），在 C# 侧组装
-        // Collision 对象再转发给虚回调。kind: 0=CollisionEnter 1=CollisionExit
-        // 2=TriggerEnter 3=TriggerExit。不要在脚本里覆盖此方法。
+        
+        
+        
         public void __DispatchCollision(int kind, IntPtr otherGO,
             float px, float py, float pz, float nx, float ny, float nz, float depth)
         {

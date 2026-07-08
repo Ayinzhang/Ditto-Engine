@@ -10,7 +10,7 @@
 
 namespace Ditto
 {
-    // ------------------------------- ImGui --------------------------------
+    
     void VulkanRenderer::ImGuiInit(IWindow* window)
     {
         if (!m_ready || m_imguiInit) return;
@@ -83,17 +83,17 @@ namespace Ditto
 
     void VulkanRenderer::ImGuiRenderDrawData(void* drawData)
     {
-        // Records into the current command buffer, which BeginFrame put inside the
-        // swapchain render pass.
+        
+        
         if (!m_imguiInit || !m_frameActive) return;
         ImGui_ImplVulkan_RenderDrawData(static_cast<ImDrawData*>(drawData), m_commandBuffers[m_currentFrame]);
     }
 
-    // ------------------------------ Textures ------------------------------
-    // Shared linear-clamp sampler used by scene draws (DrawInstanced's push
-    // descriptor) and by ImGui texture descriptors. Created on first use so
-    // textures also work in game mode, where there is no editor and ImGuiInit
-    // is never called.
+    
+    
+    
+    
+    
     void VulkanRenderer::EnsureSampler()
     {
         if (m_sampler) return;
@@ -130,19 +130,19 @@ namespace Ditto
         vkFreeCommandBuffers(m_device, m_commandPool, 1, &cmd);
     }
 
-    TextureHandle VulkanRenderer::CreateTexture(const unsigned char* pixels, int w, int h, int /*channels*/)
+    TextureHandle VulkanRenderer::CreateTexture(const unsigned char* pixels, int w, int h, int )
     {
         if (!m_ready || !pixels || w <= 0 || h <= 0) return {};
         EnsureSampler();
-        const VkDeviceSize size = (VkDeviceSize)w * h * 4;            // Engine uploads RGBA8
+        const VkDeviceSize size = (VkDeviceSize)w * h * 4;            
 
-        // Staging buffer.
+        
         VkBuffer staging; VmaAllocation stagingAlloc; void* mapped = nullptr;
-        CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, /*hostVisible=*/true,
+        CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true,
             staging, stagingAlloc, &mapped);
         memcpy(mapped, pixels, (size_t)size);
 
-        // Device-local image.
+        
         VkTextureRes t;
         VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
         ici.imageType = VK_IMAGE_TYPE_2D;
@@ -158,7 +158,7 @@ namespace Ditto
         aci.usage = VMA_MEMORY_USAGE_AUTO;
         vmaCreateImage(m_allocator, &ici, &aci, &t.image, &t.memory, nullptr);
 
-        // Upload: UNDEFINED -> TRANSFER_DST -> copy -> SHADER_READ_ONLY.
+        
         VkCommandBuffer cmd = BeginSingleTime();
         VkImageMemoryBarrier b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
         b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -185,9 +185,9 @@ namespace Ditto
         vci.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         vkCreateImageView(m_device, &vci, nullptr, &t.view);
 
-        // The ImGui descriptor (texture id) only exists in editor builds where
-        // ImGui is initialized; scene draws never need it (they push tex->view
-        // + m_sampler directly). GetImGuiTextureID creates it lazily otherwise.
+        
+        
+        
         if (m_imguiInit)
             t.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -219,19 +219,19 @@ namespace Ditto
     {
         if (m_pendingTextureDestroys.empty()) return;
 
-        // These textures were queued for destruction while a frame was recording
-        // (e.g. a viewport RT torn down mid-frame on resize). Their ImGui descriptor
-        // sets may still be referenced by command buffers from any frame in flight,
-        // not just m_currentFrame -- BeginFrame only waited that one fence. Freeing a
-        // descriptor set still in use is undefined behavior (and trips
-        // VUID-vkFreeDescriptorSets-pDescriptorSets-00309).
-        //
-        // vkDeviceWaitIdle alone is NOT enough: this runs before BeginFrame resets the
-        // current command buffer, so every frame's command buffer is still in the
-        // executable state holding last cycle's ImGui draws that bound these descriptor
-        // sets. The validation layer (correctly) treats a set recorded into a live
-        // command buffer as in-use. Wait for the GPU to finish, then reset all command
-        // buffers so no recorded reference to the freed descriptors survives.
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         vkDeviceWaitIdle(m_device);
         for (auto cb : m_commandBuffers)
             if (cb) vkResetCommandBuffer(cb, 0);
@@ -251,10 +251,10 @@ namespace Ditto
     {
         if (h.id == 0 || h.id > m_textures.size()) return nullptr;
         VkTextureRes& t = m_textures[h.id - 1];
-        // Texture created before ImGuiInit (or in game mode): register lazily.
+        
         if (!t.descriptor && m_imguiInit && t.view && m_sampler)
             t.descriptor = ImGui_ImplVulkan_AddTexture(m_sampler, t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        return (void*)t.descriptor;   // VkDescriptorSet as ImTextureID
+        return (void*)t.descriptor;   
     }
 
     void VulkanRenderer::BindTexture(int binding, TextureHandle h)
@@ -263,14 +263,14 @@ namespace Ditto
             m_boundTextures[binding] = h;
     }
 
-    // --------------------------- Render targets ---------------------------
+    
     bool VulkanRenderer::EnsureRenderTargetPasses()
     {
         if (m_rtRenderPass && m_resumePass) return true;
 
-        // Offscreen pass: clear color+depth, end with color ready for sampling.
-        // The EXTERNAL dependencies order this frame's RT write against the
-        // previous frame's ImGui sampling (WAR) and this frame's (RAW).
+        
+        
+        
         {
             VkAttachmentDescription color{};
             color.format = m_swapchainFormat;
@@ -319,9 +319,9 @@ namespace Ditto
             }
         }
 
-        // Resume pass: identical attachments to the swapchain pass but LOADing the
-        // already-rendered color, so an interrupted frame keeps its contents.
-        // (Compatible with m_renderPass framebuffers: same formats/samples.)
+        
+        
+        
         {
             VkAttachmentDescription color{};
             color.format = m_swapchainFormat;
@@ -330,13 +330,13 @@ namespace Ditto
             color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
             color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            color.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;   // layout left by the ended pass
+            color.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;   
             color.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
             VkAttachmentDescription depth{};
             depth.format = m_depthFormat;
             depth.samples = VK_SAMPLE_COUNT_1_BIT;
-            depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;   // prior pass didn't store depth
+            depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;   
             depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             depth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -381,8 +381,8 @@ namespace Ditto
         VkRenderTargetRes rt;
         rt.w = w; rt.h = h;
 
-        // Color attachment (also sampled by ImGui). Registered as a texture so
-        // GetImGuiTextureID / DestroyTexture handle it like any other texture.
+        
+        
         VkTextureRes color;
         {
             VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
@@ -415,7 +415,7 @@ namespace Ditto
         m_textures.push_back(color);
         rt.color = TextureHandle{ (uint32_t)m_textures.size() };
 
-        // Depth attachment.
+        
         {
             VkImageCreateInfo ici{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
             ici.imageType = VK_IMAGE_TYPE_2D;
@@ -471,7 +471,7 @@ namespace Ditto
 
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
 
-        // Suspend the swapchain pass; EndRenderTarget resumes it with m_resumePass.
+        
         vkCmdEndRenderPass(cmd);
 
         VkClearValue clears[2]{};
@@ -488,9 +488,9 @@ namespace Ditto
         m_rtActive = true;
         m_rtExtent = { (uint32_t)rt.w, (uint32_t)rt.h };
 
-        // POSITIVE-height viewport (no Y flip): leaves the image in GL's
-        // bottom-up memory order, so editor code can use the same flipped UVs
-        // (0,1)-(1,0) it already uses for GL render targets.
+        
+        
+        
         VkViewport vp{ 0.0f, 0.0f, (float)rt.w, (float)rt.h, 0.0f, 1.0f };
         VkRect2D sc{ {0, 0}, m_rtExtent };
         vkCmdSetViewport(cmd, 0, 1, &vp);
@@ -502,10 +502,10 @@ namespace Ditto
         if (!m_frameActive || !m_rtActive) return;
         VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
 
-        vkCmdEndRenderPass(cmd);   // color transitions to SHADER_READ_ONLY
+        vkCmdEndRenderPass(cmd);   
         m_rtActive = false;
 
-        // Resume the swapchain pass, keeping its existing color contents.
+        
         VkClearValue clears[2]{};
         clears[1].depthStencil = { 1.0f, 0 };
         VkRenderPassBeginInfo rp{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
@@ -516,7 +516,7 @@ namespace Ditto
         rp.pClearValues = clears;
         vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
-        // Restore the full-swapchain flipped viewport/scissor (as in BeginFrame).
+        
         VkViewport vp{ 0.0f, (float)m_swapchainExtent.height,
                        (float)m_swapchainExtent.width, -(float)m_swapchainExtent.height, 0.0f, 1.0f };
         VkRect2D sc{ {0, 0}, m_swapchainExtent };
@@ -545,7 +545,7 @@ namespace Ditto
         VkBuffer staging = VK_NULL_HANDLE;
         VmaAllocation stagingAlloc = nullptr;
         void* mapped = nullptr;
-        if (!CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT, /*hostVisible=*/true,
+        if (!CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true,
             staging, stagingAlloc, &mapped))
         {
             return false;
@@ -590,14 +590,14 @@ namespace Ditto
         VkRenderTargetRes& rt = m_renderTargets[h.id - 1];
         if (!rt.framebuffer && !rt.depthImage && !rt.color) return;
 
-        // Editor-only path (viewport resize / preview teardown). If a frame is
-        // recording, DestroyTexture(rt.color) below defers the descriptor free to the
-        // next BeginFrame (ProcessDeferredDestroys), which handles synchronization.
-        // Otherwise we free here and now, so we must guarantee no command buffer still
-        // references the color texture's ImGui descriptor set: wait for the GPU, then
-        // reset the command buffers so their recorded bindings are gone. A bare
-        // vkDeviceWaitIdle is not enough -- a recorded-but-unreset buffer still counts
-        // as in-use and trips VUID-vkFreeDescriptorSets-pDescriptorSets-00309.
+        
+        
+        
+        
+        
+        
+        
+        
         vkDeviceWaitIdle(m_device);
         if (!m_frameActive)
             for (auto cb : m_commandBuffers)
@@ -606,7 +606,7 @@ namespace Ditto
         if (rt.framebuffer) vkDestroyFramebuffer(m_device, rt.framebuffer, nullptr);
         if (rt.depthView)   vkDestroyImageView(m_device, rt.depthView, nullptr);
         if (rt.depthImage)  vmaDestroyImage(m_allocator, rt.depthImage, rt.depthMem);
-        DestroyTexture(rt.color);   // frees color image/view + ImGui descriptor + slot
+        DestroyTexture(rt.color);   
         rt = VkRenderTargetRes{};
     }
 

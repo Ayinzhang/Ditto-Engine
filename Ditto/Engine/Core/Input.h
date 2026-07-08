@@ -3,48 +3,51 @@
 
 namespace Ditto { class IWindow; }
 
-// Static input state exposed to gameplay (C# scripts query this through
-// internal calls). Double-buffered key/mouse state polled once per frame from
-// the platform window after events are pumped, so `cur` holds this frame's
-// state and `prev` last frame's (edge detection).
-//
-// Mouse position is reported relative to the game viewport: in the editor this
-// is the "Game" panel rect (set by Editor::DrawGame each frame); in standalone
-// game mode it is the full window.
+
+
+
+
+
+
+
+
 struct Input
 {
     static void Init(Ditto::IWindow* window);
-    // Snapshot prev = cur, then poll fresh state. Call after window events.
+    
     static void NewFrame();
 
     static bool GetKey(int key);
     static bool GetKeyDown(int key);
     static bool GetKeyUp(int key);
 
-    static bool GetMouseButton(int button);       // 0=left 1=right 2=middle
+    static bool GetMouseButton(int button);       
     static bool GetMouseButtonDown(int button);
     static bool GetMouseButtonUp(int button);
 
-    // Unity-style virtual axes. "Horizontal" = A/D + Left/Right,
-    // "Vertical" = W/S + Up/Down. GetAxis applies simple per-frame smoothing
-    // toward the raw target; GetAxisRaw returns the instantaneous -1/0/+1.
+    
+    
+    
     static float GetAxis(const char* axisName);
     static float GetAxisRaw(const char* axisName);
 
-    // Unity-style named buttons. Built-ins: "Jump" (Space), "Fire1" (LMB),
-    // "Fire2" (RMB), "Fire3" (MMB), "Submit" (Enter), "Cancel" (Escape).
+    
+    
     static bool GetButton(const char* buttonName);
     static bool GetButtonDown(const char* buttonName);
     static bool GetButtonUp(const char* buttonName);
 
-    // Cursor position relative to the game viewport origin (pixels). May be
-    // outside [0,size) when the cursor is outside the viewport.
+    
+    
     static glm::vec2 GetMousePosition();
+    static glm::vec2 GetRawMousePosition();
     static glm::vec2 GetGameViewportSize();
+    static glm::vec4 GetGameViewportRect();
+    static bool IsMouseInsideGameViewport();
 
-    // The screen-space rect of the game viewport in window coordinates.
-    // Editor: called every frame by Editor::DrawGame with the Game panel rect.
-    // Game mode: Engine::Run sets it to the full window each frame.
+    
+    
+    
     static void SetGameViewport(float x, float y, float w, float h, float contentW = 0.0f, float contentH = 0.0f);
 
 private:
@@ -61,7 +64,7 @@ private:
     static float s_viewX, s_viewY, s_viewW, s_viewH;
     static float s_contentW, s_contentH;
 
-    // Smoothed virtual-axis values, advanced each NewFrame() toward their raw
-    // targets so GetAxis("Horizontal") ramps like Unity's default input.
+    
+    
     static float s_axisHorizontal, s_axisVertical;
 };

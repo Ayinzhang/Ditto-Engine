@@ -6,6 +6,8 @@ Ditto is a small C++ game engine and editor inspired by Unity-style workflows. I
 
 The project is currently Windows-first. Windows editor/player builds are the supported target. Android is visible in the build UI as a future target, but the Android runtime/exporter is not implemented yet.
 
+![content](content.png)
+
 ## Features
 
 - Editor: hierarchy, inspector, project window, scene/game views, gizmos, asset previews, layout persistence, project creation, and Windows build export.
@@ -34,7 +36,7 @@ Ditto/
   Assets/                 built-in shaders, materials, icons, sprites, models
   3rdParty/               vendored libraries: GLFW, GLAD, ImGui, GLM, Mono, Assimp, etc.
   Tests/                  native tests and render smoke executable
-Projects/                 local user projects, ignored by git
+Projects/                 sample and local project directory
 x64/                      Visual Studio build output, ignored by git
 ```
 
@@ -94,13 +96,8 @@ Or call MSBuild directly:
 Useful build flags:
 
 ```powershell
-# Disable DX12
 /p:EnableDX12=false
-
-# Disable Vulkan
 /p:EnableVulkan=false
-
-# Disable Assimp model import support
 /p:EnableAssimp=false
 ```
 
@@ -121,9 +118,9 @@ DirectX 12 -> Vulkan -> OpenGL
 Force a backend with `DITTO_RHI`:
 
 ```powershell
-$env:DITTO_RHI = "dx12"    # dx, dx12, directx
-$env:DITTO_RHI = "vulkan"  # vk, vulkan
-$env:DITTO_RHI = "opengl"  # gl, opengl
+$env:DITTO_RHI = "dx12"
+$env:DITTO_RHI = "vulkan"
+$env:DITTO_RHI = "opengl"
 .\x64\Debug\Ditto.exe
 ```
 
@@ -162,7 +159,3 @@ The render smoke creates a cube, sprite, and UI image, renders to offscreen targ
 - Vulkan backend missing: install the Vulkan SDK and restart the shell/IDE so `VULKAN_SDK` is visible.
 - DX12 shader compile failure: make sure `dxc.exe` is available. Installing the Vulkan SDK is the simplest current setup.
 - Assimp DLL missing at runtime: ensure `Ditto/3rdParty/Assimp/bin` contains `assimp-vc143-mt.dll`; the post-build step copies it when Assimp is enabled.
-
-![icon](icon.png)
-
-![content](content.png)

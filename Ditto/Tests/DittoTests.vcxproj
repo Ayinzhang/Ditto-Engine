@@ -131,6 +131,7 @@ cd /d "$(MSBuildThisFileDirectory)..\3rdParty\Mono" &amp;&amp; "%DOTNET%" build 
     <ClCompile Include="..\Engine\Core\JsonConfig.cpp" />
     <ClCompile Include="..\Engine\Core\RuntimeContext.cpp" />
     <ClCompile Include="..\Engine\Core\EngineLifecycle.cpp" />
+    <ClCompile Include="..\Engine\Core\Input.cpp" />
     <ClCompile Include="..\Engine\Core\Logger.cpp" />
     <ClCompile Include="..\Engine\Core\ProjectManager.cpp" />
     <ClCompile Include="..\Engine\Core\PrefabAsset.cpp" />

@@ -38,8 +38,8 @@ void Input::NewFrame()
 
     s_window->GetCursorPosition(s_mouseX, s_mouseY);
 
-    // Advance smoothed virtual axes toward their raw targets (Unity-like ramp).
-    // A fixed per-frame step keeps this independent of the gameplay timestep.
+    
+    
     const float kAxisStep = 0.25f;
     auto approach = [&](float current, float target) -> float
     {
@@ -99,9 +99,25 @@ glm::vec2 Input::GetMousePosition()
     return glm::vec2(localX, localY);
 }
 
+glm::vec2 Input::GetRawMousePosition()
+{
+    return glm::vec2((float)s_mouseX, (float)s_mouseY);
+}
+
 glm::vec2 Input::GetGameViewportSize()
 {
     return glm::vec2(s_contentW, s_contentH);
+}
+
+glm::vec4 Input::GetGameViewportRect()
+{
+    return glm::vec4(s_viewX, s_viewY, s_viewW, s_viewH);
+}
+
+bool Input::IsMouseInsideGameViewport()
+{
+    return (float)s_mouseX >= s_viewX && (float)s_mouseX < s_viewX + s_viewW &&
+        (float)s_mouseY >= s_viewY && (float)s_mouseY < s_viewY + s_viewH;
 }
 
 void Input::SetGameViewport(float x, float y, float w, float h, float contentW, float contentH)
@@ -146,7 +162,7 @@ float Input::GetAxis(const char* axisName)
     return GetAxisRaw(axisName);
 }
 
-// Map a named button to its (keyKind, code). keyKind 0 = keyboard, 1 = mouse.
+
 static bool ResolveButton(const char* name, int& kind, int& code)
 {
     struct Binding { const char* name; int kind; int code; };
@@ -154,9 +170,9 @@ static bool ResolveButton(const char* name, int& kind, int& code)
         { "Jump",   0, Ditto::KeyCode::Space },
         { "Submit", 0, Ditto::KeyCode::Enter },
         { "Cancel", 0, Ditto::KeyCode::Escape },
-        { "Fire1",  1, 0 },   // left mouse
-        { "Fire2",  1, 1 },   // right mouse
-        { "Fire3",  1, 2 },   // middle mouse
+        { "Fire1",  1, 0 },   
+        { "Fire2",  1, 1 },   
+        { "Fire3",  1, 2 },   
     };
     for (const Binding& b : bindings)
         if (StrEq(name, b.name)) { kind = b.kind; code = b.code; return true; }

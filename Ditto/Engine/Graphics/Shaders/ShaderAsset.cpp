@@ -855,7 +855,6 @@ float4 PSMain(v2f i) : SV_Target
         if (usage.known)
             return usage;
 
-        // Matches GenerateDefaultProgram().
         usage.known = true;
         usage.position = true;
         usage.normal = true;

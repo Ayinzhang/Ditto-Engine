@@ -428,7 +428,7 @@ namespace MonoRuntime
         script->className = className;
         script->assemblyPath = dllPath;
 
-        // Pre-load DittoEngine.dll so base class MonoBehaviour can be resolved
+        
         {
             const std::vector<std::string> enginePaths = {
                 "3rdParty/Mono/DittoEngine.dll",
@@ -490,8 +490,8 @@ namespace MonoRuntime
         script->updateMethod = GetMethod(klass, "Update", 0);
         script->fixedUpdateMethod = GetMethod(klass, "FixedUpdate", 0);
         script->onDestroyMethod = GetMethod(klass, "OnDestroy", 0);
-        // The dispatch bridge lives on the MonoBehaviour base class; walk the
-        // parent chain to find it (GetMethod alone won't search base classes).
+        
+        
         script->dispatchCollisionMethod = GetMethodRecursive(klass, "__DispatchCollision", 9);
 
         DITTO_LOG_INFO_STREAM("[Mono] LoadScript: klass=" << klass

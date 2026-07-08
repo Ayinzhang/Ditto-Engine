@@ -40,13 +40,13 @@ void GameObject::OnInspectorGUI()
     ImGui::PushID("NameInput");
     if (ImGui::InputText("", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
     {
-        if (CurrentEditor()) CurrentEditor()->PushUndoSnapshot();   // pre-rename state
+        if (CurrentEditor()) CurrentEditor()->PushUndoSnapshot();   
         name = nameBuffer;
         if (CurrentScene()) CurrentScene()->MarkDirty();
     }
     ImGui::PopID();
     
-    // Lock button (after name)
+    
     ImGui::SameLine();
     if (CurrentEditor())
     {
@@ -135,7 +135,7 @@ void TransformComponent::OnInspectorGUI()
         lastScale = scale;
         UpdateTransform();
         
-        // Mark scene as modified
+        
         if (CurrentScene()) CurrentScene()->MarkDirty();
     }
 #endif

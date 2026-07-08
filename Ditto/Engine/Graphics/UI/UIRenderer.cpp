@@ -17,7 +17,7 @@ static std::string ReadTextFileUI(const std::string& path)
     return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
 }
 
-// Engine font: prefer a project/engine-shipped TTF, fall back to Windows fonts.
+
 static std::string FindDefaultFontPath()
 {
     fs::path assets = Ditto::AssetPath::ResolveAssetPath("Fonts");
@@ -46,7 +46,7 @@ bool UIRenderer::Init(Ditto::IRenderer* rhi)
     if (initFailed || !rhi) return false;
     renderer = rhi;
 
-    // Unit quad (0,0)-(1,1), two triangles, position-only (vec2 @ location 0).
+    
     const float quadVerts[] = {
         0.0f, 0.0f,  1.0f, 0.0f,  1.0f, 1.0f,
         0.0f, 0.0f,  1.0f, 1.0f,  0.0f, 1.0f,
@@ -64,7 +64,7 @@ bool UIRenderer::Init(Ditto::IRenderer* rhi)
 
     Ditto::PipelineState state;
     state.renderType = "Transparent";
-    state.renderQueue = 4000;          // overlay: after everything
+    state.renderQueue = 4000;          
     state.depthTest = false;
     state.depthWrite = false;
     state.blend = true;
@@ -160,15 +160,15 @@ void UIRenderer::Render(Scene* scene, int viewportWidth, int viewportHeight)
     const float w = static_cast<float>(viewportWidth);
     const float h = static_cast<float>(viewportHeight);
 
-    // Solid-color quads (buttons + untextured images) batch on the white
-    // texture; textured images batch per texture; text batches on the font
-    // atlas and is drawn LAST so labels sit on top of button backgrounds.
+    
+    
+    
     std::vector<Instance> whiteBatch;
     std::map<uint32_t, std::pair<Ditto::TextureHandle, std::vector<Instance>>> texturedBatches;
     std::vector<Instance> textBatch;
 
-    // Image UVs are V-flipped because material textures load with
-    // stbi_set_flip_vertically_on_load(true) (image top stored at v=1).
+    
+    
     const glm::vec4 kImageUV(0.0f, 1.0f, 1.0f, 0.0f);
     const glm::vec4 kWhiteUV(0.0f, 0.0f, 1.0f, 1.0f);
 
@@ -249,12 +249,12 @@ void UIRenderer::Render(Scene* scene, int viewportWidth, int viewportHeight)
 
     if (whiteBatch.empty() && texturedBatches.empty() && textBatch.empty()) return;
 
-    // Frame uniforms: the UI shader only reads screenParams.
+    
     Ditto::FrameUniforms fu;
     fu.screenParams = glm::vec4(glm::max(1.0f, w), glm::max(1.0f, h),
         1.0f + 1.0f / glm::max(1.0f, w), 1.0f + 1.0f / glm::max(1.0f, h));
 
-    renderer->BindPipeline(pipeline);   // applies no-depth + alpha blend state
+    renderer->BindPipeline(pipeline);   
     renderer->SetFrameUniforms(fu);
 
     Flush(whiteBatch, scene->GetOrCreateMaterialTexture(""));

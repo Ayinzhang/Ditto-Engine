@@ -74,8 +74,8 @@ void Physics::UpdatePhysics(float dt)
 
 void Physics::GenerateColliders(const std::vector<GameObject*>& gameobjects)
 {
-    // Resetting first also fixes the old dangling bvhTree: it was deleted but
-    // not nulled, so an empty collect left it pointing at freed memory.
+    
+    
     colliders.clear();
     bvhTree.reset();
     ResetContactState();
@@ -139,13 +139,13 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique
             collider->bodyTransform = transform;
         }
 
-        // A Dynamic body nested under another Dynamic body would double-count
-        // gravity: its world pose is parentWorld * localPose, so the parent's
-        // fall is inherited through the hierarchy and then integrated again
-        // locally. Demote such a child to Kinematic -- it then follows the
-        // parent rigidly (Kinematic refreshes its AABB every step) without
-        // being independently simulated. Set a body to Kinematic yourself to
-        // get this "follow the parent" behavior on purpose.
+        
+        
+        
+        
+        
+        
+        
         if (parentIsDynamic && rigidbody && collider->rigidbody->type == RigidbodyComponent::Dynamic)
             collider->rigidbody->type = RigidbodyComponent::Kinematic;
 
@@ -159,7 +159,7 @@ void Physics::CollectCollidersRecursive(GameObject* obj, std::vector<std::unique
         }
         else if (renderer)
         {
-            // No explicit collider: fall back to a box around the mesh.
+            
             colliderType = ColliderComponent::Box;
         }
 
@@ -236,8 +236,8 @@ void Physics::IntegrateForce(float dt)
         }
         else if (collider->rigidbody->type == RigidbodyComponent::Kinematic)
         {
-            // Driven by the Transform hierarchy (script/parent), not integrated.
-            // Refresh the AABB each step so it broad-phases at its current pose.
+            
+            
             collider->isDirty = true;
         }
     }
@@ -265,8 +265,8 @@ void Physics::HandleBroadCollisions()
                         alreadyExists = true; break;
                     }
 
-                // Static/Dynamic/Kinematic are all valid partners for a Dynamic
-                // body (Static & Kinematic are infinite-mass obstacles).
+                
+                
                 if (!alreadyExists)
                     colliderPairs.push_back({ collider, other });
             }
@@ -430,7 +430,7 @@ void Physics::ApplyPositionCorrections()
     }
 }
 
-// ==================== Contact events ====================
+
 
 static GameObject* ColliderGameObject(Collider* c)
 {
@@ -446,13 +446,13 @@ void Physics::AccumulateFrameContacts()
 
         ContactInfo info;
         info.point = (data.info.contactPointA + data.info.contactPointB) * 0.5f;
-        // Keep the normal oriented from key.first towards key.second so event
-        // consumers get a stable convention regardless of GJK pair order.
+        
+        
         info.normal = (a < b) ? data.info.normal : -data.info.normal;
         info.depth = data.info.depth;
         info.isTrigger = a->isTrigger || b->isTrigger;
 
-        // Last substep wins (most recent contact info for the frame).
+        
         frameContacts[key] = info;
     }
 }
@@ -462,7 +462,7 @@ void Physics::DetectContactEvents()
     enterEvents.clear();
     exitEvents.clear();
 
-    // Enter: touching now, not touching last frame.
+    
     for (const auto& [key, info] : frameContacts)
     {
         if (prevContacts.count(key)) continue;
@@ -474,14 +474,14 @@ void Physics::DetectContactEvents()
         if (ev.a && ev.b) enterEvents.push_back(ev);
     }
 
-    // Exit: touching last frame, not touching now.
+    
     for (const auto& key : prevContacts)
     {
         if (frameContacts.count(key)) continue;
         ContactEvent ev;
         ev.a = ColliderGameObject(key.first);
         ev.b = ColliderGameObject(key.second);
-        // No contact data on exit; report trigger flag from the colliders.
+        
         ev.isTrigger = key.first->isTrigger || key.second->isTrigger;
         if (ev.a && ev.b) exitEvents.push_back(ev);
     }
@@ -499,10 +499,10 @@ void Physics::ResetContactState()
     exitEvents.clear();
 }
 
-// ==================== Raycast ====================
 
-// Slab-method ray vs AABB intersection. Returns true if the ray hits within
-// [0, maxDist]; tMin receives the entry distance (clamped to 0 inside the box).
+
+
+
 static bool RayIntersectsAABB(const glm::vec3& origin, const glm::vec3& invDir,
     const AABB& box, float maxDist, float& tMin)
 {
@@ -520,8 +520,8 @@ static bool RayIntersectsAABB(const glm::vec3& origin, const glm::vec3& invDir,
     return true;
 }
 
-// Moller-Trumbore ray-triangle intersection (one-sided not enforced; both
-// faces hit so rays work from inside boxes too).
+
+
 static bool RayIntersectsTriangle(const glm::vec3& orig, const glm::vec3& dir,
     const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float& t)
 {
@@ -573,7 +573,7 @@ bool Physics::Raycast(const glm::vec3& origin, const glm::vec3& direction,
         const auto& verts = collider->mesh->vertices;
         const auto& indices = collider->mesh->indices;
 
-        // Indexed triangles when available, else consecutive vertex triples.
+        
         size_t triCount = indices.size() >= 3 ? indices.size() / 3
             : verts.size() / 3;
 
@@ -599,7 +599,7 @@ bool Physics::Raycast(const glm::vec3& origin, const glm::vec3& direction,
                 closestT = triT;
                 closestCollider = collider;
                 glm::vec3 n = glm::normalize(glm::cross(v1 - v0, v2 - v0));
-                // Face the normal against the ray.
+                
                 if (glm::dot(n, dir) > 0.0f) n = -n;
                 closestNormal = n;
             }

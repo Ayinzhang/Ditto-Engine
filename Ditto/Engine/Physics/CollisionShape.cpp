@@ -42,7 +42,7 @@ void Collider::UpdateBiasWorldModel()
 
 void Collider::UpdateWorldAABB()
 {
-    // ��ȡ��������Զ��������ǣ��ݹ鸸���任��
+    
     UpdateBiasWorldModel();
     glm::mat4 worldMat = biasWorldModel;
 
@@ -93,8 +93,8 @@ BVHTree::BVHTree(std::vector<Collider*> colliders)
     root = BuildTopDown(colliders, 0, colliders.size());
 }
 
-// unique_ptr children tear the tree down recursively (O(log n) depth on this
-// balanced build -- no stack risk at scene scale).
+
+
 BVHTree::~BVHTree() = default;
 
 std::unique_ptr<BVHNode> BVHTree::BuildTopDown(std::vector<Collider*> colliders, int start, int end) {
@@ -157,8 +157,8 @@ void BVHTree::ReinsertNode(BVHNode* node)
 
     Collider* collider = node->collider;
 
-    // `detached` owns the unlinked leaf; it is destroyed at scope end
-    // (replaces the old manual `delete node`).
+    
+    
     auto detached = DetachLeaf(node);
 
     if (collider)
@@ -173,12 +173,12 @@ void BVHTree::InsertLeafNode(std::unique_ptr<BVHNode> leaf)
 {
     if (!root) { leaf->parent = nullptr; root = std::move(leaf); return; }
 
-    BVHNode* bestNode = FindBestInsertionNode(leaf->aabb);   // non-null: root exists
+    BVHNode* bestNode = FindBestInsertionNode(leaf->aabb);   
 
-    // Splice a new internal node into bestNode's slot, pairing bestNode with
-    // the incoming leaf.
+    
+    
     BVHNode* parent = bestNode->parent;
-    if (!parent)   // bestNode == root
+    if (!parent)   
     {
         root = std::make_unique<BVHNode>(std::move(root), std::move(leaf));
         RefitUpwards(root.get());
@@ -247,8 +247,8 @@ std::unique_ptr<BVHNode> BVHTree::DetachLeaf(BVHNode* node)
     auto sibling  = std::move(siblingSlot);
     detached->parent = nullptr;
 
-    // The sibling takes the parent's place; the emptied parent is destroyed
-    // when its owning slot is overwritten below.
+    
+    
     if (parent == root.get())
     {
         root = std::move(sibling);

@@ -328,7 +328,7 @@ static void RemoveExpandedSubtree(GameObject* root, std::set<GameObject*>& expan
 
 static GameObject* CreateCubeObject(GameObject* parent)
 {
-    // Default: no mesh assigned. The user must pick a mesh from project Assets.
+    
     GameObject* obj = parent->AddChild(std::make_unique<GameObject>("Cube"));
     AddDefaultRenderer(obj, "Models/Cube.obj");
     return obj;
@@ -361,7 +361,7 @@ static GameObject* CreateDirectionalLightObject(GameObject* parent)
     return lightObj;
 }
 
-// Helper function to find editor assets directory
+
 static std::string FindEditorAssetsPath()
 {
     const std::vector<std::string> possiblePaths = {
@@ -381,7 +381,7 @@ static std::string FindEditorAssetsPath()
     return "Assets";
 }
 
-// Helper function to find VS vcvars64.bat
+
 static std::string FindVCVarsInVSInstallDir()
 {
     char* vsPath = nullptr;
@@ -463,10 +463,10 @@ static ImRect GetCurrentViewportRect()
 
 Editor::Editor(Ditto::IWindow* window, bool gameMode, const std::string& projectPath)
 {
-    // Set RuntimeContext Editor pointer
+    
     Ditto::RuntimeContext::SetCurrentEditor(this);
     
-    // Initialize selection state
+    
     activeSelection = nullptr;
     this->gameMode = gameMode;
     this->gameProjectPath = projectPath;
@@ -474,20 +474,21 @@ Editor::Editor(Ditto::IWindow* window, bool gameMode, const std::string& project
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
-    // Enable Docking
+    
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.IniFilename = nullptr;
 
     ImGui::StyleColorsDark();
 
-    // Set transparent background for Docking system
+    
     ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0, 0, 0, 0);
     ImGui::GetStyle().Colors[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
     ImGui::GetStyle().Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0, 0, 0, 0);
 
-    // The ImGui platform+renderer backend is initialized lazily on the first
-    // Draw(), because it routes through engine->renderer (assigned by the caller
-    // AFTER this constructor) and must match the active backend (GL or Vulkan).
+    
+    
+    
     m_window = window;
 
     showSavePopup = false;
@@ -497,22 +498,22 @@ Editor::Editor(Ditto::IWindow* window, bool gameMode, const std::string& project
     dockingInitialized = false;
     frame = deltaTime = 0;
 
-    // Initialize ProjectManager
-    // exe lives in <root>/x64/Debug; user projects live in <root>/Ditto/Projects.
+    
+    
     ProjectManager::GetInstance().Initialize("../../Ditto/Projects");
     
-    // Initialize LayoutManager
+    
     std::string editorAssetsPath = FindEditorAssetsPath();
     LayoutManager::GetInstance().Initialize(editorAssetsPath + "/Settings");
     
-    // Show project selector (only when not in game mode)
+    
     showProjectSelector = !gameMode;
 
-    // NOTE: model preview + file icons are initialized lazily on the first
-    // Draw(), NOT here: they create GPU resources through engine->renderer,
-    // but `engine` is only assigned by the caller AFTER this constructor runs.
+    
+    
+    
 
-    // Initialize window components
+    
     m_projectWindow = std::make_unique<ProjectWindow>(this);
     m_inspectorWindow = std::make_unique<InspectorWindow>(this);
     m_assetHealthWindow = std::make_unique<AssetHealthWindow>(this);
@@ -523,10 +524,10 @@ Editor::Editor(Ditto::IWindow* window, bool gameMode, const std::string& project
             ImportExternalFilesToProject(paths);
         });
     
-    // Set script log callback
+    
     CSharpScriptSystem::SetEditor(this);
 
-    // Set scene modified callback (auto mark dirty)
+    
     if (engine && engine->scene)
     {
         engine->scene->onModified = [this]() {
@@ -551,8 +552,8 @@ Editor::~Editor()
     CleanupModelPreview();
     CleanupFileIcons();
 
-    // Destroy window components BEFORE tearing ImGui down (their teardown may
-    // touch renderer/ImGui state). The old code also leaked m_sceneWindow.
+    
+    
     m_projectWindow.reset();
     m_inspectorWindow.reset();
     m_sceneWindow.reset();
@@ -565,8 +566,8 @@ void Editor::Draw()
 {
     isSceneActive = false;
 
-    // Lazy init (engine->renderer is available by the first Draw): the ImGui
-    // backend and icon textures are created through the active RHI backend.
+    
+    
     if (!m_imguiBackendInit && engine && engine->renderer)
     {
         engine->renderer->ImGuiInit(m_window);
@@ -578,18 +579,18 @@ void Editor::Draw()
     ImGui::NewFrame();
     ImGuizmo::BeginFrame();
     
-    // Global Ctrl+S shortcut - save current scene
+    
     if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_S))
     {
         SaveCurrentScene();
     }
 
-    // If project not loaded, show project selector
+    
     if (showProjectSelector)
     {
         DrawProjectSelector();
         
-        // New project popup
+        
         if (showNewProjectPopup)
         {
             ImGui::OpenPopup("Create Project");
@@ -622,7 +623,7 @@ void Editor::Draw()
             ImGui::EndPopup();
         }
         
-        // Rename project popup
+        
         if (showRenameProjectPopup)
         {
             ImGui::OpenPopup("Rename Project");
@@ -665,7 +666,7 @@ void Editor::Draw()
         return;
     }
 
-    // Setup fullscreen DockSpace
+    
     SetupDocking();
 
     DrawToolbar();
@@ -679,24 +680,24 @@ void Editor::Draw()
     DrawPopups();
     DrawBuildSettingsWindow();
 
-    // DockSpace end
+    
     ImGui::End();
 
     ImGui::Render();
     if (engine && engine->renderer) engine->renderer->ImGuiRenderDrawData(ImGui::GetDrawData());
-    // (A no-op `sceneCamera = sceneCamera` self-assignment used to live here;
-    // under unique_ptr it would be a self-move that nulls the camera.)
+    
+    
 }
 
 void Editor::SetupDocking()
 {
     ImGuiIO& io = ImGui::GetIO();
 
-    // Get current window size
+    
     float menuBarHeight = ImGui::GetFrameHeight();
     ImVec2 displaySize = io.DisplaySize;
 
-    // Fullscreen window as DockSpace host - dynamically adapt to window size changes
+    
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(displaySize.x, displaySize.y - menuBarHeight));
 
@@ -714,24 +715,24 @@ void Editor::SetupDocking()
 
     ImGui::PopStyleVar(3);
 
-    // Create DockSpace
+    
     ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
     dockSpaceID = dockspace_id;
 
-    // Use NoSplit flag to prevent manual splitting, or use DockSpace default behavior
+    
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
-    // Initialize default layout only on first run
+    
     if (!dockingInitialized)
     {
-        // After loading INI, need to apply Ini settings before building Dock
+        
         LayoutManager& lm = LayoutManager::GetInstance();
         if (lm.GetNeedsReloadDock())
         {
-            // Loaded new layout, no need to rebuild Dock, ImGui has already restored state
+            
             lm.ClearNeedsReloadDock();
 
-            // Must Finish DockSpace
+            
             ImGui::DockBuilderFinish(dockspace_id);
             ImGui::End();
             return;
@@ -739,40 +740,50 @@ void Editor::SetupDocking()
 
         dockingInitialized = true;
 
-        // Clear existing dock layout to rebuild
+        
         ImGui::DockBuilderRemoveNode(dockspace_id);
         ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_None);
         ImGui::DockBuilderSetNodeSize(dockspace_id, ImVec2(displaySize.x, displaySize.y - menuBarHeight));
 
-        // Split DockSpace - use relative ratios instead of fixed sizes
+        
         ImGuiID dock_id_left, dock_id_right, dock_id_center;
 
-        // Left panel 30%
+        
         ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.3f, &dock_id_left, &dock_id_center);
-        // Right panel 30% (calculated from remaining space)
+        
         ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Right, 0.42f, &dock_id_right, &dock_id_center);
-        // Note: now dock_id_center is the middle 40% region
+        
 
-        // Left panel split into top and bottom (50% each)
+        
         ImGuiID dock_id_left_top, dock_id_left_bottom;
         ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Up, 0.5f, &dock_id_left_top, &dock_id_left_bottom);
 
-        // Center panel split into top and bottom (50% each)
+        
         ImGuiID dock_id_center_top, dock_id_center_bottom;
         ImGui::DockBuilderSplitNode(dock_id_center, ImGuiDir_Down, 0.5f, &dock_id_center_bottom, &dock_id_center_top);
 
-        // Attach windows to Dock nodes
+        
         ImGui::DockBuilderDockWindow("Scene", dock_id_left_top);
         ImGui::DockBuilderDockWindow("Hierarchy", dock_id_left_bottom);
         ImGui::DockBuilderDockWindow("Game", dock_id_center_top);
         ImGui::DockBuilderDockWindow("Project", dock_id_center_bottom);
-        // Console shares Project's dock node by default: appears as a tab next to
-        // Project but is an independent, draggable window.
+        
+        
         ImGui::DockBuilderDockWindow("Console", dock_id_center_bottom);
         ImGui::DockBuilderDockWindow("Inspector", dock_id_right);
 
         ImGui::DockBuilderFinish(dockspace_id);
     }
+}
+
+bool Editor::ApplyGameViewportToInput() const
+{
+    if (!hasGameViewport)
+        return false;
+
+    Input::SetGameViewport(gameViewportX, gameViewportY, gameViewportW, gameViewportH,
+        gameViewportContentW, gameViewportContentH);
+    return true;
 }
 
 void Editor::DrawToolbar()
@@ -784,7 +795,7 @@ void Editor::DrawToolbar()
             if (ImGui::MenuItem("Build Settings..."))
             {
                 showBuildSettingsWindow = true;
-                // Initialize build settings
+                
                 Project* proj = ProjectManager::GetInstance().GetCurrentProject();
                 if (proj)
                 {
@@ -937,11 +948,11 @@ void Editor::DrawToolbar()
 
         ImGui::SetCursorPosX(startX);
 
-        // Button palette. Grey variants match the menu bar; the two blues are
-        // the standard ImGui accent colors used for an "active" button feel.
-        // We always override the three Button* colors to neutralize ImGui's
-        // translucent light-blue Button default; the decision of "grey vs blue"
-        // is made per-button below.
+        
+        
+        
+        
+        
         const ImVec4 grey       = ImGui::GetStyle().Colors[ImGuiCol_MenuBarBg];
         const ImVec4 greyHover  = ImVec4(grey.x + 0.06f, grey.y + 0.06f, grey.z + 0.06f, 1.0f);
         const ImVec4 greyActive = ImVec4(grey.x + 0.03f, grey.y + 0.03f, grey.z + 0.03f, 1.0f);
@@ -949,9 +960,9 @@ void Editor::DrawToolbar()
         const ImVec4 blueHover  = ImVec4(0.31f, 0.65f, 1.00f, 1.00f);
         const ImVec4 blueActive = ImVec4(0.20f, 0.50f, 0.90f, 1.00f);
 
-        // ---- Left button: Play ----
-        // Blue when the engine is currently Play OR Pause (i.e. any "in-session"
-        // state); grey otherwise.
+        
+        
+        
         const bool playOn = (engine->state == Engine::Play || engine->state == Engine::Pause);
         if (playOn)
         {
@@ -974,7 +985,7 @@ void Editor::DrawToolbar()
                 m_playModeEntrySnapshot = CaptureEditorSnapshot();
                 m_hasPlayModeEntrySnapshot = !m_playModeEntrySnapshot.sceneData.empty();
 
-                // Save current scene to temp file before entering Play mode
+                
                 m_tempScenePath = "../../Ditto/Ditto/Temp/PlayModeScene.scene";
                 std::filesystem::create_directories("../../Ditto/Ditto/Temp");
                 engine->scene->SaveScene(m_tempScenePath);
@@ -983,14 +994,14 @@ void Editor::DrawToolbar()
             }
             else if (engine->state == Engine::Play)
             {
-                // Already playing: clicking Play returns to Edit (acts as Stop).
+                
                 engine->SetEngineState(Engine::Stop);
                 StopAndRestoreScene();
             }
             else if (engine->state == Engine::Pause)
             {
-                // Paused: clicking Play also returns to Edit (acts as Stop).
-                // both buttons should go grey to signal "session ended".
+                
+                
                 engine->SetEngineState(Engine::Stop);
                 StopAndRestoreScene();
             }
@@ -1000,8 +1011,8 @@ void Editor::DrawToolbar()
         ImGui::SameLine();
         ImGui::SetCursorPosX(startX + buttonSize + spacing);
 
-        // ---- Right button: Pause ----
-        // Blue ONLY when the engine is currently Paused; grey otherwise.
+        
+        
         const bool pauseOn = (engine->state == Engine::Pause);
         if (pauseOn)
         {
@@ -1025,10 +1036,10 @@ void Editor::DrawToolbar()
             }
             else if (engine->state == Engine::Pause)
             {
-                // Already paused: clicking Pause resumes Play.
+                
                 engine->SetEngineState(Engine::Play);
             }
-            // In Edit state: do nothing (Pause has no meaning before Play)
+            
         }
         ImGui::PopStyleColor(3);
 
@@ -1040,7 +1051,7 @@ void Editor::DrawLayoutMenu()
 {
     if (ImGui::BeginMenu("Layout"))
     {
-        // Save Layout
+        
         if (ImGui::MenuItem("Save Layout..."))
         {
             showSaveLayoutPopup = true;
@@ -1048,7 +1059,7 @@ void Editor::DrawLayoutMenu()
 
         ImGui::Separator();
 
-        // Load Layout submenu
+        
         if (ImGui::BeginMenu("Load Layout"))
         {
             std::vector<std::string> layouts = GetSavedLayouts();
@@ -1076,18 +1087,18 @@ void Editor::DrawLayoutMenu()
 
 void Editor::SaveCurrentLayout()
 {
-    // Save current window state to LayoutManager
-    // We only need to trigger save, the actual content has been updated in Draw function
+    
+    
 }
 
 void Editor::LoadLayout(const std::string& layoutName)
 {
-    // Load layout - use ImGui built-in INI mechanism
+    
     if (LayoutManager::GetInstance().LoadLayout(layoutName))
     {
-        // Clear all Dock nodes so ImGui can reapply layout from INI
-        ImGui::DockContextClearNodes(GImGui, 0, true); // root_id==0 means clear all nodes, true clears settings references
-        // Mark dock for rebuild
+        
+        ImGui::DockContextClearNodes(GImGui, 0, true); 
+        
         dockingInitialized = false;
     }
 }
@@ -1105,13 +1116,13 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
     
     void* icon = isRoot ? GetDittoIcon() : GetGameObjectIconForObject(obj);
     
-    // Calculate indent: 18px per level
+    
     float indent = depth * 18.0f;
     
     if (hasChildren) {
         bool isExpanded = m_expandedGameObjects.find(obj) != m_expandedGameObjects.end();
         
-        // Arrow button (12px)
+        
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         if (ImGui::ArrowButton(("##arrow_" + std::to_string((uintptr_t)obj)).c_str(), isExpanded ? ImGuiDir_Down : ImGuiDir_Right)) {
@@ -1120,20 +1131,20 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         }
         ImGui::PopStyleVar();
         
-        // Icon
+        
         if (icon) {
             ImGui::SameLine();
             ImGui::Image((void*)(intptr_t)icon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
         }
         
-        // Name
+        
         ImGui::SameLine();
         
         if (isRoot) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
         }
         
-        // Build display name: add asterisk for root node when modified
+        
         std::string displayName = obj->name;
         if (isRoot && sceneDirty) {
             displayName += " *";
@@ -1154,7 +1165,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::PopStyleColor();
         }
         
-        // Drag source (must be after Selectable)
+        
         if (ImGui::BeginDragDropSource())
         {
             ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
@@ -1162,7 +1173,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::EndDragDropSource();
         }
 
-        // Drag target
+        
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
@@ -1170,9 +1181,9 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 GameObject* droppedObj = *(GameObject**)payload->Data;
                 if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
                 {
-                    // Deferred: ancestor draw frames are mid-iteration over
-                    // their children vectors. DrawHierarchy applies this after
-                    // the tree is drawn.
+                    
+                    
+                    
                     m_pendingReparentSource = droppedObj;
                     m_pendingReparentTarget = obj;
                 }
@@ -1180,13 +1191,13 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::EndDragDropTarget();
         }
 
-        // Children
+        
         if (isExpanded) {
             for (auto& child : obj->children)
                 DrawGameObjectNode(child.get(), false, depth + 1);
         }
     } else {
-        // Leaf node: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
+        
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
         
         if (icon) {
@@ -1198,7 +1209,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
         }
         
-        // Build display name: add asterisk for root node when modified
+        
         std::string displayName = obj->name;
         if (isRoot && sceneDirty) {
             displayName += " *";
@@ -1219,7 +1230,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::PopStyleColor();
         }
         
-        // Drag source (must be after Selectable)
+        
         if (ImGui::BeginDragDropSource())
         {
             ImGui::SetDragDropPayload("GAMEOBJECT", &obj, sizeof(GameObject*));
@@ -1227,7 +1238,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             ImGui::EndDragDropSource();
         }
 
-        // Drag target
+        
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("GAMEOBJECT"))
@@ -1235,7 +1246,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
                 GameObject* droppedObj = *(GameObject**)payload->Data;
                 if (droppedObj && droppedObj != obj && !droppedObj->IsDescendantOf(obj))
                 {
-                    // Deferred: see the expanded-node drop target above.
+                    
                     m_pendingReparentSource = droppedObj;
                     m_pendingReparentTarget = obj;
                 }
@@ -1244,10 +1255,10 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
         }
     }
     
-    // Object right-click menu - show different options based on current selection
+    
     if (ImGui::BeginPopupContextItem(("GameObjectContext_" + std::to_string((uintptr_t)obj)).c_str()))
     {
-        // Only show save option when scene root object is selected
+        
         bool isSelectedRoot = (selectedObject == engine->scene->rootGameObject.get());
         if (isSelectedRoot)
         {
@@ -1340,7 +1351,7 @@ void Editor::DrawGameObjectNode(GameObject* obj, bool isRoot, int depth)
             }
             ImGui::EndMenu();
         }
-        // Deferred: both mutate an ancestor's children vector mid-draw.
+        
         if (!obj->prefabSourcePath.empty())
         {
             ImGui::Separator();
@@ -1364,7 +1375,7 @@ void Editor::DrawHierarchy()
     
     ImGui::BeginChild("HierarchyContent", ImVec2(0, 0), true);
 
-    // Right-click context menu on empty space - create objects
+    
     if (ImGui::BeginPopupContextWindow("HierarchyContextWindow"))
     {
         GameObject* root = engine && engine->scene ? engine->scene->rootGameObject.get() : nullptr;
@@ -1459,8 +1470,8 @@ void Editor::DrawHierarchy()
             GameObject* droppedObj = *(GameObject**)payload->Data;
             if (droppedObj)
             {
-                // Deferred alongside the per-node drop targets (uniform path;
-                // AddChild's guards reject self-loops at apply time).
+                
+                
                 m_pendingReparentSource = droppedObj;
                 m_pendingReparentTarget = engine->scene->rootGameObject.get();
             }
@@ -1468,18 +1479,18 @@ void Editor::DrawHierarchy()
         ImGui::EndDragDropTarget();
     }
 
-    // Single-ownership: the entire hierarchy starts from rootGameObject.
-    // The root itself is shown at depth 0 (isRoot=true) so the user can
-    // select it to perform scene-wide operations.
+    
+    
+    
     DrawGameObjectNode(engine->scene->rootGameObject.get(), true);
 
-    // Apply deferred hierarchy mutations now that no children iterators are
-    // live (see Editor.h: mutating mid-draw destroys elements under the
-    // ancestors' range-for loops).
+    
+    
+    
     if (m_pendingReparentSource && m_pendingReparentTarget)
     {
         PushUndoSnapshot();
-        m_pendingReparentTarget->AddChild(m_pendingReparentSource);   // reparent overload
+        m_pendingReparentTarget->AddChild(m_pendingReparentSource);   
         engine->scene->MarkDirty();
     }
     m_pendingReparentSource = nullptr;
@@ -1488,12 +1499,12 @@ void Editor::DrawHierarchy()
     if (m_pendingCopy)   { m_pendingCopy = false;   CopySelectedObject(); }
     if (m_pendingDelete) { m_pendingDelete = false; DeleteSelectedObject(); }
 
-    // Save window state
+    
     {
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
         bool collapsed = ImGui::IsWindowCollapsed();
-        //LayoutManager::GetInstance().SaveCurrentWindowState("Hierarchy", pos, size, true, collapsed);
+        
     }
 
     ImGui::EndChild();
@@ -1508,7 +1519,7 @@ void Editor::DrawScene()
 
 void Editor::DrawGame()
 {
-    // Set transparent background - ensure this is set before Begin
+    
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     ImGui::SetNextWindowBgAlpha(0.0f);
 
@@ -1552,8 +1563,8 @@ void Editor::DrawGame()
     ImGui::Checkbox("Gizmos", &gameGizmos);
     ImGui::PopStyleVar();
 
-    // Render the Game view (game camera) into an offscreen target and display
-    // it as an ImGui image (flipped V: GL bottom-up memory order on both backends).
+    
+    
     ImVec2 contentMin = ImGui::GetCursorScreenPos();
     ImVec2 contentAvail = ImGui::GetContentRegionAvail();
     ImVec2 renderSize = contentAvail;
@@ -1573,12 +1584,16 @@ void Editor::DrawGame()
     ImRect gameViewportRect(renderMin, ImVec2(renderMin.x + renderSize.x, renderMin.y + renderSize.y));
     int renderW = gameResolutionIndex > 0 ? (int)resolutionSizes[gameResolutionIndex].x : (int)renderSize.x;
     int renderH = gameResolutionIndex > 0 ? (int)resolutionSizes[gameResolutionIndex].y : (int)renderSize.y;
-    // Report the Game panel rect and logical render size so UI input maps back
-    // correctly when the Game view is letterboxed or scaled.
-    Input::SetGameViewport(gameViewportRect.Min.x, gameViewportRect.Min.y,
-        gameViewportRect.Max.x - gameViewportRect.Min.x,
-        gameViewportRect.Max.y - gameViewportRect.Min.y,
-        (float)glm::max(1, renderW), (float)glm::max(1, renderH));
+    hasGameViewport = true;
+    gameViewportX = gameViewportRect.Min.x;
+    gameViewportY = gameViewportRect.Min.y;
+    gameViewportW = gameViewportRect.Max.x - gameViewportRect.Min.x;
+    gameViewportH = gameViewportRect.Max.y - gameViewportRect.Min.y;
+    gameViewportContentW = (float)glm::max(1, renderW);
+    gameViewportContentH = (float)glm::max(1, renderH);
+    
+    
+    ApplyGameViewportToInput();
     void* gameTex = engine->RenderSceneToTexture(glm::max(1, renderW), glm::max(1, renderH), true);
     if (gameTex)
     {
@@ -1590,26 +1605,34 @@ void Editor::DrawGame()
     ImGui::GetWindowDrawList()->AddRect(gameViewportRect.Min, gameViewportRect.Max, IM_COL32(0, 0, 0, 180));
     if (gameStats)
     {
-        char stats[128];
-        snprintf(stats, sizeof(stats), "%dx%d  %.1f FPS", renderW, renderH, fps);
+        glm::vec2 rawMouse = Input::GetRawMousePosition();
+        glm::vec2 localMouse = Input::GetMousePosition();
+        bool inside = Input::IsMouseInsideGameViewport();
+        char stats[256];
+        snprintf(stats, sizeof(stats), "%dx%d  %.1f FPS\nraw %.0f,%.0f  game %.0f,%.0f  %s\nrect %.0f,%.0f %.0fx%.0f",
+            renderW, renderH, fps,
+            rawMouse.x, rawMouse.y,
+            localMouse.x, localMouse.y,
+            inside ? "inside" : "outside",
+            gameViewportX, gameViewportY, gameViewportW, gameViewportH);
         ImGui::GetWindowDrawList()->AddText(ImVec2(gameViewportRect.Min.x + 8.0f, gameViewportRect.Min.y + 8.0f),
             IM_COL32(230, 230, 230, 255), stats);
     }
 
-    // Save window state
+    
     {
         ImVec2 pos = ImGui::GetWindowPos();
         ImVec2 size = ImGui::GetWindowSize();
         bool collapsed = ImGui::IsWindowCollapsed();
-        //LayoutManager::GetInstance().SaveCurrentWindowState("Game", pos, size, true, collapsed);
+        
     }
 
     ImGui::End();
     ImGui::PopStyleColor();
 }
 
-// DrawProject and DrawInspector have been moved to ProjectWindow.cpp and InspectorWindow.cpp
-// Keep empty implementation to maintain API compatibility
+
+
 
 void Editor::DrawPopups()
 {
@@ -1645,7 +1668,7 @@ void Editor::DrawPopups()
     if (ImGui::BeginPopupModal("Load Scene", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         selectedObject = nullptr;
-        selectedFile.Clear();  // Clear file selection
+        selectedFile.Clear();  
         ImGui::Text("Path"); ImGui::SameLine();
         static char loadPathBuffer[256] = "Assets/Scenes/scene.bin";
         ImGui::InputText("##Path", loadPathBuffer, sizeof(loadPathBuffer));
@@ -1655,7 +1678,7 @@ void Editor::DrawPopups()
             if (engine && engine->scene && engine->scene->LoadScene(loadPathBuffer))
             {
                 strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
-                sceneDirty = false;  // Newly loaded scene has no modifications
+                sceneDirty = false;  
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -1665,7 +1688,7 @@ void Editor::DrawPopups()
         ImGui::EndPopup();
     }
 
-    // Save Layout Popup
+    
     if (showSaveLayoutPopup)
     {
         ImGui::OpenPopup("Save Layout");
@@ -1681,7 +1704,7 @@ void Editor::DrawPopups()
         {
             if (strlen(layoutNameBuffer) > 0)
             {
-                // Save to file - use ImGui built-in INI save
+                
                 if (LayoutManager::GetInstance().SaveLayout(layoutNameBuffer))
                 {
                     ImGui::CloseCurrentPopup();
@@ -1698,7 +1721,7 @@ void Editor::DrawPopups()
         ImGui::EndPopup();
     }
 
-    // Build Popup - Build and publish
+    
     if (showBuildPopup)
     {
         ImGui::OpenPopup("Build Project");
@@ -1753,9 +1776,9 @@ void Editor::DrawBuildSettingsWindow()
 {
     if (!showBuildSettingsWindow) return;
 
-    // The global theme makes WindowBg fully transparent (viewport windows show
-    // the backbuffer through). A floating utility window must be opaque or the
-    // scene/viewport bleeds through it.
+    
+    
+    
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.0f));
     ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Build Settings", &showBuildSettingsWindow))
@@ -1769,7 +1792,7 @@ void Editor::DrawBuildSettingsWindow()
             return;
         }
         
-        // Platform selection
+        
         ImGui::Text("Platform:");
         const char* platforms[] = { "Windows", "Android" };
         int currentPlatform = (int)buildSettings.platform;
@@ -1779,7 +1802,7 @@ void Editor::DrawBuildSettingsWindow()
             buildSettings.outputPath = BuildSystem::GetDefaultOutputPath(proj->path, buildSettings.platform);
         }
         
-        // Configuration selection
+        
         ImGui::Text("Configuration:");
         const char* configs[] = { "Debug", "Release" };
         int currentConfig = (int)buildSettings.configuration;
@@ -1790,7 +1813,7 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::Separator();
         
-        // Product info
+        
         ImGui::Text("Product Settings:");
         
         char productName[256];
@@ -1819,10 +1842,10 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::Separator();
         
-        // Scene list
+        
         ImGui::Text("Scenes In Build:");
         
-        // Refresh scene list button
+        
         ImGui::SameLine();
         if (ImGui::Button("Refresh"))
         {
@@ -1842,7 +1865,7 @@ void Editor::DrawBuildSettingsWindow()
                 std::string sceneName = fs::path(buildSettings.scenes[i]).stem().string();
                 bool isSelected = (buildSettings.startupScene == sceneName);
                 
-                // Show scene index and name
+                
                 ImGui::Text("%d", (int)i);
                 ImGui::SameLine(30);
                 
@@ -1851,7 +1874,7 @@ void Editor::DrawBuildSettingsWindow()
                     buildSettings.startupScene = sceneName;
                 }
                 
-                // Show if it's the startup scene
+                
                 if (isSelected)
                 {
                     ImGui::SameLine();
@@ -1862,12 +1885,12 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::EndChild();
         
-        // Startup scene display
+        
         ImGui::Text("Startup Scene: %s", buildSettings.startupScene.empty() ? "None" : buildSettings.startupScene.c_str());
         
         ImGui::Separator();
         
-        // Output path
+        
         ImGui::Text("Output Path:");
         char outputPath[512];
         strcpy_s(outputPath, buildSettings.outputPath.c_str());
@@ -1878,10 +1901,10 @@ void Editor::DrawBuildSettingsWindow()
         ImGui::SameLine();
         if (ImGui::Button("Browse##Output"))
         {
-            // TODO: Open folder selection dialog
+            
         }
         
-        // Development build settings
+        
         ImGui::Checkbox("Development Build", &buildSettings.developmentBuild);
         if (buildSettings.developmentBuild)
         {
@@ -1890,14 +1913,14 @@ void Editor::DrawBuildSettingsWindow()
         
         ImGui::Separator();
         
-        // Build progress
+        
         if (isBuilding)
         {
             ImGui::Text("Building: %s", buildStatus.c_str());
             ImGui::ProgressBar(buildProgress, ImVec2(-1, 0));
         }
         
-        // Build button
+        
         ImGui::BeginDisabled(isBuilding);
         
         if (ImGui::Button("Build", ImVec2(120, 30)))
@@ -1909,7 +1932,7 @@ void Editor::DrawBuildSettingsWindow()
                 buildProgress = 0.0f;
                 buildStatus = "Starting...";
                 
-                // Execute build
+                
                 bool success = BuildSystem::Build(buildSettings, 
                     [this](const std::string& stage, float progress)
                     {
@@ -1921,7 +1944,7 @@ void Editor::DrawBuildSettingsWindow()
                 if (success)
                 {
                     buildStatus = "Build completed successfully!";
-                    // Open output directory - use absolute path
+                    
                     std::wstring outputDirW = fs::absolute(buildSettings.outputPath).wstring();
                     ShellExecuteW(NULL, L"open", outputDirW.c_str(), NULL, NULL, SW_SHOWNORMAL);
                 }
@@ -1945,7 +1968,7 @@ void Editor::DrawBuildSettingsWindow()
             showBuildSettingsWindow = false;
         }
         
-        // Display status info
+        
         if (!buildStatus.empty())
         {
             ImGui::Separator();
@@ -1956,7 +1979,7 @@ void Editor::DrawBuildSettingsWindow()
     ImGui::PopStyleColor();
 }
 
-// ---- Undo / Redo ----------------------------------------------------------
+
 
 Editor::EditorSnapshot Editor::CaptureEditorSnapshot() const
 {
@@ -2021,10 +2044,10 @@ void Editor::RestoreEditorSelection(const EditorSnapshot& snapshot)
 void Editor::PushUndoSnapshot()
 {
     if (!engine || !engine->scene) return;
-    if (engine->state == Engine::State::Play) return;   // edit-mode only
+    if (engine->state == Engine::State::Play) return;   
     EditorSnapshot snap = CaptureEditorSnapshot();
     if (snap.sceneData.empty()) return;
-    if (!m_undoStack.empty() && m_undoStack.back().sceneData == snap.sceneData) return;  // dedup
+    if (!m_undoStack.empty() && m_undoStack.back().sceneData == snap.sceneData) return;  
     m_undoStack.push_back(std::move(snap));
     if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
     m_redoStack.clear();
@@ -2034,7 +2057,7 @@ void Editor::BeginInspectorEdit()
 {
     if (!engine || !engine->scene) return;
     if (engine->state == Engine::State::Play) return;
-    if (m_hasPendingEdit) return;                       // one capture per interaction
+    if (m_hasPendingEdit) return;                       
     m_pendingPreEdit = CaptureEditorSnapshot();
     m_hasPendingEdit = true;
 }
@@ -2044,8 +2067,8 @@ void Editor::EndInspectorEdit()
     if (!m_hasPendingEdit) return;
     m_hasPendingEdit = false;
     if (!engine || !engine->scene) return;
-    // Commit the pre-edit snapshot only if the scene actually changed -> no
-    // spurious undo steps from clicking a control without moving it.
+    
+    
     if (engine->scene->CaptureSnapshot() == m_pendingPreEdit.sceneData) return;
     m_undoStack.push_back(std::move(m_pendingPreEdit));
     if (m_undoStack.size() > kUndoDepth) m_undoStack.erase(m_undoStack.begin());
@@ -2075,7 +2098,7 @@ void Editor::Undo()
     }
     else
     {
-        m_undoStack.push_back(std::move(prev));  // restore failed: put it back
+        m_undoStack.push_back(std::move(prev));  
     }
 }
 
@@ -2111,8 +2134,8 @@ void Editor::CopySelectedObject()
     if (!selectedObject || !engine || !engine->scene) return;
     PushUndoSnapshot();
     auto clone = std::make_unique<GameObject>(selectedObject);
-    // Attach next to the original; fall back to the root (the old fallback
-    // pushed an owned object into the non-owning gameObjects view -- a leak).
+    
+    
     GameObject* attachTo = selectedObject->parent
         ? selectedObject->parent
         : engine->scene->rootGameObject.get();
@@ -2124,7 +2147,7 @@ void Editor::CopySelectedObject()
     activeSelection = copiedObject;
     selectedComponent = nullptr;
     selectedFile.Clear();
-    engine->scene->MarkDirty();  // Mark scene as modified
+    engine->scene->MarkDirty();  
 }
 
 void Editor::DeleteSelectedObject()
@@ -2136,11 +2159,11 @@ void Editor::DeleteSelectedObject()
         return;
     }
 
-    PushUndoSnapshot();   // capture pre-delete state (covers menu + Delete key)
+    PushUndoSnapshot();   
 
-    // Single-root model: every deletable object has a parent (root is guarded
-    // above). Take ownership out of the tree, scrub the non-owning observer
-    // list, then let `owned` destroy the subtree at scope end.
+    
+    
+    
     GameObject* objectToDelete = selectedObject;
     GameObject* parent = selectedObject->parent;
     if (!parent) return;
@@ -2170,7 +2193,7 @@ void Editor::DeleteSelectedObject()
     selectedComponent = nullptr;
     selectedFile.Clear();
 
-    engine->scene->MarkDirty();  // Mark scene as modified
+    engine->scene->MarkDirty();  
 }
 
 void Editor::DeleteSelectedFile()
@@ -2190,7 +2213,7 @@ void Editor::DuplicateSelectedFile()
 {
     if (!selectedFile.IsValid()) return;
 
-    // Build new filename: name_copy.ext
+    
     std::string newName = selectedFile.name + "_copy" + selectedFile.extension;
     std::string newPath = selectedFile.path;
     size_t pos = newPath.rfind(selectedFile.name + selectedFile.extension);
@@ -2200,7 +2223,7 @@ void Editor::DuplicateSelectedFile()
 
     try {
         fs::copy_file(selectedFile.path, newPath, fs::copy_options::overwrite_existing);
-        // Select newly copied file
+        
         selectedFile.path = newPath;
         selectedFile.name = selectedFile.name + "_copy";
     }
@@ -2209,7 +2232,7 @@ void Editor::DuplicateSelectedFile()
     }
 }
 
-// Project selection interface
+
 void Editor::DrawProjectSelector()
 {
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -2220,7 +2243,7 @@ void Editor::DrawProjectSelector()
 
     ImGui::Begin("ProjectSelector", nullptr, flags);
 
-    // Title - centered
+    
     float windowWidth = ImGui::GetIO().DisplaySize.x;
     float windowHeight = ImGui::GetIO().DisplaySize.y;
     
@@ -2230,7 +2253,7 @@ void Editor::DrawProjectSelector()
     ImGui::Text("Ditto Engine");
     ImGui::SetWindowFontScale(1.0f);
 
-    // Project list - centered
+    
     ProjectManager& pm = ProjectManager::GetInstance();
     auto projects = pm.GetAllProjects();
     static int selectedProject = -1;
@@ -2261,7 +2284,7 @@ void Editor::DrawProjectSelector()
     
     ImGui::EndChild();
 
-    // Buttons - centered, in a row, aligned with list box
+    
     float buttonWidth = listWidth / 4 - 10;
     float buttonSpacing = 10;
     float buttonsWidth = buttonWidth * 4 + buttonSpacing * 3;
@@ -2314,7 +2337,7 @@ void Editor::DrawProjectSelector()
         }
     }
 
-    // Save selected project index
+    
     static int lastSelectedProject = -1;
     if (lastSelectedProject != selectedProject)
     {
@@ -2332,7 +2355,7 @@ void Editor::OpenProject(const std::string& projectPath)
         projectLoaded = true;
         showProjectSelector = false;
 
-        // Load last scene (if any)
+        
         Project* proj = pm.GetCurrentProject();
         if (proj && !proj->lastScene.empty())
         {
@@ -2345,23 +2368,23 @@ void Editor::OpenProject(const std::string& projectPath)
                 {
                     DITTO_LOG_INFO_STREAM("[Editor] Scene loaded successfully: " << engine->scene->name );
                     DITTO_LOG_INFO_STREAM("[Editor] GameObject count: " << engine->scene->gameObjects.size() );
-                    // Single-ownership: rootGameObject is always present.
+                    
                     DITTO_LOG_INFO_STREAM("[Editor] RootGameObject children: " << engine->scene->rootGameObject->children.size() );
                 }
                 else
                 {
                     DITTO_LOG_ERROR_STREAM("[Editor] Failed to load scene: " << fullPath );
-                    // Create default scene. ClearScene() rebuilds the root
-                    // using the current scene name, so set the name first.
+                    
+                    
                     engine->scene->name = "Default";
                     engine->scene->ClearScene();
                 }
                 
-                // Update UI
-                strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
-                sceneDirty = false;  // Newly loaded scene has no modifications
                 
-                // Re-setup scene modified callback
+                strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
+                sceneDirty = false;  
+                
+                
                 engine->scene->onModified = [this]() {
                     this->sceneDirty = true;
                 };
@@ -2370,11 +2393,11 @@ void Editor::OpenProject(const std::string& projectPath)
         else
         {
             DITTO_LOG_INFO_STREAM("[Editor] No last scene to load, creating default scene" );
-            // Create default scene
+            
             if (engine && engine->scene)
             {
-                // ClearScene() rebuilds the root using the current scene name,
-                // so set the name first (the old order also leaked a root).
+                
+                
                 engine->scene->name = "Default";
                 engine->scene->ClearScene();
                 strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
@@ -2393,20 +2416,20 @@ void Editor::LoadSceneFromProject(const std::string& scenePath)
     {
         engine->scene->LoadScene(scenePath.c_str());
         
-        // Update UI
-        strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
-        sceneDirty = false;  // Newly loaded scene has no modifications
         
-        // Re-setup scene modified callback
+        strcpy_s(sceneNameBuffer, sizeof(sceneNameBuffer), engine->scene->name.c_str());
+        sceneDirty = false;  
+        
+        
         engine->scene->onModified = [this]() {
             this->sceneDirty = true;
         };
 
-        // Save to project config
+        
         Project* proj = ProjectManager::GetInstance().GetCurrentProject();
         if (proj)
         {
-            // Extract relative path
+            
             size_t pos = scenePath.find("/Assets/");
             if (pos != std::string::npos)
             {
@@ -2465,7 +2488,7 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
         return;
     }
 
-    // Check file type
+    
     fs::path p(scriptPath);
     std::string ext = p.extension().string();
     std::string scriptName = p.stem().string();
@@ -2474,16 +2497,16 @@ void Editor::OnScriptComponentDroppedToObject(GameObject* obj, const std::string
     
     if (ext == ".cs")
     {
-        PushUndoSnapshot();   // adding a script component is undoable
-        // C# script - route through AddComponent (sets gameObject + compMask
-        // and gives the GameObject ownership).
+        PushUndoSnapshot();   
+        
+        
         CSharpScriptComponent* csScript = obj->AddComponent<CSharpScriptComponent>();
         csScript->scriptPath = scriptPath;
         csScript->scriptName = std::filesystem::path(scriptPath).filename().stem().string();
         csScript->ParseScriptFields();
         DITTO_LOG_INFO_STREAM("[Editor] C# script added: " << csScript->scriptName );
         
-        // Mark scene as modified
+        
         sceneDirty = true;
     }
 }
@@ -2570,18 +2593,18 @@ void Editor::SaveCurrentScene()
         return;
     }
 
-    // Get current project path
+    
     Project* proj = ProjectManager::GetInstance().GetCurrentProject();
     std::string savePath;
     
     if (proj)
     {
-        // Save to project directory under Assets/Scenes/
+        
         savePath = proj->path + "/Assets/Scenes/" + engine->scene->name + ".bin";
     }
     else
     {
-        // When no project, use relative path
+        
         savePath = "Assets/Scenes/" + engine->scene->name + ".bin";
     }
     
@@ -2590,12 +2613,12 @@ void Editor::SaveCurrentScene()
     if (engine->scene->SaveScene(savePath.c_str()))
     {
         DITTO_LOG_INFO_STREAM("[Editor] Scene saved successfully" );
-        sceneDirty = false;  // Clear modification flag
+        sceneDirty = false;  
         
-        // Update project config
+        
         if (proj)
         {
-            // Save relative path to project config
+            
             proj->lastScene = "Assets/Scenes/" + engine->scene->name + ".bin";
         }
     }
@@ -2620,39 +2643,39 @@ void Editor::BuildProject()
         return;
     }
 
-    // Output directory: Build/Windows under project directory
+    
     std::string projectPath = proj->path;
     std::replace(projectPath.begin(), projectPath.end(), '\\', '/');
     std::string outputDir = projectPath + "/Build/Windows";
     
     try
     {
-        // Create output directory
+        
         if (!fs::exists(outputDir))
         {
             fs::create_directories(outputDir);
         }
 
-        // 1. Copy Assets directory contents to root directory
+        
         std::string assetsSrc = projectPath + "/Assets";
         
         if (fs::exists(assetsSrc))
         {
-            // Copy entire Assets directory
+            
             std::string assetsDst = outputDir;
             fs::remove_all(assetsDst + "/Assets");
             fs::copy(assetsSrc, assetsDst + "/Assets", fs::copy_options::recursive);
             DITTO_LOG_INFO_STREAM("[Editor] Copied Assets to " << assetsDst );
         }
 
-        // 2. Save current scene
+        
         std::string sceneName = engine->scene->name;
         std::string sceneSrc = projectPath + "/Assets/Scenes/" + sceneName + ".bin";
         
-        // Ensure directory exists
+        
         fs::create_directories(outputDir + "/Assets/Scenes");
         
-        // Save and copy scene
+        
         engine->scene->SaveScene(sceneSrc.c_str());
         if (fs::exists(sceneSrc))
         {
@@ -2661,7 +2684,7 @@ void Editor::BuildProject()
             DITTO_LOG_INFO_STREAM("[Editor] Copied scene: " << sceneDst );
         }
 
-        // Copy project.json to root directory
+        
         std::string projectJsonSrc = projectPath + "/project.json";
         if (fs::exists(projectJsonSrc))
         {
@@ -2669,7 +2692,7 @@ void Editor::BuildProject()
             DITTO_LOG_INFO_STREAM("[Editor] Copied project.json to " << outputDir );
         }
 
-        // 3. Copy executable
+        
         std::string exeSrc = projectPath + "/../../x64/Debug/Ditto.exe";
         std::string exeDst = outputDir + "/" + proj->name + ".exe";
         if (fs::exists(exeSrc))
@@ -2696,7 +2719,7 @@ void Editor::BuildProject()
             }
         }
 
-        // 4. Copy 3rdParty DLL
+        
         std::string thirdPartySrc = projectPath + "/../../Ditto/3rdParty/GLFW";
         if (!fs::exists(thirdPartySrc))
         {
@@ -2709,7 +2732,7 @@ void Editor::BuildProject()
         
         if (fs::exists(thirdPartySrc))
         {
-            // Copy glfw3.dll
+            
             for (const auto& entry : fs::directory_iterator(thirdPartySrc))
             {
                 if (entry.is_regular_file() && entry.path().extension() == ".dll")
@@ -2721,7 +2744,7 @@ void Editor::BuildProject()
             }
         }
 
-        // 5. Create startup script (Run.bat)
+        
         std::string batPath = outputDir + "/Run.bat";
         std::ofstream batFile(batPath);
         batFile << "@echo off\n";
@@ -2734,7 +2757,7 @@ void Editor::BuildProject()
         
         DITTO_LOG_INFO_STREAM("[Editor] Build completed: " << outputDir );
         
-        // 6. Open output directory in Explorer
+        
         std::wstring outputDirW = fs::absolute(outputDir).wstring();
         ShellExecuteW(NULL, L"open", outputDirW.c_str(), NULL, NULL, SW_SHOWNORMAL);
     }
@@ -2753,7 +2776,7 @@ void Editor::BuildScripts()
         return;
     }
     
-    // Script directory
+    
     std::string scriptsDir = proj->path + "/Assets/Scripts";
     std::string outputDll = proj->path + "/Scripts.dll";
     
@@ -2763,7 +2786,7 @@ void Editor::BuildScripts()
         return;
     }
     
-    // Collect all .cpp files
+    
     std::vector<std::string> cppFiles;
     for (const auto& entry : fs::directory_iterator(scriptsDir))
     {
@@ -2781,20 +2804,20 @@ void Editor::BuildScripts()
     
     DITTO_LOG_INFO_STREAM("[Editor] Building " << cppFiles.size() << " script(s)..." );
     
-    // Convert to absolute paths
+    
     fs::path projPathAbs = fs::absolute(proj->path);
-    // E:\Engine Source\Ditto\Ditto\Projects\MyProject -> ../.. = E:\Engine Source\Ditto\Ditto
+    
     fs::path enginePathAbs = fs::absolute(proj->path + "/../..");
     fs::path outputDllAbs = fs::absolute(outputDll);
     
-    // Use raw script files directly (user needs to manually modify include paths)
+    
     std::string compileFiles;
     for (const auto& f : cppFiles)
     {
         compileFiles += "\"" + fs::absolute(f).string() + "\" ";
     }
     
-    // Create compilation script
+    
     std::string batPath = proj->path + "/build_scripts.bat";
     std::ofstream batFile(batPath);
     
@@ -2806,7 +2829,7 @@ void Editor::BuildScripts()
     else
         batFile << "echo Warning: vcvars64.bat not found, compilation may fail\n";
     
-    // Use absolute paths, add C++20 and more header paths
+    
     std::string clCmd = "cl /LD /EHsc /std:c++latest /I\"" + enginePathAbs.string() + "\\3rdParty\\GLM\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\\include\" /I\"" + enginePathAbs.string() + "\\3rdParty\\ImGui\" /I\"" + enginePathAbs.string() + "\\Engine\\Core\" /I\"" + enginePathAbs.string() + "\\Engine\\Graphics\" /I\"" + enginePathAbs.string() + "\\Engine\\Physics\" /I\"" + enginePathAbs.string() + "\\3rdParty\\GLFW\" /I\"" + enginePathAbs.string() + "\" /D\"SCRIPT_DLL\" /O2 /MD " + compileFiles + "/Fe:\"" + outputDllAbs.string() + "\"";
     
     batFile << clCmd << "\n";
@@ -2817,7 +2840,7 @@ void Editor::BuildScripts()
     DITTO_LOG_INFO_STREAM("[Editor] Please run: " << batPath );
     DITTO_LOG_INFO_STREAM("[Editor] Or manually compile your scripts and place DLL at: " << outputDll );
     
-    // Try to execute directly
+    
     STARTUPINFOA si = {sizeof(si)};
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_SHOW;
@@ -2830,7 +2853,7 @@ void Editor::BuildScripts()
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
         
-        // Check if DLL was generated
+        
         if (fs::exists(outputDll))
         {
             DITTO_LOG_INFO_STREAM("[Editor] DLL built: " << outputDll );
@@ -2843,8 +2866,8 @@ void Editor::BuildScripts()
 }
 
 
-// Model preview has been moved to InspectorWindow.cpp
-// File icon related functions
+
+
 static const char* s_iconFiles[] = {
     "Default.png", "Cs.png", "Model.png", "Prefab.png", "Shader.png", "Scene.png", "Texture2D.png", "Material.png"
 };
@@ -2874,8 +2897,8 @@ static const char* s_sceneToolbarIconFiles[] = {
 
 void Editor::StopAndRestoreScene()
 {
-    // Reload the temp scene snapshot captured when Play started. After loading,
-    // old GameObject pointers are invalid, so restore hierarchy UI by paths.
+    
+    
     if (!m_tempScenePath.empty() && std::filesystem::exists(m_tempScenePath))
     {
         engine->scene->LoadScene(m_tempScenePath);
@@ -2900,22 +2923,22 @@ void Editor::InitFileIcons()
 {
     if (m_fileIconsInitialized) return;
     
-    // Get icon directory path
+    
     m_assetsPath = FindEditorAssetsPath() + "/Icons";
     DITTO_LOG_INFO_STREAM("[FileIcon] Initializing from: " << m_assetsPath );
     
-    // Load file icons
+    
     for (int i = 0; i < 8; i++) {
         std::string path = m_assetsPath + "/" + s_iconFiles[i];
         m_icons[i] = LoadIcon(path);
     }
     
-    // Load folder icons
+    
     m_folderIcon = LoadIcon(m_assetsPath + "/Folder.png");
     m_folderEmptyIcon = LoadIcon(m_assetsPath + "/FolderEmpty.png");
     m_folderOpenedIcon = LoadIcon(m_assetsPath + "/FolderOpened Icon.png");
     
-    // Load special icons
+    
     m_dittoIcon = LoadIcon(m_assetsPath + "/Scene.png");
     m_gameObjectIcon = LoadIcon(m_assetsPath + "/GameObject.png");
     m_cameraIcon = LoadIcon(m_assetsPath + "/Camera.png");
@@ -2923,14 +2946,14 @@ void Editor::InitFileIcons()
     m_spriteRendererIcon = LoadIcon(m_assetsPath + "/SpriteRenderer.png");
     m_rectTransformIcon = LoadIcon(m_assetsPath + "/RectTransform.png");
     
-    // Load lock icons
+    
     m_lockIcon = LoadIcon(m_assetsPath + "/Lock.png");
     m_unlockIcon = LoadIcon(m_assetsPath + "/UnLock.png");
 
-    // Load toolbar icons
+    
     m_playIcon = LoadIcon(m_assetsPath + "/Play.png");
     m_pauseIcon = LoadIcon(m_assetsPath + "/Pause.png");
-    m_stopIcon = LoadIcon(m_assetsPath + "/Scene.png"); // placeholder; swap to "Stop.png" when available
+    m_stopIcon = LoadIcon(m_assetsPath + "/Scene.png"); 
     m_objectPickerIcon = LoadIcon(m_assetsPath + "/ObjectPicker.png");
     for (int i = 0; i < static_cast<int>(SceneToolbarIcon::Count); ++i)
         m_sceneToolbarIcons[i] = LoadIcon(m_assetsPath + "/" + s_sceneToolbarIconFiles[i]);
@@ -2965,8 +2988,8 @@ Ditto::TextureHandle Editor::LoadIcon(const std::string& iconPath)
     return tex;
 }
 
-// Resolve an icon handle to an ImGui texture id (backend-specific). Central
-// helper used by all the icon getters.
+
+
 void* Editor::IconTexID(Ditto::TextureHandle h)
 {
     return (engine && engine->renderer) ? engine->renderer->GetImGuiTextureID(h) : nullptr;
@@ -2974,29 +2997,29 @@ void* Editor::IconTexID(Ditto::TextureHandle h)
 
 int Editor::GetIconIndex(const std::string& ext)
 {
-    if (ext == ".cs") return 1;  // Cs.png
-    if (ext == ".obj" || ext == ".fbx" || ext == ".mesh") return 2;  // Model.png
-    if (ext == ".prefab") return 3;  // Prefab.png
-    if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag") return 4;  // Shader.png
-    if (ext == ".bin") return 5;  // Scene.png
-    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr") return 6;  // Texture2D.png
-    if (ext == ".mat" || ext == ".physmat2d") return 7;  // Material.png
-    return 0;  // Default Default.png
+    if (ext == ".cs") return 1;  
+    if (ext == ".obj" || ext == ".fbx" || ext == ".mesh") return 2;  
+    if (ext == ".prefab") return 3;  
+    if (ext == ".shader" || ext == ".hlsl" || ext == ".glsl" || ext == ".vert" || ext == ".frag") return 4;  
+    if (ext == ".bin") return 5;  
+    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr") return 6;  
+    if (ext == ".mat" || ext == ".physmat2d") return 7;  
+    return 0;  
 }
 
 void* Editor::GetIconByExtension(const std::string& extension)
 {
     if (!m_fileIconsInitialized) return nullptr;
 
-    // Special case for ObjectPicker icon
+    
     if (extension == ".objectpicker")
         return IconTexID(m_objectPickerIcon);
 
-    int idx = GetIconIndex(extension);   // already 0-6 range
+    int idx = GetIconIndex(extension);   
     return IconTexID(m_icons[idx]);
 }
 
-// Icon getters resolve a stored handle to an ImGui texture id on demand.
+
 void* Editor::GetFolderIcon()       { return IconTexID(m_folderIcon); }
 void* Editor::GetFolderEmptyIcon()  { return IconTexID(m_folderEmptyIcon); }
 void* Editor::GetFolderOpenedIcon() { return IconTexID(m_folderOpenedIcon); }

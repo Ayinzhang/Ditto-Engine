@@ -1,8 +1,8 @@
 #pragma once
 
-// Engine-wide key codes. Values intentionally match GLFW key codes because the
-// current window backend polls GLFW directly, and DittoEngine.KeyCode in C#
-// passes these integers across the internal-call boundary.
+
+
+
 namespace Ditto::KeyCode
 {
     constexpr int Space = 32;

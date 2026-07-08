@@ -22,8 +22,8 @@
 #include <cctype>
 #include <iterator>
 
-// Component index definitions live in GameObject.h (namespace ComponentIndex)
-// so engine-side code can share them. Local aliases keep the switch below terse.
+
+
 namespace CI = ComponentIndex;
 namespace AssetIO = Ditto::AssetReferenceIO;
 
@@ -68,7 +68,7 @@ GameObject::GameObject(GameObject* other)
     name = other->name;
     prefabSourcePath = other->prefabSourcePath;
     prefabSourceGuid = other->prefabSourceGuid;
-    compMask = 0;   // rebuilt by AddComponent below; never copy a possibly-stale mask
+    compMask = 0;   
     for (const auto& compPtr : other->components)
     {
         Component* comp = compPtr.get();
@@ -100,8 +100,8 @@ GameObject::GameObject(GameObject* other)
             AddComponent<ParticleSystemComponent>(ps);
         else if (auto cs = dynamic_cast<CSharpScriptComponent*>(comp))
         {
-            // CSharpScriptComponent has no copy-ctor; default-construct then
-            // copy its serialized state so duplicated objects keep their script.
+            
+            
             CSharpScriptComponent* newCs = AddComponent<CSharpScriptComponent>();
             newCs->scriptName = cs->scriptName;
             newCs->scriptPath = cs->scriptPath;
@@ -117,7 +117,7 @@ GameObject::GameObject(GameObject* other)
     }
 }
 
-// children + components: unique_ptr vectors tear the tree down recursively.
+
 GameObject::~GameObject() = default;
 
 GameObject* GameObject::AddChild(std::unique_ptr<GameObject> child)
@@ -132,9 +132,9 @@ GameObject* GameObject::AddChild(std::unique_ptr<GameObject> child)
 void GameObject::AddChild(GameObject* existingChild)
 {
     if (!existingChild || existingChild == this) return;
-    // Cycle guard must run BEFORE detaching (IsDescendantOf walks parents).
+    
     if (this->IsDescendantOf(existingChild)) return;
-    if (!existingChild->parent) return;   // every live non-root object has an owner
+    if (!existingChild->parent) return;   
 
     auto owned = existingChild->parent->DetachChild(existingChild);
     if (owned) AddChild(std::move(owned));
@@ -280,9 +280,9 @@ void GameObject::Deserialize(std::istream& file)
         }
     }
 
-    // Recompute compMask from the components actually rebuilt, so it is
-    // self-consistent regardless of what was stored on disk (older files may
-    // carry a mask corrupted by the previous '+=' accumulation bug).
+    
+    
+    
     compMask = 0;
     for (const auto& comp : components)
         compMask |= comp->index;
@@ -321,8 +321,8 @@ TransformComponent::TransformComponent(TransformComponent* other)
 
 void TransformComponent::SeedOrientationFromEuler()
 {
-    // Compose in the SAME Y * X * Z order UpdateTransform uses for euler, so a
-    // body's visible orientation does not snap when simulation takes over.
+    
+    
     glm::quat qy = glm::angleAxis(glm::radians(rotation.y), glm::vec3(0, 1, 0));
     glm::quat qx = glm::angleAxis(glm::radians(rotation.x), glm::vec3(1, 0, 0));
     glm::quat qz = glm::angleAxis(glm::radians(rotation.z), glm::vec3(0, 0, 1));
@@ -340,7 +340,7 @@ void TransformComponent::UpdateTransform()
     glm::mat4 rotationMat;
     if (useQuatRotation)
     {
-        // Simulation owns the rotation: build directly from the quaternion.
+        
         rotationMat = glm::mat4_cast(orientation);
     }
     else
@@ -603,7 +603,7 @@ void RendererComponent::Deserialize(std::istream& file)
 {
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
     meshPath = ReadAssetPathString(file);
-    (void)AssetIO::ReadString(file); // Legacy per-renderer shader slot.
+    (void)AssetIO::ReadString(file); 
     mainTexturePath = ReadAssetPathString(file);
     materialPath = ReadAssetPathString(file);
     int32_t shadowModeInt = 0;
@@ -663,7 +663,7 @@ void SpriteRendererComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&color), sizeof(glm::vec4));
     spritePath = ReadAssetPathString(file);
     materialPath = ReadAssetPathString(file);
-    (void)AssetIO::ReadString(file); // Legacy per-sprite shader slot.
+    (void)AssetIO::ReadString(file); 
     file.read(reinterpret_cast<char*>(&flipX), sizeof(flipX));
     file.read(reinterpret_cast<char*>(&flipY), sizeof(flipY));
     int32_t drawModeInt = 0;
@@ -702,8 +702,8 @@ void RigidbodyComponent::OnInspectorGUI()
 
 void RigidbodyComponent::CalculateInertia(const glm::vec3& scale)
 {
-    // Default to a box inertia tensor. Without a built-in shape hint we
-    // assume the bounding box of the (scaled) mesh.
+    
+    
     float w = scale.x, h = scale.y, d = scale.z;
     float Ixx = (1.0f / 12.0f) * mass * (h * h + d * d);
     float Iyy = (1.0f / 12.0f) * mass * (w * w + d * d);
@@ -819,9 +819,16 @@ Rigidbody2DComponent::Rigidbody2DComponent(Rigidbody2DComponent* other)
     index = CI::Rigidbody2D;
 }
 
+void Rigidbody2DComponent::WakeUp()
+{
+    sleeping = false;
+    sleepTimer = 0.0f;
+}
+
 void Rigidbody2DComponent::AddForce(const glm::vec2& force, ForceMode2D mode)
 {
     if (type != Dynamic) return;
+    WakeUp();
     if (mode == Impulse)
         velocity += force / glm::max(0.0001f, mass);
     else
@@ -831,6 +838,7 @@ void Rigidbody2DComponent::AddForce(const glm::vec2& force, ForceMode2D mode)
 void Rigidbody2DComponent::AddTorque(float torque, ForceMode2D mode)
 {
     if (type != Dynamic) return;
+    WakeUp();
     if (mode == Impulse)
         angularVelocity += torque / glm::max(0.0001f, mass);
     else
@@ -1022,7 +1030,7 @@ void AudioSourceComponent::Deserialize(std::istream& file)
     file.read(reinterpret_cast<char*>(&reverbZoneMix), sizeof(reverbZoneMix));
 }
 
-// ---- UI components ----
+
 
 CanvasComponent::CanvasComponent()
 {

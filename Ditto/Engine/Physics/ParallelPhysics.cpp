@@ -62,26 +62,26 @@ void ParallelPhysics::IntegrateForce(float dt) {
             rb->angularVelocity *= glm::max(0.0f, glm::pow(1.0f - angularDamping, dt));
             transform->position += rb->velocity * dt;
 
-            // Quaternion angular integration: compose a delta rotation onto the
-            // orientation instead of adding euler components (which shears and
-            // gimbal-locks). `angularVelocity` is stored in degrees/sec.
+            
+            
+            
             if (!transform->useQuatRotation)
                 transform->SeedOrientationFromEuler();
             glm::vec3 wRad = glm::radians(rb->angularVelocity);
             glm::quat spin(0.0f, wRad.x, wRad.y, wRad.z);
             transform->orientation = glm::normalize(
                 transform->orientation + 0.5f * spin * transform->orientation * dt);
-            // Mirror back to euler so the Inspector / serialization stay meaningful.
+            
             transform->rotation = glm::degrees(glm::eulerAngles(transform->orientation));
 
             transform->localDirty = true;
             collider->isDirty = true;
         }
         else if (collider->rigidbody->type == RigidbodyComponent::Kinematic) {
-            // Kinematic bodies are driven by the Transform hierarchy (script or
-            // parent), never integrated -- so no gravity, no double-counting.
-            // Force an AABB refresh each step so a moving platform / parent-
-            // following child is broad-phased at its current world pose.
+            
+            
+            
+            
             collider->isDirty = true;
         }
     }
@@ -115,9 +115,9 @@ void ParallelPhysics::HandleBroadCollisions() {
             for (Collider* other : potential) {
                 if (other == collider) continue;
                 if (other->rigidbody == collider->rigidbody) continue;
-                // All body types are valid partners for a Dynamic body: Static
-                // and Kinematic both act as infinite-mass obstacles (Kinematic
-                // additionally moves and pushes this Dynamic body).
+                
+                
+                
                 if (collider < other)
                     local.emplace_back(collider, other);
                 else

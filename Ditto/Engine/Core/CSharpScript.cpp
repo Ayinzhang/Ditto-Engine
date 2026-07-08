@@ -5,6 +5,7 @@
 #include <cctype>
 #include <algorithm>
 #include <functional>
+#include <cmath>
 #include "CSharpScript.h"
 #include "CSharpScriptCompiler.h"
 #include "RuntimeContext.h"
@@ -13,13 +14,13 @@
 #include "Scene.h"
 #include "Logger.h"
 #include "../Resources/AssetReferenceIO.h"
+#include "../Resources/AssetPath.h"
 #ifndef DITTO_HEADLESS_TESTS
 #include "../../Editor/Editor.h"
 #include "../../Editor/ProjectWindow.h"
 #include "../../3rdParty/ImGui/imgui.h"
 #include "Input.h"
 #include "../Audio/AudioEngine.h"
-#include "../Resources/AssetPath.h"
 #endif
 #include "../../3rdParty/GLM/glm.hpp"
 #include "../../3rdParty/GLM/gtc/type_ptr.hpp"
@@ -44,10 +45,10 @@ CSharpScriptComponent::CSharpScriptComponent()
 
 namespace
 {
-    // Remove // line comments and /* */ block comments while preserving the
-    // contents of string ('"') and char ('\'') literals, so a "//" inside a
-    // string default value is not mistaken for a comment. Replaces comments
-    // with a single space to keep tokens that surrounded them separated.
+    
+    
+    
+    
     std::string StripComments(const std::string& src)
     {
         std::string out;
@@ -75,7 +76,7 @@ namespace
                 break;
             case StringLit:
                 out += c;
-                if (c == '\\' && n != '\0') { out += n; ++i; }   // escape
+                if (c == '\\' && n != '\0') { out += n; ++i; }   
                 else if (c == '"') state = Code;
                 break;
             case CharLit:
@@ -96,8 +97,8 @@ namespace
         return s.substr(a, b - a + 1);
     }
 
-    // Map a C# type keyword to our editor field type. Returns false for types
-    // we don't expose in the inspector (the declaration is then skipped).
+    
+    
     bool MapFieldType(const std::string& typeName, ScriptFieldType& outType)
     {
         if (typeName == "float" || typeName == "double") { outType = ScriptFieldType::Float; return true; }
@@ -111,8 +112,8 @@ namespace
         return false;
     }
 
-    // Parse up to `count` floats from the arguments of a `new Vector_(...)`
-    // initializer. Missing components default to 0. Tolerates trailing 'f'.
+    
+    
     void ParseVectorArgs(const std::string& init, float* out, int count)
     {
         for (int i = 0; i < count; ++i) out[i] = 0.0f;
@@ -132,9 +133,9 @@ namespace
         }
     }
 
-    // Assign a parsed default value (from the initializer text, possibly empty)
-    // into a ScriptField according to its type. Empty/invalid initializers fall
-    // back to a sensible zero/false/empty default.
+    
+    
+    
     void AssignDefault(ScriptField& field, const std::string& initRaw)
     {
         std::string init = Trim(initRaw);
@@ -282,8 +283,8 @@ namespace
         return ray.origin + ray.direction * t;
     }
 
-    // Split a declarator list ("a = 1, b = new Vector3(1,2,3), c") on commas
-    // that sit at parenthesis depth 0, so vector initializers stay intact.
+    
+    
     std::vector<std::string> SplitTopLevelCommas(const std::string& s)
     {
         std::vector<std::string> parts;
@@ -306,12 +307,12 @@ void CSharpScriptComponent::ParseFieldDeclaration(const std::string& statement)
     std::string s = Trim(statement);
     if (s.empty()) return;
 
-    // Strip and inspect leading attributes: [SerializeField], [HideInInspector].
+    
     bool hasSerializeField = false, hideInInspector = false;
     while (!s.empty() && s[0] == '[')
     {
         size_t close = s.find(']');
-        if (close == std::string::npos) return;   // malformed
+        if (close == std::string::npos) return;   
         std::string attr = s.substr(1, close - 1);
         if (attr.find("SerializeField") != std::string::npos) hasSerializeField = true;
         if (attr.find("HideInInspector") != std::string::npos) hideInInspector = true;
@@ -319,16 +320,16 @@ void CSharpScriptComponent::ParseFieldDeclaration(const std::string& statement)
     }
     if (hideInInspector) return;
 
-    // A method/indexer/expression-bodied member has '(' or "=>" in its head
-    // (before any '='). A field's only '(' is inside a `new Vector_(...)`
-    // initializer, which is after the '='.
+    
+    
+    
     size_t posEq = s.find('=');
     size_t posArrow = s.find("=>");
     size_t posParen = s.find('(');
     if (posArrow != std::string::npos) return;
     if (posParen != std::string::npos && (posEq == std::string::npos || posParen < posEq)) return;
 
-    // Consume leading modifier keywords; remember access/storage class.
+    
     std::stringstream head(posEq == std::string::npos ? s : s.substr(0, posEq));
     std::string word, typeName;
     bool isPublic = false, isStatic = false, isConst = false;
@@ -347,22 +348,22 @@ void CSharpScriptComponent::ParseFieldDeclaration(const std::string& statement)
             else if (w == "const") isConst = true;
             continue;
         }
-        break;   // first non-modifier word is the type
+        break;   
     }
     if (wi >= headWords.size()) return;
     typeName = headWords[wi++];
 
-    // Only public fields (or [SerializeField] ones) are editable; never expose
-    // static/const storage.
+    
+    
     if (isStatic || isConst) return;
     if (!isPublic && !hasSerializeField) return;
 
     ScriptFieldType fieldType;
     if (!MapFieldType(typeName, fieldType)) return;
 
-    // The first declarator name is the remaining head word (if any); the rest
-    // of the statement (after the type) forms the full declarator list.
-    // Rebuild the declarator portion: everything in `s` after the type token.
+    
+    
+    
     size_t typePos = s.find(typeName);
     std::string declPart = (typePos == std::string::npos) ? s : s.substr(typePos + typeName.size());
 
@@ -396,11 +397,11 @@ void CSharpScriptComponent::ParseScriptFields()
     buffer << file.rdbuf();
     std::string source = StripComments(buffer.str());
 
-    // Walk the source one statement at a time. A statement ends at ';'.
-    // Braces clear the pending head: class/namespace braces should not hide
-    // fields inside the type, while property/method blocks should not be parsed
-    // as fields. Method-body statements are later ignored by ParseFieldDeclaration
-    // because they contain '(' before any '='.
+    
+    
+    
+    
+    
     std::string stmt;
     for (size_t i = 0; i < source.size(); ++i)
     {
@@ -431,9 +432,17 @@ void CSharpScriptComponent::Start()
     {
         if (!scriptInstance)
         {
-            if (!scriptPath.empty() && fs::exists(scriptPath))
+            fs::path resolvedScriptPath;
+            if (!scriptPath.empty())
             {
-                CSharpScriptSystem::LoadScript(scriptPath, this);
+                resolvedScriptPath = fs::path(scriptPath);
+                if (!fs::exists(resolvedScriptPath))
+                    resolvedScriptPath = Ditto::AssetPath::ResolveAssetPath(scriptPath);
+            }
+
+            if (!resolvedScriptPath.empty() && fs::exists(resolvedScriptPath))
+            {
+                CSharpScriptSystem::LoadScript(resolvedScriptPath.string(), this);
             }
             else if (!scriptName.empty())
             {
@@ -863,9 +872,9 @@ void CSharpScriptSystem::Shutdown()
 
 void CSharpScriptSystem::LogToConsole(const std::string& message)
 {
-    // All script-side logs flow into the shared Logger, which mirrors them to
-    // stdout and feeds the editor's Console tab. Keep the optional external
-    // callback hook for callers that redirect logs elsewhere.
+    
+    
+    
     if (s_logCallback) s_logCallback(message);
     Ditto::Logger::Get().Info(message);
 }
@@ -1450,7 +1459,7 @@ int Internal_Input_GetButtonUp(void* buttonName)
     return Input::GetButtonUp(n.c_str()) ? 1 : 0;
 }
 #else
-// Headless test builds (DittoTests) compile this file without window/Input.
+
 int Internal_Input_GetKey(int)            { return 0; }
 int Internal_Input_GetKeyDown(int)        { return 0; }
 int Internal_Input_GetKeyUp(int)          { return 0; }
@@ -1597,7 +1606,7 @@ int Internal_UIButton_ConsumeClick(void* uiButton)
     if (!uiButton) return 0;
     UIButtonComponent* btn = static_cast<UIButtonComponent*>(uiButton);
     int clicked = btn->wasClicked ? 1 : 0;
-    btn->wasClicked = false;   // read-clears
+    btn->wasClicked = false;   
     return clicked;
 }
 
@@ -1718,14 +1727,14 @@ int Internal_Renderer_GetShapeType(void* renderer)
 {
     if (!renderer) return 0;
     (void)renderer;
-    // Shape type is no longer a meaningful int — file mesh only.
+    
     return 0;
 }
 
 void Internal_Renderer_SetShapeType(void* renderer, int type)
 {
-    // Shape type is deprecated: the renderer is now exclusively file-mesh driven.
-    // Kept as a no-op so existing C# scripts that call it still compile.
+    
+    
     (void)renderer;
     (void)type;
 }
@@ -2015,7 +2024,13 @@ int Internal_Rigidbody2D_GetBodyType(void* rigidbody)
 void Internal_Rigidbody2D_SetBodyType(void* rigidbody, int type)
 {
     if (!rigidbody) return;
-    static_cast<Rigidbody2DComponent*>(rigidbody)->type = static_cast<Rigidbody2DComponent::Type>(type);
+    auto* rb = static_cast<Rigidbody2DComponent*>(rigidbody);
+    auto nextType = static_cast<Rigidbody2DComponent::Type>(type);
+    if (rb->type != nextType)
+    {
+        rb->type = nextType;
+        rb->WakeUp();
+    }
 }
 
 float Internal_Rigidbody2D_GetMass(void* rigidbody)
@@ -2065,7 +2080,14 @@ void Internal_Rigidbody2D_GetVelocity(void* rigidbody, float* outVel)
 void Internal_Rigidbody2D_SetVelocity(void* rigidbody, float x, float y)
 {
     if (!rigidbody) return;
-    static_cast<Rigidbody2DComponent*>(rigidbody)->velocity = glm::vec2(x, y);
+    auto* rb = static_cast<Rigidbody2DComponent*>(rigidbody);
+    glm::vec2 next(x, y);
+    if (glm::length(next - rb->velocity) > 0.0001f)
+    {
+        rb->velocity = next;
+        if (glm::length(next) > 0.0001f)
+            rb->WakeUp();
+    }
 }
 
 float Internal_Rigidbody2D_GetAngularVelocity(void* rigidbody)
@@ -2077,7 +2099,13 @@ float Internal_Rigidbody2D_GetAngularVelocity(void* rigidbody)
 void Internal_Rigidbody2D_SetAngularVelocity(void* rigidbody, float v)
 {
     if (!rigidbody) return;
-    static_cast<Rigidbody2DComponent*>(rigidbody)->angularVelocity = v;
+    auto* rb = static_cast<Rigidbody2DComponent*>(rigidbody);
+    if (std::abs(rb->angularVelocity - v) > 0.0001f)
+    {
+        rb->angularVelocity = v;
+        if (std::abs(v) > 0.0001f)
+            rb->WakeUp();
+    }
 }
 
 void Internal_Rigidbody2D_AddForce(void* rigidbody, float x, float y, int mode)

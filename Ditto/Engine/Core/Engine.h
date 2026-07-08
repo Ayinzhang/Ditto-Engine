@@ -15,10 +15,10 @@ struct Engine
 {
     enum State { Edit, Play, Pause, Stop, Exit } state = Edit;
 
-    // Render backend. DirectX 12 is wired as an experimental backend slot but
-    // should not be compiled in by default until the renderer is implemented.
-    // Compiled runtime order is DX12 -> Vulkan -> OpenGL; DITTO_RHI can force
-    // a specific backend.
+    
+    
+    
+    
     enum class Backend { OpenGL, Vulkan, DirectX12 };
 #ifdef DITTO_ENABLE_DX12
     Backend backend = Backend::DirectX12;
@@ -30,10 +30,10 @@ struct Engine
 
     std::unique_ptr<Ditto::IWindow> window;
     int window_width, window_height;
-    // All subsystems are owned via unique_ptr (RAII). The editor UI keeps
-    // working with raw observer pointers obtained via .get()/->.
-    // NOTE: ~Engine still resets these in an explicit order (scene must free
-    // its GPU handles through `renderer` before the renderer dies).
+    
+    
+    
+    
     std::unique_ptr<Resource> resource;
     std::unique_ptr<Scene> scene;
     std::unique_ptr<Editor> editor;
@@ -45,11 +45,11 @@ struct Engine
     double lastX, lastY;
     std::unique_ptr<Physics> physics;
     std::unique_ptr<Physics2DWorld> physics2D;
-    // RHI: all rendering goes through this. Startup selects the preferred
-    // compiled backend first, then falls back to a supported backend.
+    
+    
     std::unique_ptr<Ditto::IRenderer> renderer;
-    // Offscreen render targets for the editor's Scene/Game viewports (owned by
-    // the renderer; recreated on viewport resize by RenderSceneToTexture).
+    
+    
     Ditto::RenderTargetHandle sceneViewRT, gameViewRT;
     int sceneViewW = 0, sceneViewH = 0, gameViewW = 0, gameViewH = 0;
     std::string gameProjectPath;
@@ -65,10 +65,10 @@ struct Engine
 
     void Run();
     void ProcessInput();
-    // Render the scene (scene or game camera) into an offscreen render target of
-    // the given size and return its ImGui texture id (nullptr on failure). The
-    // editor displays the result with flipped V (uv0=(0,1), uv1=(1,0)) -- both
-    // backends produce GL bottom-up memory order.
+    
+    
+    
+    
     void* RenderSceneToTexture(int w, int h, bool isGameView);
     void SetEngineState(State state);
     void SetProjectPath(const std::string& path);
@@ -77,9 +77,9 @@ struct Engine
 private:
     State previousFrameState = Edit;
 
-    // Shared construction path for both the editor and game-mode constructors.
-    // `createEditor` builds the ImGui editor (edit mode only); `shaderBaseDir`
-    // selects where shaders are resolved from ("" = executable-anchored).
+    
+    
+    
     void InitCommon(bool createEditor, const std::string& shaderBaseDir);
     bool BeginRuntimeFrame();
     void UpdatePlayModeFrame(bool enteredPlay);

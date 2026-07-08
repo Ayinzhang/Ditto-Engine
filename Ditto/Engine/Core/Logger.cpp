@@ -11,8 +11,8 @@ namespace Ditto
 
     void Logger::Log(LogLevel level, const std::string& message)
     {
-        // Mirror to the standard streams first so headless / game-mode runs and
-        // existing redirection keep working exactly as before.
+        
+        
         if (static_cast<int>(level) >= static_cast<int>(m_consoleMinLevel))
         {
             if (level == LogLevel::Error)
@@ -23,7 +23,7 @@ namespace Ditto
 
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        // Collapse a run of identical consecutive messages into one entry.
+        
         if (!m_entries.empty())
         {
             LogEntry& last = m_entries.back();
@@ -44,7 +44,7 @@ namespace Ditto
             case LogLevel::Error:   ++m_errorCount;   break;
         }
 
-        // Ring-buffer trim: drop the oldest entries past the cap.
+        
         if (m_entries.size() > m_maxEntries)
         {
             size_t overflow = m_entries.size() - m_maxEntries;

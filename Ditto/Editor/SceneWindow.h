@@ -39,20 +39,21 @@ private:
     bool m_effectsEnabled = true;
     bool m_gizmosEnabled = true;
     bool m_toolbarHovered = false;
-    bool m_isDragging = false;        // ImGuizmo manipulation in progress
+    bool m_isDragging = false;        
     bool m_isRotatingCamera = false;
-    bool m_justFinishedDrag = false;  // Flag to skip selection after drag ends
-    bool m_gizmoWasUsing = false;     // edge detection for one-undo-per-drag
-    ImVec2D m_lastMousePos;            // last-frame cursor in viewport (for camera rotation)
+    bool m_justFinishedDrag = false;  
+    bool m_gizmoWasUsing = false;     
+    ImVec2D m_lastMousePos;            
 
     ImRect2D GetCurrentViewportRect();
-    // ImGuizmo translate/rotate/scale manipulator (replaces the old
-    // hand-rolled gizmos). viewMin/viewMax = the viewport rect.
+    
+    
     void DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax);
     void DrawPhysicsMeshGizmos();
     void DrawUIGizmos(const ImVec2& viewMin, const ImVec2& viewMax);
     void DrawCameraGizmos();
     void DrawColliderMeshGizmo(ColliderComponent* collider, const glm::mat4& worldMat);
+    void DrawCollider2DGizmo(Collider2DComponent* collider, const glm::mat4& worldMat);
     void DrawBoxColliderGizmo(const glm::mat4& worldMat, MeshData* mesh);
     void DrawSphereColliderGizmo(const glm::mat4& worldMat, MeshData* mesh);
     void DrawConvexMeshColliderGizmo(const glm::mat4& worldMat, MeshData* mesh);

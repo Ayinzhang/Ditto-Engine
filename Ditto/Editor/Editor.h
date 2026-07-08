@@ -42,7 +42,7 @@ enum class SceneToolbarIcon
 
 struct SelectedFile 
 {
-	std::string path, name, extension, folder; // full path, file name with extension, file extension, parent folder
+	std::string path, name, extension, folder; 
 
     bool IsValid() const { return !path.empty(); }
     void Clear() { path.clear(); name.clear(); extension.clear(); folder.clear(); }
@@ -86,19 +86,23 @@ struct Editor
     bool lockingSelection = false;
     int gameResolutionIndex = 0;
     float gameViewScale = 1.0f;
+    bool hasGameViewport = false;
+    float gameViewportX = 0.0f, gameViewportY = 0.0f;
+    float gameViewportW = 1.0f, gameViewportH = 1.0f;
+    float gameViewportContentW = 1.0f, gameViewportContentH = 1.0f;
 
-    // ---- Undo / Redo (memento: full-scene snapshots) ----
-    std::vector<EditorSnapshot> m_undoStack;   // snapshots of pre-change scene + selection states
+    
+    std::vector<EditorSnapshot> m_undoStack;   
     std::vector<EditorSnapshot> m_redoStack;
-    EditorSnapshot m_pendingPreEdit;           // pre-edit snapshot captured at drag start
+    EditorSnapshot m_pendingPreEdit;           
     EditorSnapshot m_playModeEntrySnapshot;
     bool m_hasPendingEdit = false;
     bool m_hasPlayModeEntrySnapshot = false;
     static constexpr size_t kUndoDepth = 64;
     bool dockingInitialized = false;
     ImGuiID dockSpaceID = 0;
-    Ditto::IWindow* m_window = nullptr; // engine-owned window (for lazy ImGui backend init)
-    bool m_imguiBackendInit = false;    // ImGui platform+renderer backend initialized
+    Ditto::IWindow* m_window = nullptr; 
+    bool m_imguiBackendInit = false;    
     int frame; float fps, ppf, deltaTime;
     
     std::string m_tempScenePath;
@@ -123,6 +127,7 @@ struct Editor
     void DrawLayoutMenu();
 
     void SetupDocking();
+    bool ApplyGameViewportToInput() const;
     void SaveCurrentLayout();
     void LoadLayout(const std::string& layoutName);
     std::vector<std::string> GetSavedLayouts();
@@ -131,15 +136,15 @@ struct Editor
     void LoadSceneFromProject(const std::string& scenePath);
     std::vector<std::string> GetProjectScenes();
 
-    // Save current scene (with dirty check)
+    
     void SaveCurrentScene();
     
-    // Mark scene as modified
+    
     void MarkSceneDirty() { sceneDirty = true; }
 
-    // Undo / Redo. PushUndoSnapshot is called immediately BEFORE a discrete
-    // mutation; Begin/EndInspectorEdit bracket continuous edits (drags) so each
-    // drag is one undo step committed only if the value actually changed.
+    
+    
+    
     void PushUndoSnapshot();
     void BeginInspectorEdit();
     void EndInspectorEdit();
@@ -148,17 +153,17 @@ struct Editor
     EditorSnapshot CaptureEditorSnapshot() const;
     void RestoreEditorSelection(const EditorSnapshot& snapshot);
     
-    // Build and package for release
+    
     void BuildProject();
     
-    // Compile scripts to DLL
+    
     void BuildScripts();
 
-    // Stops the play session, reloads the temp scene snapshot, and resets
-    // editor selection state. Leaves the engine in Engine::Edit.
+    
+    
     void StopAndRestoreScene();
 
-    // Script drag-drop handling
+    
     void OnScriptComponentDropped(const std::string& scriptPath);
     void OnScriptComponentDroppedToObject(GameObject* obj, const std::string& scriptPath);
     bool InstantiatePrefabToScene(const std::string& prefabPath);
@@ -166,26 +171,26 @@ struct Editor
     bool ApplySelectedPrefabInstance();
     bool RevertSelectedPrefabInstance();
 
-    // 3D model preview related (delegated to InspectorWindow)
+    
     void InitModelPreview() { if (m_inspectorWindow) m_inspectorWindow->InitModelPreview(); }
     void LoadPreviewModel(const std::string& modelPath) { if (m_inspectorWindow) m_inspectorWindow->LoadPreviewModel(modelPath); }
     void CleanupModelPreview() { if (m_inspectorWindow) m_inspectorWindow->CleanupModelPreview(); }
     void AddConsoleMessage(const std::string& message) { if (m_projectWindow) m_projectWindow->AddConsoleMessage(message); }
     void ImportExternalFilesToProject(const std::vector<std::string>& paths);
 
-    // Get ProjectWindow instance (for navigation from Inspector)
+    
     ProjectWindow* GetProjectWindow() { return m_projectWindow.get(); }
 
     void DrawGameObjectNode(GameObject* obj, bool isRoot = false, int depth = 0);
     void CopySelectedObject();
     void DeleteSelectedObject();
 
-    // Deferred hierarchy mutations. Structural changes (reparent / delete /
-    // duplicate) requested from inside DrawGameObjectNode would invalidate the
-    // `children` iterators of every ancestor draw frame (the vectors hold
-    // unique_ptr now, so an erase destroys the object on the spot). The
-    // handlers only RECORD the request here; DrawHierarchy applies it after
-    // the whole tree has been drawn.
+    
+    
+    
+    
+    
+    
     GameObject* m_pendingReparentSource = nullptr;
     GameObject* m_pendingReparentTarget = nullptr;
     bool m_pendingCopy = false;
@@ -193,11 +198,11 @@ struct Editor
     void DeleteSelectedFile();
     void DuplicateSelectedFile();
 
-    // File icon related
+    
     void InitFileIcons();
     void CleanupFileIcons();
-    // Icon getters return an ImGui texture id (backend-specific void*), resolved
-    // from a stored RHI TextureHandle. Out-of-line because they need engine->renderer.
+    
+    
     void* GetIconByExtension(const std::string& extension);
     void* GetFolderIcon();
     void* GetFolderEmptyIcon();
@@ -213,13 +218,13 @@ struct Editor
     void* GetUnlockIcon();
     void* GetPlayIcon();
     void* GetPauseIcon();
-    // m_stopIcon reserved for a future Stop.png asset; not currently used in the toolbar.
+    
     void* GetStopIcon();
     void* GetSceneIcon(SceneToolbarIcon icon);
 
 private:
-    // File icons (RHI texture handles; GPU textures owned by engine->renderer).
-    Ditto::TextureHandle m_icons[8];  // 0:Default, 1:Cs, 2:Model, 3:Prefab, 4:Shader, 5:Scene, 6:Texture2D, 7:Material
+    
+    Ditto::TextureHandle m_icons[8];  
     Ditto::TextureHandle m_folderIcon;
     Ditto::TextureHandle m_folderEmptyIcon;
     Ditto::TextureHandle m_folderOpenedIcon;
@@ -239,13 +244,13 @@ private:
     bool m_fileIconsInitialized = false;
     std::string m_assetsPath;
 
-    // Load single icon into an RHI texture; resolve a handle to an ImGui id.
+    
     Ditto::TextureHandle LoadIcon(const std::string& iconPath);
     void* IconTexID(Ditto::TextureHandle h);
     int GetIconIndex(const std::string& ext);
 
-    // Window components (owned; SceneWindow is forward-declared, so ~Editor
-    // must stay defined in Editor.cpp where SceneWindow.h is included).
+    
+    
     std::unique_ptr<ProjectWindow> m_projectWindow;
     std::unique_ptr<InspectorWindow> m_inspectorWindow;
     std::unique_ptr<SceneWindow> m_sceneWindow;

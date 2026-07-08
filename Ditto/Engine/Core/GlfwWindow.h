@@ -18,6 +18,7 @@ namespace Ditto
         void PollEvents() override;
         void SetSize(int width, int height) override;
         double TimeSeconds() const override;
+        void GetWindowSize(int& width, int& height) const override;
         void GetFramebufferSize(int& width, int& height) const override;
 
         void MakeContextCurrent() override;

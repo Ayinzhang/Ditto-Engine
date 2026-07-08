@@ -6,7 +6,7 @@
 #include <memory>
 #include <windows.h>
 
-// Forward declarations for Mono types
+
 typedef struct _MonoDomain MonoDomain;
 typedef struct _MonoAssembly MonoAssembly;
 typedef struct _MonoImage MonoImage;
@@ -26,13 +26,13 @@ namespace MonoRuntime
         MonoMethod* updateMethod = nullptr;
         MonoMethod* fixedUpdateMethod = nullptr;
         MonoMethod* onDestroyMethod = nullptr;
-        // Collision/trigger dispatch bridge defined on the MonoBehaviour base
-        // class (resolved by walking the parent-class chain at load time).
+        
+        
         MonoMethod* dispatchCollisionMethod = nullptr;
         std::string className;
         std::string assemblyPath;
         bool started = false;
-        uint32_t gcHandle = 0;  // GC handle to prevent object from being collected
+        uint32_t gcHandle = 0;  
     };
 
     bool Initialize(const std::string& monoLibPath);
@@ -47,8 +47,8 @@ namespace MonoRuntime
     MonoClass* GetClassFromObject(MonoObject* obj);
     MonoClass* GetParentClass(MonoClass* klass);
     MonoMethod* GetMethod(MonoClass* klass, const std::string& methodName, int paramCount = 0);
-    // Like GetMethod, but walks up the parent-class chain (mono_class_get_
-    // method_from_name does NOT search base classes).
+    
+    
     MonoMethod* GetMethodRecursive(MonoClass* klass, const std::string& methodName, int paramCount = 0);
 
     MonoObject* CreateInstance(MonoClass* klass);
@@ -65,8 +65,8 @@ namespace MonoRuntime
     void CallUpdate(std::shared_ptr<ScriptInstance> script);
     void CallFixedUpdate(std::shared_ptr<ScriptInstance> script);
     void CallOnDestroy(std::shared_ptr<ScriptInstance> script);
-    // Dispatch a collision/trigger event to the script's __DispatchCollision
-    // bridge. kind: 0=CollisionEnter 1=CollisionExit 2=TriggerEnter 3=TriggerExit.
+    
+    
     void CallDispatchCollision(std::shared_ptr<ScriptInstance> script, int kind,
         void* otherGameObject, float px, float py, float pz,
         float nx, float ny, float nz, float depth);

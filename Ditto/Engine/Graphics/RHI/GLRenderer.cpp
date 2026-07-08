@@ -10,12 +10,12 @@
 
 namespace Ditto
 {
-    // ---- Small handle-table helpers (id == index + 1) ----
+    
     template<typename T>
     static uint32_t PushSlot(std::vector<T>& table, const T& res)
     {
         table.push_back(res);
-        return static_cast<uint32_t>(table.size());   // id = index + 1
+        return static_cast<uint32_t>(table.size());   
     }
     template<typename T>
     static T* GetSlot(std::vector<T>& table, uint32_t id)
@@ -44,13 +44,13 @@ namespace Ditto
         }
     }
 
-    // ----------------------------- Frame -----------------------------
+    
     void GLRenderer::EndFrame()
     {
         if (m_window) m_window->SwapBuffers();
     }
 
-    // ----------------------------- ImGui -----------------------------
+    
     void GLRenderer::ImGuiInit(IWindow* window)
     {
         if (window)
@@ -80,7 +80,7 @@ namespace Ditto
         ImGui_ImplOpenGL3_RenderDrawData(static_cast<ImDrawData*>(drawData));
     }
 
-    // ----------------------------- State -----------------------------
+    
     void GLRenderer::SetViewport(int x, int y, int w, int h) { glViewport(x, y, w, h); }
 
     void GLRenderer::SetScissor(bool enabled, int x, int y, int w, int h)
@@ -131,7 +131,7 @@ namespace Ditto
         else glDisable(GL_CULL_FACE);
     }
 
-    // --------------------------- Resources ---------------------------
+    
     MeshHandle GLRenderer::CreateMesh(const float* vertexData, size_t floatCount, int strideFloats,
                                       const std::vector<VertexAttrib>& attribs,
                                       const uint32_t* indices, size_t indexCount)
@@ -194,7 +194,7 @@ namespace Ditto
         GLBuffer* b = GetSlot(m_buffers, h.id);
         if (!b || !b->ssbo) return;
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, b->ssbo);
-        // Re-upload (orphans the old store), matching the previous per-frame path.
+        
         glBufferData(GL_SHADER_STORAGE_BUFFER, sizeBytes, data, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
         b->size = sizeBytes;
@@ -228,8 +228,8 @@ namespace Ditto
 
     PipelineHandle GLRenderer::CreatePipeline(const std::string& hlslSource, const PipelineState& state)
     {
-        // HLSL -> SPIR-V -> GLSL (via the shared ShaderCompiler), then the usual
-        // GL compile/link.
+        
+        
         CompiledShader vs = ShaderCompiler::Compile(hlslSource, ShaderStage::Vertex, "VSMain", true);
         CompiledShader ps = ShaderCompiler::Compile(hlslSource, ShaderStage::Pixel, "PSMain", true);
         if (!vs.ok || !ps.ok)
@@ -352,8 +352,8 @@ namespace Ditto
     {
         GLRenderTargetRes* rt = GetSlot(m_renderTargets, h.id);
         if (!rt) return;
-        // Save the bound framebuffer + viewport so EndRenderTarget can restore the
-        // editor's in-progress ImGui frame.
+        
+        
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, reinterpret_cast<GLint*>(&m_savedFBO));
         glGetIntegerv(GL_VIEWPORT, m_savedViewport);
 
@@ -393,11 +393,11 @@ namespace Ditto
         if (!rt) return;
         if (rt->fbo) glDeleteFramebuffers(1, &rt->fbo);
         if (rt->rbo) glDeleteRenderbuffers(1, &rt->rbo);
-        DestroyTexture(rt->color);   // frees the color attachment's GL texture + slot
+        DestroyTexture(rt->color);   
         *rt = GLRenderTargetRes{};
     }
 
-    // ----------------------------- Draw ------------------------------
+    
     void GLRenderer::BindPipeline(PipelineHandle h)
     {
         GLPipeline* p = GetSlot(m_pipelines, h.id);
@@ -440,10 +440,10 @@ namespace Ditto
 
     void GLRenderer::SetFrameUniforms(const FrameUniforms& u)
     {
-        // std140 mirror of the HLSL `FrameUniforms` cbuffer (vec3 + pad pairs).
-        // Matrices are uploaded as-is (GLM column-major); the generated GLSL marks
-        // them row_major, which composes with its row-vector multiplies to the
-        // same result. Layout = 176 bytes.
+        
+        
+        
+        
         struct Std140
         {
             glm::mat4 view;
@@ -476,7 +476,7 @@ namespace Ditto
         }
         glBindBuffer(GL_UNIFORM_BUFFER, m_frameUBO);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Std140), &data);
-        glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_frameUBO);   // FrameUniforms @ binding 0
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_frameUBO);   
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
 

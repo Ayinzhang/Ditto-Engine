@@ -20,7 +20,7 @@ void AssetHealthWindow::Draw()
         DrawToolbar();
         DrawSummary();
 
-        // Diagnostics tabs.
+        
         if (ImGui::BeginTabBar("DiagnosticsTabs"))
         {
             if (ImGui::BeginTabItem("Missing .meta"))

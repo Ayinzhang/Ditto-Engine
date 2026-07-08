@@ -7,7 +7,6 @@ os.chdir(Path(__file__).resolve().parent)
 
 
 def normalize_process_path_environment():
-    """MSBuild's VC tasks can fail if the process env has both Path and PATH."""
     path_keys = [key for key in os.environ.keys() if key.lower() == "path"]
     if len(path_keys) <= 1:
         return
@@ -36,7 +35,7 @@ def msbuild_environment():
 
 normalize_process_path_environment()
 
-# Run MSBuild
+
 cmd = [
     r"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
     "Ditto.sln",
@@ -51,7 +50,7 @@ cmd = [
 print("Building Ditto project...")
 result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=msbuild_environment())
 
-# Print captured MSBuild output with stable Unicode handling.
+
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')

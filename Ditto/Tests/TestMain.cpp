@@ -9,6 +9,8 @@
 #include "../Engine/Core/RuntimeContext.h"
 #include "../Engine/Core/CSharpScript.h"
 #include "../Engine/Core/ProjectManager.h"
+#include "../Engine/Core/Input.h"
+#include "../Engine/Core/IWindow.h"
 #include "../Engine/Animation/AnimatorComponent.h"
 #include "../Engine/Graphics/Camera.h"
 #include "../Engine/Graphics/ParticleSystemComponent.h"
@@ -318,6 +320,40 @@ namespace
             Ditto::Logger::Get().SetConsoleMinLevel(Ditto::LogLevel::Info);
         }
     };
+
+    struct TestWindow : Ditto::IWindow
+    {
+        int width = 1200;
+        int height = 900;
+        double cursorX = 0.0;
+        double cursorY = 0.0;
+
+        bool Create(const Ditto::WindowDesc& desc) override { width = desc.width; height = desc.height; return true; }
+        void Destroy() override {}
+        bool ShouldClose() const override { return false; }
+        void PollEvents() override {}
+        void SetSize(int w, int h) override { width = w; height = h; }
+        double TimeSeconds() const override { return 0.0; }
+        void GetWindowSize(int& w, int& h) const override { w = width; h = height; }
+        void GetFramebufferSize(int& w, int& h) const override { w = width; h = height; }
+        void MakeContextCurrent() override {}
+        void SwapBuffers() override {}
+        void* GetProcAddress(const char*) const override { return nullptr; }
+        bool IsKeyPressed(int) const override { return false; }
+        bool IsMouseButtonPressed(int) const override { return false; }
+        void GetCursorPosition(double& x, double& y) const override { x = cursorX; y = cursorY; }
+        void SetCursorCallback(CursorCallback) override {}
+        void SetDropCallback(DropCallback) override {}
+        void WaitEvents() override {}
+        std::vector<const char*> GetRequiredVulkanInstanceExtensions() const override { return {}; }
+        int CreateVulkanSurface(Ditto::VkInstanceHandle, const VkAllocationCallbacks*, Ditto::VkSurfaceHandle*) const override { return -1; }
+        void* GetNativeWindowHandle() const override { return nullptr; }
+        bool ImGuiInitForOpenGL(bool) override { return false; }
+        bool ImGuiInitForVulkan(bool) override { return false; }
+        bool ImGuiInitForOther(bool) override { return false; }
+        void ImGuiNewFrame() override {}
+        void ImGuiShutdown() override {}
+    };
 }
 
 #define TEST_CASE(stage, name) static void name(); static RegisterTest reg_##name(stage, #name, &name); static void name()
@@ -353,6 +389,27 @@ TEST_CASE("file", OrthographicCameraScreenRayMapsViewportToWorldPlane)
     REQUIRE(NearlyEqual(topRight.origin.x, 5.0f * (800.0f / 600.0f), 0.0005f));
     REQUIRE(NearlyEqual(topRight.origin.y, 5.0f, 0.0005f));
     REQUIRE(NearlyEqual(topRight.direction.z, -1.0f));
+}
+
+TEST_CASE("file", InputMapsWindowMouseToScaledGameViewport)
+{
+    TestWindow window;
+    Input::Init(&window);
+
+    Input::SetGameViewport(100.0f, 50.0f, 400.0f, 200.0f, 800.0f, 400.0f);
+    window.cursorX = 300.0;
+    window.cursorY = 150.0;
+    Input::NewFrame();
+
+    glm::vec2 mouse = Input::GetMousePosition();
+    REQUIRE(NearlyEqual(mouse.x, 400.0f));
+    REQUIRE(NearlyEqual(mouse.y, 200.0f));
+    REQUIRE(Input::IsMouseInsideGameViewport());
+
+    window.cursorX = 90.0;
+    window.cursorY = 150.0;
+    Input::NewFrame();
+    REQUIRE(!Input::IsMouseInsideGameViewport());
 }
 
 TEST_CASE("file", GameObjectComponentsAndRemoval)
@@ -1937,6 +1994,129 @@ TEST_CASE("simulation", Physics2DUsesRigidbodyMaterialAsset)
 
     std::error_code ec;
     fs::remove_all(base, ec);
+}
+
+TEST_CASE("simulation", Physics2DDynamicBodyFallsOntoStaticGround)
+{
+    Scene scene;
+    scene.name = "Physics2DGroundContact";
+    scene.rootGameObject->name = scene.name;
+    scene.rootGameObject->children.clear();
+
+    auto ground = std::make_unique<GameObject>("Ground");
+    auto* groundTransform = ground->GetComponent<TransformComponent>();
+    groundTransform->position = glm::vec3(0.0f, -1.0f, 0.0f);
+    groundTransform->scale = glm::vec3(8.0f, 0.5f, 1.0f);
+    groundTransform->UpdateTransform();
+    auto* groundRb = ground->AddComponent<Rigidbody2DComponent>();
+    groundRb->type = Rigidbody2DComponent::Static;
+    groundRb->useGravity = false;
+    ground->AddComponent<Collider2DComponent>(Collider2DComponent::Box);
+
+    auto crate = std::make_unique<GameObject>("Crate");
+    auto* crateTransform = crate->GetComponent<TransformComponent>();
+    crateTransform->position = glm::vec3(0.0f, 1.0f, 0.0f);
+    crateTransform->scale = glm::vec3(1.0f);
+    crateTransform->UpdateTransform();
+    auto* crateRb = crate->AddComponent<Rigidbody2DComponent>();
+    crateRb->type = Rigidbody2DComponent::Dynamic;
+    crateRb->useGravity = true;
+    crateRb->linearDamping = 0.0f;
+    crateRb->angularDamping = 0.0f;
+    auto* crateCollider = crate->AddComponent<Collider2DComponent>(Collider2DComponent::Box);
+    crateCollider->restitution = 0.0f;
+
+    scene.rootGameObject->AddChild(std::move(ground));
+    scene.rootGameObject->AddChild(std::move(crate));
+
+    Physics2DWorld world;
+    world.gravity = glm::vec2(0.0f, -9.8f);
+    world.velocityIterations = 8;
+    world.positionIterations = 4;
+    for (int i = 0; i < 90; ++i)
+        world.StepFixed(&scene, 1.0f / 60.0f);
+
+    const float groundTop = -1.0f + 0.25f;
+    const float crateHalfHeight = 0.5f;
+    REQUIRE(crateTransform->position.y >= groundTop + crateHalfHeight - 0.05f);
+    REQUIRE(crateTransform->position.y < 0.0f);
+}
+
+TEST_CASE("simulation", Physics2DRespectsSimulatedAndFreezeFlags)
+{
+    Scene scene;
+    scene.name = "Physics2DFlags";
+    scene.rootGameObject->name = scene.name;
+    scene.rootGameObject->children.clear();
+
+    auto body = std::make_unique<GameObject>("Body");
+    auto* transform = body->GetComponent<TransformComponent>();
+    transform->position = glm::vec3(0.0f);
+    auto* rb = body->AddComponent<Rigidbody2DComponent>();
+    rb->type = Rigidbody2DComponent::Dynamic;
+    rb->useGravity = true;
+    rb->linearDamping = 0.0f;
+    rb->simulated = false;
+    body->AddComponent<Collider2DComponent>(Collider2DComponent::Box);
+    scene.rootGameObject->AddChild(std::move(body));
+
+    Physics2DWorld world;
+    world.gravity = glm::vec2(0.0f, -10.0f);
+    world.StepFixed(&scene, 0.1f);
+    REQUIRE(NearlyEqual(transform->position.y, 0.0f));
+
+    rb->simulated = true;
+    rb->freezePositionY = true;
+    world.StepFixed(&scene, 0.1f);
+    REQUIRE(NearlyEqual(transform->position.y, 0.0f));
+    REQUIRE(NearlyEqual(rb->velocity.y, 0.0f));
+}
+
+TEST_CASE("simulation", Physics2DSleepsRestingDynamicBody)
+{
+    Scene scene;
+    scene.name = "Physics2DSleep";
+    scene.rootGameObject->name = scene.name;
+    scene.rootGameObject->children.clear();
+
+    auto ground = std::make_unique<GameObject>("Ground");
+    auto* groundTransform = ground->GetComponent<TransformComponent>();
+    groundTransform->position = glm::vec3(0.0f, -1.0f, 0.0f);
+    groundTransform->scale = glm::vec3(8.0f, 0.5f, 1.0f);
+    groundTransform->UpdateTransform();
+    auto* groundRb = ground->AddComponent<Rigidbody2DComponent>();
+    groundRb->type = Rigidbody2DComponent::Static;
+    ground->AddComponent<Collider2DComponent>(Collider2DComponent::Box);
+
+    auto crate = std::make_unique<GameObject>("Crate");
+    auto* crateTransform = crate->GetComponent<TransformComponent>();
+    crateTransform->position = glm::vec3(0.0f, 0.0f, 0.0f);
+    crateTransform->UpdateTransform();
+    auto* crateRb = crate->AddComponent<Rigidbody2DComponent>();
+    crateRb->type = Rigidbody2DComponent::Dynamic;
+    crateRb->useGravity = true;
+    crateRb->sleepingMode = 1;
+    crateRb->linearDamping = 0.2f;
+    crateRb->angularDamping = 0.2f;
+    auto* crateCollider = crate->AddComponent<Collider2DComponent>(Collider2DComponent::Box);
+    crateCollider->restitution = 0.0f;
+
+    scene.rootGameObject->AddChild(std::move(ground));
+    scene.rootGameObject->AddChild(std::move(crate));
+
+    Physics2DWorld world;
+    world.gravity = glm::vec2(0.0f, -9.8f);
+    world.velocityIterations = 8;
+    world.positionIterations = 4;
+    for (int i = 0; i < 120; ++i)
+        world.StepFixed(&scene, 1.0f / 60.0f);
+
+    REQUIRE(crateRb->sleeping);
+    REQUIRE(NearlyEqual(crateRb->velocity.y, 0.0f));
+    const float restingY = crateTransform->position.y;
+    for (int i = 0; i < 30; ++i)
+        world.StepFixed(&scene, 1.0f / 60.0f);
+    REQUIRE(NearlyEqual(crateTransform->position.y, restingY, 0.001f));
 }
 
 int main(int argc, char** argv)

@@ -100,7 +100,7 @@ bool ProjectManager::CreateProject(const std::string& name)
         return false;
     }
     
-    // Create project directory structure
+    
     EnsureDirectoryExists(projectPath + "/Assets");
     EnsureDirectoryExists(projectPath + "/Assets/Scenes");
     EnsureDirectoryExists(projectPath + "/Assets/Models");
@@ -124,7 +124,7 @@ bool ProjectManager::CreateProject(const std::string& name)
     CopyDefaultAsset("PhysicsMaterials2D/Default.physmat2d", projectAssetsPath);
     Ditto::AssetDatabase::Get().ScanProjectAssets(projectPath, true);
     
-    // Create default scene file
+    
     std::string defaultScenePath = projectPath + "/Assets/Scenes/Default.bin";
     {
         Scene tempScene;
@@ -153,10 +153,10 @@ bool ProjectManager::OpenProject(const std::string& projectPath)
         return false;
     }
 
-    // Close current project
+    
     CloseProject();
 
-    // Allocate new project
+    
     currentProject = std::make_unique<Project>();
     currentProject->path = projectPath;
     currentProject->name = fs::path(projectPath).filename().string();

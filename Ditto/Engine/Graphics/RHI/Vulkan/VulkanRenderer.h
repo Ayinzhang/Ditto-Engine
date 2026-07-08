@@ -7,31 +7,31 @@
 
 namespace Ditto
 {
-    // Vulkan implementation of the RHI. This is the preferred backend when the
-    // build has Vulkan support; Engine falls back to GLRenderer if initialization
-    // fails at runtime.
+    
+    
+    
     class VulkanRenderer : public IRenderer
     {
     public:
         explicit VulkanRenderer(IWindow* window);
         ~VulkanRenderer() override;
 
-        // True once the instance + device were created successfully.
+        
         bool IsValid() const { return m_device != VK_NULL_HANDLE; }
         RendererBackend Backend() const override { return RendererBackend::Vulkan; }
 
-        // ---- Frame ----
+        
         void BeginFrame() override;
         void EndFrame() override;
         bool NotifyWindowResized(int width, int height) override;
 
-        // ---- ImGui ----
+        
         void ImGuiInit(IWindow* window) override;
         void ImGuiShutdown() override;
         void ImGuiNewFrame() override;
         void ImGuiRenderDrawData(void* drawData) override;
 
-        // ---- State ----
+        
         void SetViewport(int x, int y, int w, int h) override;
         void SetScissor(bool enabled, int x, int y, int w, int h) override;
         void Clear(uint32_t flags, const glm::vec4& color) override;
@@ -40,7 +40,7 @@ namespace Ditto
         void SetWireframe(bool enabled) override;
         void SetCullState(bool enabled) override;
 
-        // ---- Resources ----
+        
         MeshHandle CreateMesh(const float* vertexData, size_t floatCount, int strideFloats,
                               const std::vector<VertexAttrib>& attribs,
                               const uint32_t* indices, size_t indexCount) override;
@@ -61,7 +61,7 @@ namespace Ditto
         bool ReadRenderTargetPixels(RenderTargetHandle, std::vector<unsigned char>& rgba) override;
         void DestroyRenderTarget(RenderTargetHandle) override;
 
-        // ---- Draw ----
+        
         void BindPipeline(PipelineHandle) override;
         void SetFrameUniforms(const FrameUniforms&) override;
         void BindStorageBuffer(int binding, StorageBufferHandle) override;
@@ -74,7 +74,7 @@ namespace Ditto
         bool PickPhysicalDevice();
         bool CreateLogicalDevice();
 
-        // Swapchain + frame resources.
+        
         bool CreateSwapchain();
         void CreateImageViews();
         bool CreateRenderPass();
@@ -93,9 +93,9 @@ namespace Ditto
         VkSurfaceKHR m_surface = VK_NULL_HANDLE;
         VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
         VkDevice m_device = VK_NULL_HANDLE;
-        // All buffer/image memory goes through VMA: one allocator sub-allocates
-        // big device memory blocks, instead of one vkAllocateMemory per resource
-        // (drivers cap total allocations at maxMemoryAllocationCount, often 4096).
+        
+        
+        
         VmaAllocator m_allocator = VK_NULL_HANDLE;
         VkQueue m_graphicsQueue = VK_NULL_HANDLE;
         VkQueue m_presentQueue = VK_NULL_HANDLE;
@@ -110,18 +110,18 @@ namespace Ditto
         std::vector<VkFramebuffer> m_framebuffers;
         VkRenderPass m_renderPass = VK_NULL_HANDLE;
         VkCommandPool m_commandPool = VK_NULL_HANDLE;
-        std::vector<VkCommandBuffer> m_commandBuffers;   // [kFramesInFlight]
-        std::vector<VkSemaphore> m_imageAvailable;       // [kFramesInFlight]
-        std::vector<VkSemaphore> m_renderFinished;       // [swapchain image count]
-        std::vector<VkFence> m_inFlight;                 // [kFramesInFlight]
+        std::vector<VkCommandBuffer> m_commandBuffers;   
+        std::vector<VkSemaphore> m_imageAvailable;       
+        std::vector<VkSemaphore> m_renderFinished;       
+        std::vector<VkFence> m_inFlight;                 
 
         uint32_t m_currentFrame = 0;
         uint32_t m_imageIndex = 0;
-        bool m_frameActive = false;   // a command buffer is currently recording
-        bool m_ready = false;         // full init succeeded
+        bool m_frameActive = false;   
+        bool m_ready = false;         
         glm::vec4 m_clearColor{ 0.0f, 0.0f, 0.0f, 1.0f };
 
-        // ImGui + textures.
+        
         VkDescriptorPool m_imguiPool = VK_NULL_HANDLE;
         bool m_imguiInit = false;
         IWindow* m_imguiWindow = nullptr;
@@ -131,7 +131,7 @@ namespace Ditto
             VkImage image = VK_NULL_HANDLE;
             VmaAllocation memory = VK_NULL_HANDLE;
             VkImageView view = VK_NULL_HANDLE;
-            VkDescriptorSet descriptor = VK_NULL_HANDLE;   // ImGui texture id
+            VkDescriptorSet descriptor = VK_NULL_HANDLE;   
             bool pendingDestroy = false;
         };
         std::vector<VkTextureRes> m_textures;
@@ -141,8 +141,8 @@ namespace Ditto
         void EndSingleTime(VkCommandBuffer cmd);
         void EnsureSampler();
 
-        // ---- Scene rendering (Vk4) ----
-        // Depth buffer for the swapchain render pass (recreated with the swapchain).
+        
+        
         VkImage m_depthImage = VK_NULL_HANDLE;
         VmaAllocation m_depthMem = VK_NULL_HANDLE;
         VkImageView m_depthView = VK_NULL_HANDLE;
@@ -152,13 +152,13 @@ namespace Ditto
         {
             VkBuffer vbuf = VK_NULL_HANDLE;
             VmaAllocation vmem = VK_NULL_HANDLE;
-            VkBuffer ibuf = VK_NULL_HANDLE;          // optional uint32 index buffer
+            VkBuffer ibuf = VK_NULL_HANDLE;          
             VmaAllocation imem = VK_NULL_HANDLE;
             uint32_t vertexCount = 0;
-            uint32_t indexCount = 0;                 // 0 => non-indexed draw
+            uint32_t indexCount = 0;                 
         };
-        // Storage buffers are per-frame-in-flight (host-visible, persistently mapped)
-        // so a frame's writes don't stomp a buffer the GPU is still reading.
+        
+        
         struct VkStorageRes
         {
             VkBuffer buf[kFramesInFlight] = {};
@@ -170,7 +170,7 @@ namespace Ditto
         {
             VkPipeline pipeline = VK_NULL_HANDLE;
             VkPipelineLayout layout = VK_NULL_HANDLE;
-            VkDescriptorSetLayout setLayouts[2] = {};   // set0=UBO, set1=2 SSBOs
+            VkDescriptorSetLayout setLayouts[2] = {};   
             VkShaderModule vs = VK_NULL_HANDLE;
             VkShaderModule fs = VK_NULL_HANDLE;
             bool usesSceneResources = true;
@@ -179,26 +179,26 @@ namespace Ditto
         std::vector<VkStorageRes> m_storage;
         std::vector<VkPipelineRes> m_pipelines;
 
-        // Per-frame-in-flight FrameUniforms UBO ring + a shared set-0 descriptor
-        // set per frame (regular, not push -- a layout may have only ONE push set,
-        // which we reserve for the storage buffers in set 1).
+        
+        
+        
         VkBuffer m_uboBuf[kFramesInFlight] = {};
         VmaAllocation m_uboMem[kFramesInFlight] = {};
         void* m_uboMapped[kFramesInFlight] = {};
-        VkDescriptorSetLayout m_uboSetLayout = VK_NULL_HANDLE;   // shared set-0 layout (dynamic UBO)
+        VkDescriptorSetLayout m_uboSetLayout = VK_NULL_HANDLE;   
         VkDescriptorPool m_uboPool = VK_NULL_HANDLE;
         VkDescriptorSet m_uboSets[kFramesInFlight] = {};
-        // The UBO is a ring of slots within each frame: every SetFrameUniforms call
-        // (e.g. the Scene then Game viewport) writes its own slot, and the draws that
-        // follow bind that slot via a dynamic offset. Avoids one viewport's uniforms
-        // overwriting another's within a frame.
-        static constexpr uint32_t kUboSlotSize = 256;   // >= sizeof(FrameUniforms), 256-aligned
+        
+        
+        
+        
+        static constexpr uint32_t kUboSlotSize = 256;   
         static constexpr uint32_t kUboSlots = 16;
         uint32_t m_uboSlot = 0;
 
-        // ---- Offscreen render targets (editor viewports / model previews) ----
-        // The color attachment lives in m_textures (so GetImGuiTextureID works and
-        // DestroyTexture owns image/view/descriptor); the RT owns depth + framebuffer.
+        
+        
+        
         struct VkRenderTargetRes
         {
             TextureHandle color;
@@ -209,28 +209,28 @@ namespace Ditto
             int w = 0, h = 0;
         };
         std::vector<VkRenderTargetRes> m_renderTargets;
-        // Offscreen pass: color CLEAR -> SHADER_READ_ONLY (sampled by ImGui), depth CLEAR.
-        // Color format matches the swapchain so scene pipelines (created against
-        // m_renderPass) stay render-pass compatible.
+        
+        
+        
         VkRenderPass m_rtRenderPass = VK_NULL_HANDLE;
-        // Swapchain pass re-begun after an RT pass interrupts it (color LOAD).
+        
         VkRenderPass m_resumePass = VK_NULL_HANDLE;
-        bool m_rtActive = false;       // inside a Begin/EndRenderTarget pair
+        bool m_rtActive = false;       
         VkExtent2D m_rtExtent{};
         bool EnsureRenderTargetPasses();
 
-        // Push descriptors (avoids descriptor-pool/set management for scene draws).
+        
         PFN_vkCmdPushDescriptorSetKHR m_pushDescriptor = nullptr;
         bool m_pushDescriptorOK = false;
 
-        // Current-draw state recorded between BindPipeline/BindStorageBuffer/DrawInstanced.
+        
         VkPipelineRes* m_boundPipeline = nullptr;
         StorageBufferHandle m_boundStorage[2];
         TextureHandle m_boundTextures[4];
 
-        // Allocate a buffer through VMA. `hostVisible` buffers are HOST_COHERENT
-        // and persistently mapped (pointer returned via `outMapped`); device-local
-        // buffers pass hostVisible=false.
+        
+        
+        
         bool CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, bool hostVisible,
                           VkBuffer& outBuf, VmaAllocation& outAlloc, void** outMapped = nullptr);
         bool CreateUboDescriptors();

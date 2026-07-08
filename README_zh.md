@@ -6,6 +6,8 @@ Ditto 是一个偏 Unity 工作流的小型 C++ 游戏引擎和编辑器。它�
 
 当前项目以 Windows 为主。Windows 编辑器和 Windows 桌面打包是目前支持的目标。Android 目标已经在构建 UI 中可见，但 Android runtime/exporter 还没有实现。
 
+![content](content.png)
+
 ## 功能概览
 
 - 编辑器：Hierarchy、Inspector、Project、Scene/Game 视图、Gizmo、资产预览、布局保存、项目创建、Windows 打包。
@@ -34,7 +36,7 @@ Ditto/
   Assets/                 内置 Shader、材质、图标、Sprite、模型
   3rdParty/               GLFW、GLAD、ImGui、GLM、Mono、Assimp 等第三方库
   Tests/                  native tests 和 render smoke
-Projects/                 本地用户项目，git 忽略
+Projects/                 示例/本地项目目录
 x64/                      Visual Studio 输出目录，git 忽略
 ```
 
@@ -94,13 +96,8 @@ python build_editor.py
 常用构建开关：
 
 ```powershell
-# 关闭 DX12
 /p:EnableDX12=false
-
-# 关闭 Vulkan
 /p:EnableVulkan=false
-
-# 关闭 Assimp 模型导入
 /p:EnableAssimp=false
 ```
 
@@ -121,9 +118,9 @@ DirectX 12 -> Vulkan -> OpenGL
 可以用 `DITTO_RHI` 强制指定：
 
 ```powershell
-$env:DITTO_RHI = "dx12"    # dx, dx12, directx
-$env:DITTO_RHI = "vulkan"  # vk, vulkan
-$env:DITTO_RHI = "opengl"  # gl, opengl
+$env:DITTO_RHI = "dx12"
+$env:DITTO_RHI = "vulkan"
+$env:DITTO_RHI = "opengl"
 .\x64\Debug\Ditto.exe
 ```
 
@@ -162,7 +159,3 @@ render smoke 会创建 3D cube、2D sprite 和 UI image，渲染到离屏 Render
 - Vulkan 后端没启用：安装 Vulkan SDK，并重启 shell/Visual Studio，确保 `VULKAN_SDK` 环境变量可见。
 - DX12 shader 编译失败：确认 `dxc.exe` 可用。当前最简单的配置是安装 Vulkan SDK。
 - 运行时缺 Assimp DLL：确认 `Ditto/3rdParty/Assimp/bin` 下有 `assimp-vc143-mt.dll`；启用 Assimp 时 post-build 会复制它。
-
-![icon](icon.png)
-
-![content](content.png)

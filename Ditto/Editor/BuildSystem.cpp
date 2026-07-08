@@ -257,9 +257,9 @@ bool BuildSystem::CopyAssets(const std::string& projectPath, const std::string& 
         
         if (!fs::exists(assetsSrc))
         {
-            // A project without an Assets directory cannot produce a runnable
-            // game (no scenes) -- fail the build loudly instead of packaging
-            // an empty shell.
+            
+            
+            
             DITTO_LOG_ERROR_STREAM("[Build] Assets directory not found: " << assetsSrc );
             return false;
         }
@@ -385,10 +385,10 @@ bool BuildSystem::CopyShaders(const std::string& engineRoot, const std::string& 
     }
 }
 
-// Copy the engine's built-in models (Cube.obj/Sphere.obj) into the package.
-// Resource::Initialize resolves "Models/Cube.obj" anchored to the game
-// executable, so without this the shipped game has no base geometry and
-// renders nothing.
+
+
+
+
 bool BuildSystem::CopyEngineModels(const std::string& outputPath)
 {
     try
@@ -420,11 +420,11 @@ bool BuildSystem::CopyEngineModels(const std::string& outputPath)
     }
 }
 
-// Copy the editor's compiled-shader cache next to the game executable so the
-// shipped game loads shaders from cache instead of needing dxc/spirv-cross
-// (i.e. a Vulkan SDK install) on the player's machine. The editor process IS
-// the engine executable, so its ShaderCache dir holds every built-in shader
-// compiled during this session.
+
+
+
+
+
 bool BuildSystem::CopyShaderCache(const std::string& outputPath)
 {
     try

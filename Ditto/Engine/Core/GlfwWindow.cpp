@@ -92,6 +92,14 @@ namespace Ditto
         return glfwGetTime();
     }
 
+    void GlfwWindow::GetWindowSize(int& width, int& height) const
+    {
+        width = 0;
+        height = 0;
+        if (m_window)
+            glfwGetWindowSize(m_window, &width, &height);
+    }
+
     void GlfwWindow::GetFramebufferSize(int& width, int& height) const
     {
         width = 0;

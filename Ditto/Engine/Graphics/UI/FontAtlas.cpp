@@ -1,6 +1,6 @@
-// Reuse ImGui's vendored stb_truetype. STBTT_STATIC keeps every symbol
-// file-local, so this does not clash with the copy compiled inside
-// imgui_draw.cpp.
+
+
+
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../../3rdParty/ImGui/imstb_truetype.h"
@@ -37,8 +37,8 @@ bool FontAtlas::Load(const std::string& ttfPath)
         return false;
     }
 
-    // Ascent (baseline offset from the top of the line) at bake scale, so
-    // LayoutText can convert baseline-relative glyph quads to top-left origin.
+    
+    
     stbtt_fontinfo info;
     if (stbtt_InitFont(&info, ttf.data(), stbtt_GetFontOffsetForIndex(ttf.data(), 0)))
     {
@@ -51,8 +51,8 @@ bool FontAtlas::Load(const std::string& ttfPath)
         ascent = BakePixelHeight * 0.8f;
     }
 
-    // Expand single-channel coverage to RGBA (white, alpha = coverage) so the
-    // UI shader's `texture * color` works identically for text and images.
+    
+    
     rgbaPixels.assign(AtlasSize * AtlasSize * 4, 255);
     for (int i = 0; i < AtlasSize * AtlasSize; ++i)
         rgbaPixels[i * 4 + 3] = alpha[i];
@@ -78,8 +78,8 @@ std::vector<FontAtlas::GlyphQuad> FontAtlas::LayoutText(const std::string& text,
     const float scale = fontSize / BakePixelHeight;
     const float invAtlas = 1.0f / static_cast<float>(AtlasSize);
 
-    // Pen starts at the baseline of the first line; quads are converted to a
-    // top-left text-block origin by adding the scaled ascent.
+    
+    
     float penX = 0.0f;
     float penY = ascent * scale;
     float maxX = 0.0f;

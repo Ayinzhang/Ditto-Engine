@@ -44,7 +44,7 @@ void SceneWindow::FrameObject(GameObject* obj)
     float radius = 2.5f;
     if (RendererComponent* renderer = obj->GetComponent<RendererComponent>())
     {
-        // Default framing radius; this used to depend on a built-in sphere hint.
+        
         radius = 2.0f;
     }
     if (SpriteRendererComponent* sprite = obj->GetComponent<SpriteRendererComponent>())
@@ -255,9 +255,56 @@ void SceneWindow::DrawConvexMeshColliderGizmo(const glm::mat4& worldMat, MeshDat
     drawSupportLoop(glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 }
 
+void SceneWindow::DrawCollider2DGizmo(Collider2DComponent* collider, const glm::mat4& worldMat)
+{
+    if (!collider || !collider->enabled) return;
+
+    const ImU32 green = IM_COL32(80, 255, 120, 220);
+    const float thickness = 1.0f;
+
+    auto localToWorld = [&](const glm::vec2& p) -> glm::vec3
+    {
+        return glm::vec3(worldMat * glm::vec4(p.x, p.y, 0.0f, 1.0f));
+    };
+
+    if (collider->type == Collider2DComponent::Circle)
+    {
+        constexpr int segments = 64;
+        glm::vec3 prev;
+        for (int i = 0; i <= segments; ++i)
+        {
+            float a = (float)i / (float)segments * 6.2831853f;
+            glm::vec2 p = collider->offset + glm::vec2(cosf(a), sinf(a)) * collider->radius;
+            glm::vec3 world = localToWorld(p);
+            if (i > 0) DrawWorldLine(prev, world, green, thickness);
+            prev = world;
+        }
+        return;
+    }
+
+    glm::vec2 half = collider->size * 0.5f;
+    glm::vec2 corners[4] = {
+        collider->offset + glm::vec2(-half.x, -half.y),
+        collider->offset + glm::vec2( half.x, -half.y),
+        collider->offset + glm::vec2( half.x,  half.y),
+        collider->offset + glm::vec2(-half.x,  half.y),
+    };
+    for (int i = 0; i < 4; ++i)
+        DrawWorldLine(localToWorld(corners[i]), localToWorld(corners[(i + 1) % 4]), green, thickness);
+}
+
 void SceneWindow::DrawPhysicsMeshGizmos()
 {
     if (!m_editor || !m_editor->engine || !m_editor->activeSelection) return;
+
+    if (auto* selectedCollider2D = dynamic_cast<Collider2DComponent*>(m_editor->selectedComponent))
+    {
+        GameObject* obj = selectedCollider2D->gameObject;
+        TransformComponent* transform = obj ? obj->GetComponent<TransformComponent>() : nullptr;
+        if (obj && IsSelectedOrAncestor(obj) && transform && selectedCollider2D->enabled)
+            DrawCollider2DGizmo(selectedCollider2D, transform->GetWorldModel());
+        return;
+    }
 
     if (auto* selectedCollider = dynamic_cast<ColliderComponent*>(m_editor->selectedComponent))
     {
@@ -285,6 +332,9 @@ void SceneWindow::DrawPhysicsMeshGizmos()
         for (ColliderComponent* collider : obj->GetComponents<ColliderComponent>())
             if (collider && collider->enabled)
                 DrawColliderMeshGizmo(collider, worldMat);
+        for (Collider2DComponent* collider : obj->GetComponents<Collider2DComponent>())
+            if (collider && collider->enabled)
+                DrawCollider2DGizmo(collider, worldMat);
 
         for (const auto& child : obj->children)
             visit(child.get());
@@ -513,8 +563,8 @@ void SceneWindow::DrawSceneGrid(const ImVec2& viewMin, const ImVec2& viewMax)
         IM_COL32(135, 135, 135, 120));
 }
 
-// ImGuizmo translate/rotate/scale manipulator for the selected object,
-// replacing the old hand-rolled gizmos. Edit mode only.
+
+
 void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
 {
     m_selectedObject = m_editor->activeSelection;
@@ -540,7 +590,7 @@ void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
     const float h = viewMax.y - viewMin.y;
     if (w <= 0.0f || h <= 0.0f) return;
 
-    // MUST match RenderSceneToTexture's projection exactly or the gizmo drifts.
+    
     glm::mat4 view = camera->GetViewMatrix();
     glm::mat4 proj = camera->GetProjectionMatrix(w / h);
 
@@ -564,19 +614,19 @@ void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
     bool manipulated = ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj),
         op, m_localSpace ? ImGuizmo::LOCAL : ImGuizmo::WORLD, glm::value_ptr(model));
 
-    // One undo snapshot per drag (rising edge of IsUsing).
+    
     bool usingNow = ImGuizmo::IsUsing();
     if (usingNow && !m_gizmoWasUsing)
         m_editor->PushUndoSnapshot();
     if (m_gizmoWasUsing && !usingNow)
-        m_justFinishedDrag = true;   // suppress click-selection this frame
+        m_justFinishedDrag = true;   
     m_gizmoWasUsing = usingNow;
     m_isDragging = usingNow;
 
     if (manipulated)
     {
-        // Manipulate edits the WORLD matrix; convert back to local space for
-        // parented objects before decomposing.
+        
+        
         glm::mat4 local = model;
         if (m_selectedObject->parent)
         {
@@ -589,8 +639,8 @@ void SceneWindow::DrawImGuizmo(const ImVec2& viewMin, const ImVec2& viewMax)
                     glm::length(glm::vec3(local[1])),
                     glm::length(glm::vec3(local[2])));
 
-        // Normalize the rotation part, then extract euler in the engine's
-        // Y*X*Z order (matches TransformComponent::UpdateTransform).
+        
+        
         glm::mat4 rotMat(1.0f);
         if (s.x > 1e-6f) rotMat[0] = glm::vec4(glm::vec3(local[0]) / s.x, 0.0f);
         if (s.y > 1e-6f) rotMat[1] = glm::vec4(glm::vec3(local[1]) / s.y, 0.0f);
@@ -616,7 +666,7 @@ void SceneWindow::Draw()
 
     bool windowOpen = ImGui::Begin("Scene", nullptr);
     
-    // Set isSceneActive based on window focus/hover
+    
     m_editor->isSceneActive = windowOpen && (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) || ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows));
     
     if (!windowOpen)
@@ -626,7 +676,7 @@ void SceneWindow::Draw()
         return;
     }
 
-    // Tool switching shortcuts
+    
     if (ImGui::IsKeyPressed(ImGuiKey_W))
     {
         m_toolMode = ToolMode::Translate;
@@ -655,8 +705,8 @@ void SceneWindow::Draw()
     ImVec2 min = window->InnerRect.Min;
     ImVec2 max = window->InnerRect.Max;
 
-    // Scene renders into an offscreen target, displayed as an ImGui image.
-    // GL/Vulkan RT textures are shown with flipped V; DX12 RT textures are not.
+    
+    
     void* sceneTex = m_editor->engine->RenderSceneToTexture(
         (int)(max.x - min.x), (int)(max.y - min.y), false);
     if (sceneTex)
@@ -680,8 +730,8 @@ void SceneWindow::Draw()
         DrawAxisGizmo();
     DrawSceneToolbar(min, max);
 
-    // Only handle object selection when not dragging the gizmo, not hovering
-    // it, not rotating the camera, and not just finished a drag.
+    
+    
     if (ImGui::IsWindowHovered() && !m_toolbarHovered && m_viewToolMode != ViewToolMode::Hand &&
         ImGui::IsMouseClicked(0) && !m_isRotatingCamera &&
         !m_isDragging && !m_justFinishedDrag && !ImGuizmo::IsOver())
@@ -689,7 +739,7 @@ void SceneWindow::Draw()
         HandleObjectSelection();
     }
     
-    // Reset the flag after this frame
+    
     m_justFinishedDrag = false;
 
     ImGui::End();
@@ -924,7 +974,7 @@ void SceneWindow::DrawAxisGizmo()
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
     
-    // Position in top-right corner with some padding
+    
     float gizmoSize = 110.0f;
     float padding = 20.0f;
     float topOffset = 42.0f;
@@ -933,22 +983,22 @@ void SceneWindow::DrawAxisGizmo()
     Camera* camera = m_editor->engine->sceneCamera.get();
     if (!camera) return;
     
-    // Get camera's basis vectors (right, up, forward)
+    
     glm::vec3 camRight = camera->right;
     glm::vec3 camUp = camera->up;
     glm::vec3 camForward = camera->forward;
     
-    // World axes
+    
     glm::vec3 worldX(1, 0, 0);
     glm::vec3 worldY(0, 1, 0);
     glm::vec3 worldZ(0, 0, 1);
     
-    // Project world axis to camera view space
+    
     auto worldToView = [&](const glm::vec3& worldAxis) -> glm::vec3 {
         return glm::vec3(
             glm::dot(worldAxis, camRight),
             glm::dot(worldAxis, camUp),
-            glm::dot(worldAxis, -camForward) // Negative because camera looks down negative Z
+            glm::dot(worldAxis, -camForward) 
         );
     };
     
@@ -956,16 +1006,16 @@ void SceneWindow::DrawAxisGizmo()
     glm::vec3 viewY = worldToView(worldY);
     glm::vec3 viewZ = worldToView(worldZ);
     
-    // Axis colors (Unity style)
+    
     ImU32 xColor = IM_COL32(220, 50, 50, 255);
     ImU32 yColor = IM_COL32(50, 220, 50, 255);
     ImU32 zColor = IM_COL32(50, 100, 220, 255);
     
-    // Axis length
+    
     float axisLength = gizmoSize * 0.35f;
     float lineThickness = 4.0f;
     
-    // Store axis info for proper depth sorting
+    
     struct AxisInfo {
         glm::vec3 viewDir;
         ImU32 color;
@@ -979,8 +1029,8 @@ void SceneWindow::DrawAxisGizmo()
         { viewZ, zColor, "Z", viewZ.z }
     };
     
-    // Sort by Z depth (draw back axes first)
-    // Simple bubble sort for 3 elements
+    
+    
     for (int i = 0; i < 2; i++) {
         for (int j = 0; j < 2 - i; j++) {
             if (axes[j].zDepth > axes[j + 1].zDepth) {
@@ -991,28 +1041,28 @@ void SceneWindow::DrawAxisGizmo()
         }
     }
     
-    // Draw axes from back to front
+    
     for (int i = 0; i < 3; i++) {
         const AxisInfo& axis = axes[i];
         
-        // Project to 2D (X right, Y up in screen space)
+        
         ImVec2 endPoint(
             center.x + axis.viewDir.x * axisLength,
             center.y - axis.viewDir.y * axisLength
         );
         
-        // Draw line from center to end
+        
         drawList->AddLine(center, endPoint, axis.color, lineThickness);
         drawList->AddCircleFilled(endPoint, 8.0f, axis.color, 16);
         
-        // Draw label at end of axis
+        
         ImVec2 textSize = ImGui::CalcTextSize(axis.label);
         ImVec2 textPos(
             endPoint.x - textSize.x * 0.5f,
             endPoint.y - textSize.y * 0.5f
         );
         
-        // Draw text background for better visibility
+        
         drawList->AddRectFilled(
             ImVec2(textPos.x - 2, textPos.y - 2),
             ImVec2(textPos.x + textSize.x + 2, textPos.y + textSize.y + 2),
@@ -1033,20 +1083,20 @@ void SceneWindow::HandleCameraRotation()
     
     ImVec2 mousePos = ImGui::GetMousePos();
     
-    // Start right-click drag
+    
     if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(1))
     {
         m_isRotatingCamera = true;
         m_lastMousePos = ImVec2D(mousePos.x, mousePos.y);
     }
     
-    // End right-click drag
+    
     if (ImGui::IsMouseReleased(1))
     {
         m_isRotatingCamera = false;
     }
     
-    // Handle rotation while dragging
+    
     if (m_isRotatingCamera && ImGui::IsMouseDown(1))
     {
         ImVec2D currentMousePos(mousePos.x, mousePos.y);
@@ -1066,16 +1116,16 @@ void SceneWindow::HandleCameraRotation()
         
         float sensitivity = 0.005f;
         
-        // Rotate around Y axis (yaw) based on horizontal mouse movement
+        
         float yaw = -deltaX * sensitivity;
-        // Rotate around X axis (pitch) based on vertical mouse movement
+        
         float pitch = -deltaY * sensitivity;
         
-        // Create rotation quaternions
+        
         glm::quat yawRotation = glm::angleAxis(yaw, glm::vec3(0, 1, 0));
         glm::quat pitchRotation = glm::angleAxis(pitch, camera->right);
         
-        // Apply rotations to forward vector
+        
         glm::vec3 newForward = glm::normalize(yawRotation * pitchRotation * camera->forward);
         
         camera->LookAt(camera->position + newForward);
@@ -1093,21 +1143,21 @@ void SceneWindow::HandleObjectSelection()
     if (!camera)
         return;
 
-    // Get mouse position relative to window
+    
     ImVec2 mousePos = ImGui::GetMousePos();
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
 
-    // Calculate mouse position in viewport coordinates
+    
     glm::vec2 mouseViewportPos(mousePos.x - windowPos.x, mousePos.y - windowPos.y);
 
-    // Perform raycast
+    
     GameObject* hitObject = m_editor->engine->scene->RaycastGameObjects(
         mouseViewportPos, *camera, (int)windowSize.x, (int)windowSize.y);
 
     if (hitObject)
     {
-        // Select the object
+        
         m_editor->activeSelection = hitObject;
         m_editor->selectedObject = hitObject;
         m_editor->selectedComponent = nullptr;
@@ -1116,7 +1166,7 @@ void SceneWindow::HandleObjectSelection()
     }
     else
     {
-        // Deselect if clicked on empty space
+        
         m_editor->activeSelection = nullptr;
         m_editor->selectedObject = nullptr;
         m_editor->selectedComponent = nullptr;

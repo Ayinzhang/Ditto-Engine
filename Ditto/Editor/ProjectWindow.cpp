@@ -205,7 +205,7 @@ void ProjectWindow::ImportExternalFiles(const std::vector<std::string>& paths)
 
 void ProjectWindow::OnLoadScene(const std::string& scenePath)
 {
-    // Forward to Editor
+    
     if (m_editor) {
         m_editor->LoadSceneFromProject(scenePath);
     }
@@ -215,7 +215,7 @@ void ProjectWindow::OnFileSelected(const std::string& path, const std::string& n
                                    const std::string& ext, const std::string& folder)
 {
     if (m_editor) {
-        // If Inspector locks selection, don't switch files
+        
         if (m_editor->lockingSelection) return;
 
         m_editor->selectedFile.path = path;
@@ -234,11 +234,11 @@ void ProjectWindow::NavigateToFile(const std::string& filePath)
     Project* project = ProjectManager::GetInstance().GetCurrentProject();
     if (!project) return;
 
-    // Try to resolve the file path to get its parent folder
+    
     fs::path absPath;
     fs::path assetsPath = fs::path(project->path) / "Assets";
 
-    // Check if filePath is already under assetsPath (relative or absolute)
+    
     fs::path inputPath(filePath);
     if (inputPath.is_absolute())
     {
@@ -246,7 +246,7 @@ void ProjectWindow::NavigateToFile(const std::string& filePath)
     }
     else
     {
-        // Try as project-relative path first
+        
         fs::path candidate = assetsPath / filePath;
         if (fs::exists(candidate))
         {
@@ -254,21 +254,21 @@ void ProjectWindow::NavigateToFile(const std::string& filePath)
         }
         else
         {
-            // Fall back to current directory relative
+            
             absPath = fs::absolute(filePath);
         }
     }
 
-    // Calculate relative path from Assets
+    
     fs::path relativePath = absPath.lexically_relative(fs::absolute(assetsPath));
     if (relativePath.empty() || relativePath.string().find("..") != std::string::npos)
     {
-        // File is not under Assets folder - just ignore navigation
+        
         DITTO_LOG_WARN_STREAM("[ProjectWindow] Cannot navigate to file outside Assets: " << filePath);
         return;
     }
 
-    // Set current folder to the parent directory (just navigate, selection is handled elsewhere)
+    
     fs::path parentPath = relativePath.parent_path();
     if (parentPath.empty() || parentPath == ".")
     {
@@ -299,14 +299,14 @@ void ProjectWindow::Draw()
 
     ImGui::Begin("Project");
 
-    // Remember which dock node Project lives in, so Console can dock beside it.
+    
     m_projectDockId = ImGui::GetWindowDockID();
 
-    // Top path bar
+    
     ImGui::Text("Project");
     ImGui::SameLine();
 
-    // Back button
+    
     if (m_currentFolder != "Assets") {
         if (ImGui::Button("<")) {
             size_t lastSlash = m_currentFolder.find_last_of('/');
@@ -393,7 +393,7 @@ void ProjectWindow::Draw()
     if (m_splitterPos < 100) m_splitterPos = 100;
     if (m_splitterPos > panelWidth - 100) m_splitterPos = panelWidth - 100;
 
-    // Left side - folder tree
+    
     ImGui::BeginChild("Folders", ImVec2(m_splitterPos, panelHeight), true);
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
 
@@ -420,7 +420,7 @@ void ProjectWindow::Draw()
                             }
                         }
 
-                        // Calculate indent: 18px per level
+                        
                         float indent = depth * 18.0f;
 
                         if (hasSubfolders) {
@@ -428,7 +428,7 @@ void ProjectWindow::Draw()
                             
                             bool isOpen = IsFolderExpanded(fullPath);
                             
-                            // Arrow button (12px)
+                            
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
                             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
                             if (ImGui::ArrowButton(("##arrow_" + fullPath).c_str(), isOpen ? ImGuiDir_Down : ImGuiDir_Right)) {
@@ -436,7 +436,7 @@ void ProjectWindow::Draw()
                             }
                             ImGui::PopStyleVar();
                             
-                            // Icon
+                            
                             void* folderIcon = nullptr;
                             if (m_editor) {
                                 folderIcon = isOpen ? m_editor->GetFolderOpenedIcon() : m_editor->GetFolderIcon();
@@ -447,7 +447,7 @@ void ProjectWindow::Draw()
                                 ImGui::Image((void*)(intptr_t)folderIcon, ImVec2(16, 16), ImVec2(0, 1), ImVec2(1, 0));
                             }
                             
-                            // Name - use Selectable to detect clicks (same as Hierarchy)
+                            
                             ImGui::SameLine();
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
@@ -457,7 +457,7 @@ void ProjectWindow::Draw()
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
                             
-                            // Right-click menu
+                            
                             if (ImGui::BeginPopupContextItem())
                             {
                                 if (ImGui::MenuItem("Open in Explorer"))
@@ -468,7 +468,7 @@ void ProjectWindow::Draw()
                                 ImGui::EndPopup();
                             }
                             
-                            // Sub-folders
+                            
                             if (isOpen) {
                                 DrawFolderTree(fullFsPath, fullPath, depth + 1);
                             }
@@ -477,7 +477,7 @@ void ProjectWindow::Draw()
                         } else if (hasFiles) {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // No sub-folders but has files: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
+                            
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             void* folderIcon = nullptr;
@@ -490,7 +490,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // Folder name - use Selectable
+                            
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -499,7 +499,7 @@ void ProjectWindow::Draw()
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
                             
-                            // Right-click menu
+                            
                             if (ImGui::BeginPopupContextItem())
                             {
                                 if (ImGui::MenuItem("Open in Explorer"))
@@ -514,7 +514,7 @@ void ProjectWindow::Draw()
                         } else {
                             ImGui::PushID(fullPath.c_str());
                             
-                            // Empty folder: leave space for arrow (20px = 12px arrow + 8px spacing) + depth indent
+                            
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent + 20.0f);
                             
                             void* folderIcon = nullptr;
@@ -527,7 +527,7 @@ void ProjectWindow::Draw()
                                 ImGui::SameLine();
                             }
                             
-                            // Folder name - use Selectable
+                            
                             bool isSelected = (m_currentFolder == fullPath);
                             if (ImGui::Selectable(folderName.c_str(), isSelected))
                             {
@@ -536,7 +536,7 @@ void ProjectWindow::Draw()
                                 if (m_editor) m_editor->selectedFile.Clear();
                             }
                             
-                            // Right-click menu
+                            
                             if (ImGui::BeginPopupContextItem())
                             {
                                 if (ImGui::MenuItem("Open in Explorer"))
@@ -565,7 +565,7 @@ void ProjectWindow::Draw()
     ImGui::PopStyleColor();
     ImGui::EndChild();
 
-    // Splitter
+    
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 0.5f));
     ImGui::Button("##splitter", ImVec2(1, panelHeight));
@@ -585,7 +585,7 @@ void ProjectWindow::Draw()
 
     ImGui::SameLine();
 
-    // Right side - file view
+    
     ImGui::BeginChild("View", ImVec2(0, panelHeight), true);
 
     std::string folderPath = assetsPath;
@@ -595,7 +595,7 @@ void ProjectWindow::Draw()
         folderPath = assetsPath + "/" + m_currentFolder.substr(pos + 1);
     }
 
-    // Right-click menu
+    
     if (ImGui::BeginPopupContextWindow("ProjectContext"))
     {
         if (!m_editor || !m_editor->selectedFile.IsValid())
@@ -653,7 +653,7 @@ void ProjectWindow::Draw()
     {
         if (fs::exists(folderPath))
         {
-            // Show folders first
+            
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
                 if (entry.is_directory())
@@ -691,13 +691,13 @@ void ProjectWindow::Draw()
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     {
-                        // Double-click to enter folder
+                        
                         std::string newFolder = m_currentFolder + "/" + folderName;
                         m_currentFolder = newFolder;
                     }
                     else if (ImGui::IsItemClicked(0))
                     {
-                        // Single-click to select folder
+                        
                         if (m_editor) m_editor->selectedFile.Clear();
                     }
 
@@ -707,7 +707,7 @@ void ProjectWindow::Draw()
                 }
             }
 
-            // Then show files
+            
             for (const auto& entry : fs::directory_iterator(folderPath))
             {
                 if (entry.is_regular_file() && IsProjectVisibleFile(entry.path()))
@@ -798,10 +798,10 @@ void ProjectWindow::Draw()
                         }
                     }
 
-                    // Right-click menu
+                    
                     if (ImGui::BeginPopupContextItem())
                     {
-                        // All files can be renamed
+                        
                         if (ImGui::MenuItem("Rename"))
                         {
                             m_renameTargetPath = entry.path().string();
@@ -839,8 +839,8 @@ void ProjectWindow::Draw()
                         ImGui::EndPopup();
                     }
 
-                    // Generic project file drag payload for object fields, plus
-                    // the legacy script-specific payload used by Inspector.
+                    
+                    
                     if (ImGui::BeginDragDropSource())
                     {
                         std::string fullPath = entry.path().string();
@@ -851,7 +851,7 @@ void ProjectWindow::Draw()
                         ImGui::EndDragDropSource();
                     }
 
-                    // Double-click detection is already handled in IsItemClicked above
+                    
 
                     currentX += itemWidth;
                     ImGui::EndGroup();
@@ -864,21 +864,21 @@ void ProjectWindow::Draw()
 
     ImGui::EndChild();
 
-    // Draw popups
+    
     DrawPopups();
 
     ImGui::End();
 }
 
-// Console is a separate, independently-dockable window (drawn by Editor::Draw so
-// it shows even when no project is loaded). By default it is docked next to
-// Project (see Editor::SetupDocking), so the two appear as tabs but can be
-// dragged apart like any other panel.
+
+
+
+
 void ProjectWindow::DrawConsoleWindow()
 {
-    // On first appearance, dock Console into Project's node (so it shows up as a
-    // tab beside Project even with a pre-existing saved layout). Applied once;
-    // afterwards the user can drag/dock it freely and the .ini remembers it.
+    
+    
+    
     if (!m_consoleDockInitialized && m_projectDockId != 0)
     {
         ImGui::SetNextWindowDockID(m_projectDockId, ImGuiCond_Once);
@@ -892,13 +892,13 @@ void ProjectWindow::DrawConsoleWindow()
 
 void ProjectWindow::OnScriptDropped(const std::string& scriptPath)
 {
-    // TODO: Attach script to currently selected GameObject
-    // Need to coordinate with Inspector/Editor
+    
+    
     DITTO_LOG_INFO_STREAM("[ProjectWindow] Script dropped: " << scriptPath );
     
     if (m_editor && m_editor->selectedObject)
     {
-        // Notify Editor to add script component
+        
         m_editor->OnScriptComponentDropped(scriptPath);
     }
 }
@@ -1190,7 +1190,7 @@ void ProjectWindow::RenameFile(const std::string& oldPath, const std::string& ne
 
 void ProjectWindow::DrawPopups()
 {
-    // Create folder popup
+    
     if (m_showCreateFolderPopup)
     {
         ImGui::OpenPopup("Create Folder");
@@ -1218,7 +1218,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // Create scene popup
+    
     if (m_showCreateScenePopup)
     {
         ImGui::OpenPopup("Create Scene");
@@ -1246,7 +1246,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // Create script popup
+    
     if (m_showCreateScriptPopup)
     {
         ImGui::OpenPopup("Create Script");
@@ -1382,7 +1382,7 @@ void ProjectWindow::DrawPopups()
         ImGui::EndPopup();
     }
     
-    // Rename popup
+    
     if (m_showRenamePopup)
     {
         ImGui::OpenPopup("Rename");
@@ -1413,8 +1413,8 @@ void ProjectWindow::DrawPopups()
 
 void ProjectWindow::AddConsoleMessage(const std::string& message)
 {
-    // Backward-compatible entry point: route any legacy console message into the
-    // shared Logger so it shows up in the Console tab alongside everything else.
+    
+    
     Ditto::Logger::Get().Info(message);
 }
 
@@ -1425,7 +1425,7 @@ void ProjectWindow::DrawConsole()
     int infoCount = 0, warnCount = 0, errCount = 0;
     logger.GetCounts(infoCount, warnCount, errCount);
 
-    // ---- Toolbar ----
+    
     if (ImGui::Button("Clear")) logger.Clear();
     ImGui::SameLine();
     ImGui::Checkbox("Collapse", &m_consoleCollapse);
@@ -1436,8 +1436,8 @@ void ProjectWindow::DrawConsole()
     ImGui::Dummy(ImVec2(12, 0));
     ImGui::SameLine();
 
-    // Level filter toggles with live counts. `###id` keeps a stable widget id
-    // even though the visible count text changes every frame.
+    
+    
     std::string infoLabel  = "Info "  + std::to_string(infoCount)  + "###consoleInfo";
     std::string warnLabel  = "Warn "  + std::to_string(warnCount)  + "###consoleWarn";
     std::string errLabel   = "Error " + std::to_string(errCount)   + "###consoleError";
@@ -1461,7 +1461,7 @@ void ProjectWindow::DrawConsole()
 
     ImGui::Separator();
 
-    // ---- Log list ----
+    
     ImGui::BeginChild("ConsoleScroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
     std::vector<Ditto::LogEntry> entries = logger.Snapshot();
@@ -1494,14 +1494,14 @@ void ProjectWindow::DrawConsole()
         }
         else
         {
-            // Expanded view: one line per occurrence.
+            
             for (int i = 0; i < e.count; ++i)
                 ImGui::TextUnformatted(e.message.c_str());
         }
         ImGui::PopStyleColor();
     }
 
-    // Auto-scroll only when the user is already pinned to the bottom.
+    
     if (m_consoleAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
         ImGui::SetScrollHereY(1.0f);
 
@@ -1939,11 +1939,11 @@ void ProjectWindow::OpenCSharpFile(const std::string& filePath, int line, int co
 
 bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, const std::string& projectName)
 {
-    // Find DittoEngine.dll path - search upward from project directory to engine root
+    
     std::string dittoEnginePath;
     fs::path currentPath = fs::absolute(projectPath);
     
-    // Traverse directory tree upward to find Ditto/ditto directory
+    
     while (!currentPath.empty() && currentPath.has_parent_path())
     {
         std::vector<std::string> searchPaths = {
@@ -1967,7 +1967,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     
     if (dittoEnginePath.empty())
     {
-        // Fallback to relative path search (from project directory)
+        
         std::vector<std::string> searchPaths = {
             projectPath + "\\..\\..\\Ditto\\3rdParty\\Mono\\DittoEngine.dll",
             projectPath + "\\..\\..\\ditto\\3rdParty\\Mono\\DittoEngine.dll",
@@ -1984,7 +1984,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
         }
     }
     
-    // Create .csproj file
+    
     std::string csprojPath = projectPath + "/" + projectName + ".csproj";
     std::ofstream csprojFile(csprojPath);
     if (!csprojFile.is_open())
@@ -2036,7 +2036,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
     csprojFile << "</Project>\n";
     csprojFile.close();
     
-    // Create .sln file
+    
     std::string slnPath = projectPath + "/" + projectName + ".sln";
     std::ofstream slnFile(slnPath);
     if (!slnFile.is_open())
@@ -2045,7 +2045,7 @@ bool ProjectWindow::CreateVisualStudioSolution(const std::string& projectPath, c
         return false;
     }
     
-    // Generate GUID
+    
     GUID guid;
     CoCreateGuid(&guid);
     char guidStr[40];

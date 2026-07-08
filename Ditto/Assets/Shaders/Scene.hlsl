@@ -1,11 +1,11 @@
-// Scene shader (HLSL). One source -> DXC -> SPIR-V (Vulkan) -> SPIRV-Cross -> GLSL (OpenGL).
-// Self-contained (no #include) so the subprocess compiler can write it to a temp file.
-//
-// Resource layout (explicit [[vk::binding(binding, set)]]):
-//   set 0: frame-global uniform block (view/projection/lighting)
-//   set 1: per-instance storage buffers (model matrices, colors)
-// On OpenGL, SPIRV-Cross flattens sets; the UBO lands at uniform binding 0 and the
-// two storage buffers at SSBO bindings 0/1 (separate GL binding namespaces, no clash).
+
+
+
+
+
+
+
+
 
 [[vk::binding(0, 0)]] cbuffer FrameUniforms : register(b0, space0)
 {
@@ -35,8 +35,8 @@ VSOutput VSMain(float3 aPos : POSITION, float3 aNormal : NORMAL, uint instanceID
     float4 world = mul(model, float4(aPos, 1.0));
     o.position = mul(projection, mul(view, world));
     o.worldPos = world.xyz;
-    // mat3(model) * normal -- correct for rotation + uniform scale (the common case);
-    // matches the original up to non-uniform scale.
+    
+    
     o.normal   = normalize(mul((float3x3)model, aNormal));
     o.color    = InstanceColors[instanceID];
     return o;

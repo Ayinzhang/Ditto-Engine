@@ -6,17 +6,17 @@
 
 struct Scene;
 
-// Screen-space UI pass: collects UIImage/UIText/UIButton components from the
-// scene and draws them as instanced quads (one draw per texture) at the end of
-// Scene::Render. Works in both the editor's offscreen viewports and the
-// standalone game-mode backbuffer (no ImGui involved).
+
+
+
+
 struct UIRenderer
 {
-    // Lazy init on first Render call; safe to call repeatedly.
+    
     bool Init(Ditto::IRenderer* rhi);
     void Shutdown();
 
-    // Draw all UI components found under the scene's root. viewport w/h in pixels.
+    
     void Render(Scene* scene, int viewportWidth, int viewportHeight);
 
     FontAtlas font;
@@ -24,8 +24,8 @@ struct UIRenderer
 private:
     struct Instance
     {
-        glm::vec4 rect;     // x, y, w, h (pixels, top-left origin)
-        glm::vec4 uvRect;   // u0, v0, u1, v1
+        glm::vec4 rect;     
+        glm::vec4 uvRect;   
         glm::vec4 color;
     };
 

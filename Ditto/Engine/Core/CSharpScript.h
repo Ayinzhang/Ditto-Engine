@@ -69,10 +69,10 @@ struct CSharpScriptComponent : Component
     void ParseScriptFields();
 
 private:
-    // Parse a single ';'-terminated declaration statement (comments already
-    // stripped) and append any serializable fields it declares. Public by
-    // default; also picks up [SerializeField] members and honors
-    // [HideInInspector]. No-op for non-field statements (using, methods, etc.).
+    
+    
+    
+    
     void ParseFieldDeclaration(const std::string& statement);
 
 public:
@@ -91,9 +91,9 @@ public:
     void HotReloadScript();
 };
 
-// Visit every CSharpScriptComponent on `obj` (does not recurse into children).
-// Centralizes the `index == ComponentIndex::CSharpScript` check + cast that was
-// previously copy-pasted across the engine's play/stop/reload loops.
+
+
+
 template<typename Func>
 inline void ForEachScriptComponent(GameObject* obj, Func&& func)
 {
@@ -105,7 +105,7 @@ inline void ForEachScriptComponent(GameObject* obj, Func&& func)
     }
 }
 
-// ==================== C# Script System ====================
+
 typedef void (*LogCallback)(const std::string& message);
 
 struct CSharpScriptSystem
@@ -126,7 +126,7 @@ struct CSharpScriptSystem
     static bool IsInitialized() { return s_initialized; }
     static void SetDeltaTime(float dt) { s_deltaTime = dt; }
     static float GetDeltaTime() { return s_deltaTime; }
-    // Accumulated play-mode time (seconds since entering Play); reset on Play.
+    
     static void SetTime(float t) { s_time = t; }
     static float GetTime() { return s_time; }
 
@@ -141,8 +141,8 @@ struct CSharpScriptSystem
 
     static Editor* GetEditor() { return s_editor; }
 
-    // Physics instance for Physics.Raycast internal calls (set by Engine after
-    // construction; works in both editor and standalone game mode).
+    
+    
     static void SetPhysics(Physics* physics) { s_physics = physics; }
     static Physics* GetPhysics() { return s_physics; }
     
@@ -159,7 +159,7 @@ private:
     static Physics* s_physics;
 };
 
-// Internal call function declarations (C++ functions callable from C#)
+
 extern "C" {
     void Internal_Transform_GetPosition(void* transform, float* outPos);
     void Internal_Transform_SetPosition(void* transform, float x, float y, float z);
@@ -239,8 +239,8 @@ extern "C" {
     int Internal_Input_GetButton(void* buttonName);
     int Internal_Input_GetButtonDown(void* buttonName);
     int Internal_Input_GetButtonUp(void* buttonName);
-    // out7: point(3) + normal(3) + distance(1); outGo: hit GameObject pointer.
-    // Returns 1 on hit, 0 on miss. Only valid in Play mode (colliders exist).
+    
+    
     int Internal_Physics_Raycast(float ox, float oy, float oz,
         float dx, float dy, float dz, float maxDist, float* out7, void** outGo);
     void Internal_AudioSource_Play(void* audioSource);

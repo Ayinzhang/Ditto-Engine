@@ -14,13 +14,13 @@ public:
 
     void Initialize(const std::string& settingsPath);
     
-    // 使用ImGui内置INI保存/加载 - 最简单可靠
+    
     bool SaveLayout(const std::string& layoutName);
     bool LoadLayout(const std::string& layoutName);
     bool DeleteLayout(const std::string& layoutName);
     std::vector<std::string> GetAllLayoutNames();
     
-    // 标记需要重新加载
+    
     void SetNeedsReloadDock() { needsReloadDock = true; }
     bool GetNeedsReloadDock() const { return needsReloadDock; }
     void ClearNeedsReloadDock() { needsReloadDock = false; }

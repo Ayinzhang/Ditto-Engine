@@ -3,7 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
-#include <iosfwd>   // std::ostream / std::istream forward decls (serialize to file OR memory)
+#include <iosfwd>   
 #include <cstdint>
 #include <utility>
 #include "Component.h"
@@ -13,7 +13,7 @@
 
 struct GameObject;
 struct Scene;
-struct Editor;  // Forward declaration
+struct Editor;  
 
 struct GameObject
 {
@@ -24,13 +24,13 @@ struct GameObject
     std::string prefabSourcePath;
     std::string prefabSourceGuid;
 
-    // Single-ownership tree: each GameObject owns its children; `parent` is a
-    // non-owning back-pointer.
+    
+    
     GameObject* parent = nullptr;
     std::vector<std::unique_ptr<GameObject>> children;
 
-    // Owned components; `removeComps` is a non-owning pending-removal list of
-    // markers into `components`, resolved by ProcessRemovals().
+    
+    
     std::vector<std::unique_ptr<Component>> components;
     std::vector<Component*> removeComps;
 
@@ -40,13 +40,13 @@ struct GameObject
     GameObject(GameObject* other);
     ~GameObject();
 
-    // Adopt a new (not-yet-owned) object; returns a raw observer to it.
+    
     GameObject* AddChild(std::unique_ptr<GameObject> child);
-    // Reparent an object currently owned elsewhere in the tree (editor
-    // drag-drop). Self/cycle guards as before; no-op if they fail.
+    
+    
     void AddChild(GameObject* existingChild);
-    // Unlink `child` from this->children and hand its ownership to the caller
-    // (nulls child->parent). Returns nullptr if not found.
+    
+    
     std::unique_ptr<GameObject> DetachChild(GameObject* child);
     bool IsDescendantOf(GameObject* ancestor) const;
 
@@ -57,17 +57,17 @@ struct GameObject
         T* newComp = owned.get();
         newComp->gameObject = this;
         components.push_back(std::move(owned));
-        compMask |= newComp->index;   // bitwise OR: idempotent if the same component type is added again
-        return newComp;               // raw observer; the GameObject owns the component
+        compMask |= newComp->index;   
+        return newComp;               
     }
 
     template<DerivedFromComponent T>
     T* GetComponent() const
     {
-        // Fast reject: if the component bit isn't set in compMask, the object
-        // cannot own a T, so skip the dynamic_cast scan entirely. Components
-        // expose their bit as `T::TypeBit`; types without one fall back to the
-        // full scan.
+        
+        
+        
+        
         if constexpr (requires { T::TypeBit; })
             if ((compMask & T::TypeBit) == 0) return nullptr;
 
@@ -106,12 +106,12 @@ struct TransformComponent : Component
 
     mutable bool localDirty, worldDirty;
 
-    // Runtime rotation state for physics. `rotation` (euler degrees) stays the
-    // authored + serialized representation; during simulation the physics
-    // integrator advances `orientation` (a quaternion) instead -- correct
-    // angular composition, no gimbal lock. When `useQuatRotation` is set,
-    // UpdateTransform builds the model from the quaternion; otherwise it uses
-    // euler exactly as before. The quaternion is NOT serialized.
+    
+    
+    
+    
+    
+    
     glm::quat orientation;
     bool useQuatRotation;
 
@@ -124,9 +124,9 @@ struct TransformComponent : Component
     glm::mat4 GetWorldModel() const;
     void SetTRS(const glm::vec3& newPosition, const glm::vec3& newRotation, const glm::vec3& newScale);
 
-    // Seed `orientation` from the current euler `rotation` (matching the same
-    // Y*X*Z order UpdateTransform uses) and switch to quaternion mode. Called
-    // lazily by the physics integrator when a body first simulates.
+    
+    
+    
     void SeedOrientationFromEuler();
 
     void Serialize(std::ostream& file) const override;
@@ -201,7 +201,7 @@ struct RendererComponent : Component
     bool dynamicOcclusion = true;
     uint32_t renderingLayerMask = 1;
 
-    // Mesh path (project-relative path). Required - must be loaded from Assets.
+    
     std::string meshPath;
 
     RendererComponent();
@@ -219,7 +219,7 @@ struct SpriteRendererComponent : Component
     enum SpriteSortPoint { Center, Pivot };
 
     glm::vec4 color{ 1.0f };
-    std::string spritePath;  // Required - must be loaded from Assets
+    std::string spritePath;  
     std::string materialPath;
 
     bool flipX = false;
@@ -240,17 +240,17 @@ struct SpriteRendererComponent : Component
 
 struct RigidbodyComponent : Component
 {
-    // Static    : never moves, infinite mass (level geometry).
-    // Dynamic   : fully simulated -- receives gravity/impulses, its world pose
-    //             is owned by the solver and is NOT driven by the Transform
-    //             hierarchy (so a Dynamic child does not follow a moving parent).
-    // Kinematic : infinite mass like Static, but its pose IS driven by the
-    //             Transform/script/parent hierarchy. It pushes Dynamic bodies
-    //             (moving platforms, parent-driven children) without being
-    //             pushed back, and is not affected by gravity. This is the type
-    //             to use for "child follows the parent" without double gravity.
-    // NOTE: enum values are serialized as int32; only append new values at the
-    // end to keep old scene files loading correctly (Static=0, Dynamic=1).
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     static constexpr int TypeBit = ComponentIndex::Rigidbody;
     enum Type { Static, Dynamic, Kinematic };
     Type type;
@@ -258,8 +258,8 @@ struct RigidbodyComponent : Component
     bool useGravity;
     float damp, angularDamp;
     bool isKinematic = false;
-    int interpolate = 0;       // None, Interpolate, Extrapolate
-    int collisionDetection = 0; // Discrete, Continuous, Continuous Dynamic, Continuous Speculative
+    int interpolate = 0;       
+    int collisionDetection = 0; 
     bool freezePosition[3] = { false, false, false };
     bool freezeRotation[3] = { false, false, false };
     glm::vec3 velocity, angularVelocity;
@@ -308,17 +308,20 @@ struct Rigidbody2DComponent : Component
     float gravityScale = 1.0f;
     float linearDamping = 0.02f;
     float angularDamping = 0.02f;
-    int collisionDetection = 0; // Discrete, Continuous
-    int sleepingMode = 0;       // Never Sleep, Start Awake, Start Asleep
-    int interpolate = 0;        // None, Interpolate, Extrapolate
+    int collisionDetection = 0; 
+    int sleepingMode = 0;       
+    int interpolate = 0;        
     bool freezePositionX = false;
     bool freezePositionY = false;
     bool freezeRotation = false;
     glm::vec2 velocity{ 0.0f };
     float angularVelocity = 0.0f;
+    bool sleeping = false;
+    float sleepTimer = 0.0f;
 
     Rigidbody2DComponent();
     Rigidbody2DComponent(Rigidbody2DComponent* other);
+    void WakeUp();
     void AddForce(const glm::vec2& force, ForceMode2D mode = Force);
     void AddTorque(float torque, ForceMode2D mode = Force);
     void ClearAccumulators();
@@ -355,7 +358,7 @@ struct Collider2DComponent : Component
 struct AudioSourceComponent : Component
 {
     static constexpr int TypeBit = ComponentIndex::AudioSource;
-    std::string clipPath;        // project-relative audio file (wav/mp3/ogg/flac)
+    std::string clipPath;        
     std::string outputPath;
     bool mute = false;
     bool bypassEffects = false;
@@ -370,7 +373,7 @@ struct AudioSourceComponent : Component
     float spatialBlend = 0.0f;
     float reverbZoneMix = 1.0f;
 
-    // Runtime-only: handle of the currently playing sound (AudioEngine).
+    
     uint32_t soundHandle = 0;
 
     AudioSourceComponent();
@@ -382,7 +385,7 @@ struct AudioSourceComponent : Component
     void Deserialize(std::istream& file) override;
 };
 
-// ---- In-game UI (screen-space) ----
+
 
 enum class UIAnchor : int
 {
@@ -391,17 +394,17 @@ enum class UIAnchor : int
     BottomLeft, Bottom, BottomRight,
 };
 
-// Normalized anchor position inside the viewport ((0,0)=top-left .. (1,1)=
-// bottom-right). Also used as the element pivot so e.g. a BottomRight element
-// grows up-left from the corner.
+
+
+
 inline glm::vec2 UIAnchorFactor(UIAnchor anchor)
 {
     const int i = static_cast<int>(anchor);
     return glm::vec2(static_cast<float>(i % 3) * 0.5f, static_cast<float>(i / 3) * 0.5f);
 }
 
-// Screen rect (x, y, w, h) in pixels, top-left origin, for an anchored
-// element. Shared by the UI renderer and the button hit test.
+
+
 inline glm::vec4 ComputeUIRect(UIAnchor anchor, const glm::vec2& offset,
     const glm::vec2& size, float viewW, float viewH)
 {
@@ -452,7 +455,7 @@ struct UIImageComponent : Component
     glm::vec2 offset{ 0.0f };
     glm::vec2 size{ 100.0f, 100.0f };
     glm::vec4 color{ 1.0f };
-    std::string texturePath;   // empty = solid color (white texture)
+    std::string texturePath;   
     Type type = Simple;
     bool raycastTarget = true;
     bool maskable = true;
@@ -473,8 +476,8 @@ struct UITextComponent : Component
     glm::vec4 color{ 1.0f };
     std::string text = "Text";
     std::string fontPath;
-    int fontStyle = 0; // Normal, Bold, Italic, Bold And Italic
-    int alignment = 0; // Left, Center, Right
+    int fontStyle = 0; 
+    int alignment = 0; 
     bool raycastTarget = true;
     bool maskable = true;
 
@@ -498,15 +501,15 @@ struct UIButtonComponent : Component
     float fontSize = 20.0f;
     glm::vec4 labelColor{ 1.0f };
     bool interactable = true;
-    int transition = 1; // None, Color Tint
+    int transition = 1; 
     glm::vec4 disabledColor{ 0.5f, 0.5f, 0.5f, 0.5f };
     float colorMultiplier = 1.0f;
     float fadeDuration = 0.1f;
 
-    // Runtime-only interaction state (driven by Engine in Play mode).
+    
     bool hovered = false;
     bool pressed = false;
-    bool wasClicked = false;   // sticky until read by a script (read-clears)
+    bool wasClicked = false;   
 
     UIButtonComponent();
     UIButtonComponent(UIButtonComponent* other);

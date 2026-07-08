@@ -43,6 +43,7 @@ namespace Ditto
         virtual void PollEvents() = 0;
         virtual void SetSize(int width, int height) = 0;
         virtual double TimeSeconds() const = 0;
+        virtual void GetWindowSize(int& width, int& height) const = 0;
         virtual void GetFramebufferSize(int& width, int& height) const = 0;
 
         virtual void MakeContextCurrent() = 0;

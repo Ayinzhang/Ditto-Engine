@@ -1,13 +1,13 @@
-// Lit_Toon shader (HLSL). One source -> DXC -> SPIR-V (Vulkan) -> SPIRV-Cross -> GLSL (OpenGL).
-// Self-contained (no #include) so the subprocess compiler can write it to a temp file.
-// Properties:
-//   Color("Color", Color) = (1, 1, 1, 1)
-//
-// Resource layout (explicit [[vk::binding(binding, set)]]):
-//   set 0: frame-global uniform block (view/projection/lighting)
-//   set 1: per-instance storage buffers (model matrices, colors) + material texture
-// On OpenGL, SPIRV-Cross flattens sets; the UBO lands at uniform binding 0 and the
-// two storage buffers at SSBO bindings 0/1 (separate GL binding namespaces, no clash).
+
+
+
+
+
+
+
+
+
+
 
 [[vk::binding(0, 0)]] cbuffer FrameUniforms : register(b0, space0)
 {

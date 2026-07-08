@@ -85,11 +85,11 @@ Resource::Resource(const std::string& basePath)
 
 void Resource::Initialize(const std::string& basePath)
 {
-    // Determine the base path for model assets.
+    
     if (basePath.empty())
     {
-        // Anchor to the executable location rather than guessing relative
-        // ladders against the (unpredictable) working directory.
+        
+        
         std::filesystem::path cubePath = Ditto::AssetPath::ResolveTypedAssetPath("Cube", "Models", ".obj");
         resourcePath = cubePath.parent_path().string();
     }
@@ -98,7 +98,7 @@ void Resource::Initialize(const std::string& basePath)
         resourcePath = basePath;
     }
 
-    // Assignment releases any previous resources when reinitializing.
+    
     cubeModel = std::make_unique<ModelData>(resourcePath + "/Cube.obj");
     sphereModel = std::make_unique<ModelData>(resourcePath + "/Sphere.obj");
     cubeMesh = std::make_unique<MeshData>(resourcePath + "/Cube.obj");
@@ -112,8 +112,8 @@ static void LoadLegacyRenderModel(ModelData& out, const std::string& path)
     std::vector<glm::vec3> positions, normals;
     std::vector<glm::vec2> texCoords;
 
-    // Dedup map: (posIdx, normIdx) -> index into vertexData. Corners shared by
-    // multiple faces collapse to one vertex; `indices` carries the topology.
+    
+    
     std::unordered_map<std::string, unsigned int> uniqueVerts;
 
     auto emitCorner = [&](const ModelData::FaceIndices& fi) -> unsigned int
@@ -177,7 +177,7 @@ static void LoadLegacyRenderModel(ModelData& out, const std::string& path)
 
             while (lineStream >> token) faceTokens.push_back(token);
 
-            // Fan-triangulate (handles quads/ngons, not just pre-triangulated files).
+            
             std::vector<unsigned int> corner;
             corner.reserve(faceTokens.size());
             for (const auto& faceToken : faceTokens)
@@ -228,11 +228,11 @@ static void LoadLegacyPhysicsMesh(MeshData& out, const std::string& filePath)
             std::vector<std::string> faceTokens; std::string token;
             while (lineStream >> token) faceTokens.push_back(token);
             
-            // Parse face indices (supporting triangles and quads, triangulate quads)
+            
             std::vector<unsigned int> faceIndices;
             for (const auto& faceToken : faceTokens)
             {
-                // Parse "vertexIndex/textureIndex/normalIndex" format, get vertex index
+                
                 std::string indexStr = faceToken;
                 size_t slashPos = indexStr.find('/');
                 if (slashPos != std::string::npos)
@@ -240,13 +240,13 @@ static void LoadLegacyPhysicsMesh(MeshData& out, const std::string& filePath)
                 
                 if (!indexStr.empty())
                 {
-                    int idx = std::stoi(indexStr) - 1; // OBJ indices are 1-based
+                    int idx = std::stoi(indexStr) - 1; 
                     if (idx >= 0)
                         faceIndices.push_back(static_cast<unsigned int>(idx));
                 }
             }
             
-            // Triangulate the face (assuming convex polygon)
+            
             for (size_t i = 2; i < faceIndices.size(); i++)
             {
                 out.indices.push_back(faceIndices[0]);
@@ -354,7 +354,7 @@ MeshData::MeshData(const std::string& filePath, bool useAssimp)
     LoadLegacyPhysicsMesh(*this, filePath);
 }
 
-// Defined here (not defaulted in the header) so unique_ptr sees the complete
-// ModelData/MeshData types when instantiating their deleters.
+
+
 Resource::~Resource() = default;
 

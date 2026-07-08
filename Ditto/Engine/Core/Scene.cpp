@@ -52,8 +52,8 @@ Scene::~Scene()
 
     DestroyAllObjects();
 
-    // Release all GPU resources through the renderer (sole owner). The renderer
-    // is guaranteed alive here: Engine deletes the Scene before resetting it.
+    
+    
     for (auto& pair : customBatches)
     {
         if (renderer) { renderer->DestroyStorageBuffer(pair.second->modelSBO);
@@ -83,16 +83,16 @@ Scene::~Scene()
 #endif
 }
 
-// Single source of truth for tearing down the object graph.
-//
-// Ownership model: `rootGameObject` owns the entire object tree (each
-// GameObject owns its children and recursively deletes them). `gameObjects`
-// is a NON-OWNING flattened view mirroring `rootGameObject->children`; it
-// must never be deleted (doing so would double-free nodes).
+
+
+
+
+
+
 void Scene::DestroyAllObjects()
 {
-    // Recreate a fresh root, mirroring the scene name (Unity-style). The
-    // assignment destroys the old tree (recursively) before taking ownership.
+    
+    
     rootGameObject = std::make_unique<GameObject>(name);
     rootGameObject->name = name;
 
@@ -276,7 +276,7 @@ void Scene::CollectRenderData()
             if (renderer && renderer->enabled && transform && transform->enabled &&
                 !renderer->meshPath.empty())
             {
-                // All meshes come from project Assets.
+                
                 EnsureCustomGeometry(renderer->meshPath);
 
                 Ditto::MaterialAsset material;
@@ -299,16 +299,16 @@ void Scene::CollectRenderData()
                 {
                     std::string texturePath = material.mainTexturePath.empty() ? sprite->spritePath : material.mainTexturePath;
                     glm::vec4 finalColor = glm::vec4(material.color) * sprite->color;
-                // Sprites use a built-in quad mesh — we just use a sentinel "sprite" meshPath
+                
                     addBatchInstance("__sprite_quad__", material.shaderName, texturePath,
                         finalColor, sprite->sortingOrder);
                 }
             }
 
-            // Particle systems: each alive particle becomes a camera-facing Quad
-            // instance. Particles carry per-instance color, so they cannot use the
-            // color-keyed addBatchInstance path; push directly into a dedicated
-            // batch keyed only by the system (one batch per particle component).
+            
+            
+            
+            
             ParticleSystemComponent* ps = obj->GetComponent<ParticleSystemComponent>();
             if (ps && ps->enabled)
             {
@@ -324,7 +324,7 @@ void Scene::CollectRenderData()
                         newBatch->meshPath = "__particle_quad__";
                         newBatch->shaderName = material.shaderName;
                         newBatch->texturePath = material.mainTexturePath;
-                        newBatch->sortingOrder = 1000; // draw after opaque/sprites
+                        newBatch->sortingOrder = 1000; 
                         batch = newBatch.get();
                         renderBatches[batchKey] = std::move(newBatch);
                     }
@@ -338,8 +338,8 @@ void Scene::CollectRenderData()
                     for (const Particle& p : ps->particles)
                     {
                         if (!p.alive) continue;
-                        // Billboard: columns are camera right/up scaled by size, facing
-                        // the camera, positioned at the particle's world position.
+                        
+                        
                         glm::mat4 m(1.0f);
                         m[0] = glm::vec4(cameraRight * p.size, 0.0f);
                         m[1] = glm::vec4(cameraUp * p.size, 0.0f);
@@ -362,23 +362,23 @@ static void UploadBatch(Ditto::IRenderer* r, GeometryInstances* batch)
 {
     if (!r || batch->instanceCount == 0) return;
 
-    if (!batch->modelSBO) batch->modelSBO = r->CreateStorageBuffer(0, /*dynamic=*/true);
+    if (!batch->modelSBO) batch->modelSBO = r->CreateStorageBuffer(0, true);
     r->UpdateStorageBuffer(batch->modelSBO, batch->modelMatrices.data(),
         batch->instanceCount * sizeof(glm::mat4));
 
-    if (!batch->colorSBO) batch->colorSBO = r->CreateStorageBuffer(0, /*dynamic=*/true);
+    if (!batch->colorSBO) batch->colorSBO = r->CreateStorageBuffer(0, true);
     r->UpdateStorageBuffer(batch->colorSBO, batch->instanceColors.data(),
         batch->instanceCount * sizeof(glm::vec4));
 }
 
-// User shaders never see instance IDs. The generated VSMain wrapper captures
-// SV_InstanceID internally, so helpers like ObjectToWorld() can still index the
-// instancing buffers while the user's vert(appdata) signature stays clean.
+
+
+
 static void DrawBatch(Ditto::IRenderer* r, const BaseGeometry& geometry, GeometryInstances* batch)
 {
     if (!r || batch->instanceCount == 0 || !geometry.mesh) return;
-    r->BindStorageBuffer(0, batch->modelSBO);   // ModelMatrices (binding 0)
-    r->BindStorageBuffer(1, batch->colorSBO);   // InstanceColors (binding 1)
+    r->BindStorageBuffer(0, batch->modelSBO);   
+    r->BindStorageBuffer(1, batch->colorSBO);   
     r->DrawInstanced(geometry.mesh, static_cast<int>(batch->instanceCount));
 }
 
@@ -392,8 +392,8 @@ void Scene::Render(const glm::mat4& view, const glm::mat4& projection,
 {
     if (!renderer) return;
 
-    // Extract the camera basis from the view matrix so particle systems can
-    // build camera-facing billboards during CollectRenderData.
+    
+    
     cameraRight = glm::vec3(view[0][0], view[1][0], view[2][0]);
     cameraUp    = glm::vec3(view[0][1], view[1][1], view[2][1]);
 
@@ -450,8 +450,8 @@ void Scene::Render(const glm::mat4& view, const glm::mat4& projection,
 
         if (batch->meshPath.empty()) continue;
 
-        // Special sentinel mesh paths for sprites and particles — these are
-        // handled directly in the rendering pipeline (camera-facing quads).
+        
+        
         if (batch->meshPath == "__sprite_quad__" || batch->meshPath == "__particle_quad__")
         {
             auto geoIt = customGeometries.find(batch->meshPath);
@@ -589,15 +589,15 @@ void Scene::InitializeBaseGeometries(Resource* _resource, Ditto::IRenderer* rhi)
     this->resource = _resource;
     this->renderer = rhi;
 
-    // All visible geometry now comes from project Assets. The only base
-    // geometry the scene still owns is the unit quad used for sprite and
-    // particle billboarding.
+    
+    
+    
     const std::vector<Ditto::VertexAttrib> attribs = { {0, 3, 0}, {1, 3, 3}, {2, 2, 6} };
 
     if (renderer)
     {
-        // Unity-style 2D sprite plane: centered pivot, unit size, XY plane,
-        // normal toward +Z so it faces the default camera at z=5.
+        
+        
         const float quadVerts[] = {
             -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
              0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f,
@@ -616,7 +616,7 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
 {
     if (meshPath.empty()) return;
     if (meshPath == "__sprite_quad__" || meshPath == "__particle_quad__") return;
-    if (customGeometries.find(meshPath) != customGeometries.end()) return; // already built (or cached as failed)
+    if (customGeometries.find(meshPath) != customGeometries.end()) return; 
 
     std::string resolved = Ditto::AssetPath::ResolveTypedAssetPath(meshPath, "Models").string();
 
@@ -625,7 +625,7 @@ void Scene::EnsureCustomGeometry(const std::string& meshPath)
     {
         if (model.vertexData.empty())
             DITTO_LOG_ERROR_STREAM("[Scene] Custom mesh has no geometry: " << resolved);
-        // Cache empties so we don't re-attempt the load every frame.
+        
         customGeometries[meshPath] = BaseGeometry{};
         customBatches[meshPath] = std::make_unique<GeometryInstances>();
         return;

@@ -16,7 +16,7 @@
 #include "../Engine/Graphics/ParticleSystemComponent.h"
 #include "../Engine/Resources/AssetPath.h"
 
-// Defined below; the model preview routes all GPU work through the RHI.
+
 static Ditto::IRenderer* PreviewRenderer(Editor* editor);
 #include <fstream>
 #include <sstream>
@@ -52,8 +52,8 @@ namespace
         return Ditto::AssetPath::ToProjectRelativeAssetPath(path);
     }
 
-    // Convert a project-relative path (e.g. "Materials/Lit_Toon.mat") into
-    // an absolute path on disk. Empty input -> empty output.
+    
+    
     std::string ToFullAssetPath(const std::string& relativePath)
     {
         if (relativePath.empty()) return "";
@@ -72,15 +72,15 @@ namespace
         return LowerText(text).find(LowerText(search)) != std::string::npos;
     }
 
-    // Asset item for picker
+    
     struct AssetItem
     {
-        std::string name;           // Display name (filename without extension)
-        std::string relativePath;   // Path relative to Assets folder (with extension)
-        std::string fullPath;       // Absolute path
+        std::string name;           
+        std::string relativePath;   
+        std::string fullPath;       
     };
 
-    // Collect assets from a directory recursively
+    
     void CollectAssets(const fs::path& directory, const std::vector<std::string>& extensions,
                        const fs::path& assetsRoot, std::vector<AssetItem>& outAssets)
     {
@@ -109,11 +109,11 @@ namespace
                     if (!matchesExt) continue;
 
                     AssetItem item;
-                    // Display name without extension
+                    
                     item.name = entry.path().stem().string();
                     item.fullPath = entry.path().string();
 
-                    // Calculate relative path from assetsRoot (keep extension for loading)
+                    
                     fs::path rel = entry.path().lexically_relative(assetsRoot);
                     if (!rel.empty())
                         item.relativePath = rel.generic_string();
@@ -124,19 +124,19 @@ namespace
                 }
                 catch (const std::exception&)
                 {
-                    // Skip files that cause errors
+                    
                     continue;
                 }
             }
         }
         catch (const std::exception&)
         {
-            // Failed to iterate directory
+            
             return;
         }
     }
 
-    // Draw Unity-style asset picker popup with grid layout
+    
     ImTextureID GetEditorAssetIcon(Editor* editor, const std::string& iconKey)
     {
         if (!editor) return (ImTextureID)0;
@@ -157,7 +157,7 @@ namespace
 
         if (ImGui::BeginPopup(popupId))
         {
-            // Header with search
+            
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::IsWindowAppearing())
                 ImGui::SetKeyboardFocusHere();
@@ -165,7 +165,7 @@ namespace
 
             ImGui::Separator();
 
-            // Collect assets - ONLY from project, not engine
+            
             Project* project = ProjectManager::GetInstance().GetCurrentProject();
             std::vector<AssetItem> assets;
 
@@ -175,13 +175,13 @@ namespace
                 CollectAssets(assetsPath, extensions, assetsPath, assets);
             }
 
-            // Filter by search
+            
             std::string searchStr = searchBuffer;
 
-            // Use table layout for Unity-style grid
+            
             ImGui::BeginChild("AssetList", ImVec2(400, 400), true);
 
-            // Show "None" option first
+            
             if (MatchesSearch("None", searchStr))
             {
                 ImGui::PushID("None");
@@ -197,7 +197,7 @@ namespace
 
             ImTextureID icon = GetEditorAssetIcon(editor, iconKey);
 
-            // Display assets in a list with icons
+            
             for (const auto& asset : assets)
             {
                 if (!MatchesSearch(asset.name, searchStr) && !MatchesSearch(asset.relativePath, searchStr))
@@ -205,14 +205,14 @@ namespace
 
                 ImGui::PushID(asset.fullPath.c_str());
 
-                // Draw icon if available
+                
                 if (icon)
                 {
                     ImGui::Image(icon, ImVec2(18, 18));
                     ImGui::SameLine();
                 }
 
-                // Draw selectable with name (without extension)
+                
                 if (ImGui::Selectable(asset.name.c_str(), false, 0, ImVec2(0, 20)))
                 {
                     outSelectedPath = asset.relativePath;
@@ -220,7 +220,7 @@ namespace
                     ImGui::CloseCurrentPopup();
                 }
 
-                // Show path on hover
+                
                 if (ImGui::IsItemHovered())
                 {
                     ImGui::BeginTooltip();
@@ -238,7 +238,7 @@ namespace
         return selected;
     }
 
-    // Draw Unity-style object field with circle button
+    
     bool DrawFileObjectField(const char* label, const std::string& value, const char* id,
                             const char* assetType, const std::vector<std::string>& extensions,
                             const std::string& iconKey, std::string* outSelectedPath, std::string* droppedPath,
@@ -247,47 +247,47 @@ namespace
         ImGui::TextUnformatted(label);
         ImGui::SameLine();
 
-        // Calculate layout
+        
         float availWidth = ImGui::GetContentRegionAvail().x;
         float buttonHeight = ImGui::GetFrameHeight();
-        float circleButtonWidth = buttonHeight; // Square button for the circle
+        float circleButtonWidth = buttonHeight; 
         float mainButtonWidth = availWidth - circleButtonWidth - 2.0f;
 
         ImTextureID icon = GetEditorAssetIcon(editor, iconKey);
         ImTextureID pickerIcon = GetEditorAssetIcon(editor, "picker");
 
-        // Main button showing current selection
+        
         ImGui::BeginGroup();
 
-        // Draw the main button with icon and text
+        
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f)); // Left align
+        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f)); 
 
         std::string display = value.empty() ? "None" : FileNameFromPath(value);
-        // Remove extension from display
+        
         size_t dotPos = display.find_last_of('.');
         if (dotPos != std::string::npos)
             display = display.substr(0, dotPos);
 
-        // Draw icon inside button if available
+        
         bool doubleClicked = false;
         bool singleClicked = false;
         ImVec2 buttonPos = ImGui::GetCursorScreenPos();
 
         bool buttonPressed = ImGui::Button(("##main" + std::string(id)).c_str(), ImVec2(mainButtonWidth, buttonHeight));
 
-        // Check double click first (works even if button didn't return true on this exact frame)
+        
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
         {
             doubleClicked = true;
         }
         else if (buttonPressed)
         {
-            // Single click: button was pressed and it wasn't a double click
+            
             singleClicked = true;
         }
 
-        // Draw icon and text on top of button
+        
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         ImVec2 textPos = buttonPos;
         textPos.x += 4.0f;
@@ -307,7 +307,7 @@ namespace
         ImGui::PopStyleVar();
         ImGui::PopStyleColor();
 
-        // Handle left button behavior
+        
         const std::string& navPath = !fullPath.empty() ? fullPath : value;
 
         DITTO_LOG_INFO_STREAM("[DrawFileObjectField] doubleClicked=" << doubleClicked << " singleClicked=" << singleClicked << " navPath=" << navPath << " editor=" << (editor ? "valid" : "null"));
@@ -315,7 +315,7 @@ namespace
         if (doubleClicked && !navPath.empty() && editor)
         {
             DITTO_LOG_INFO_STREAM("[DrawFileObjectField] Double clicked: " << navPath);
-            // Double click: switch Inspector to show this asset
+            
             editor->selectedFile.path = navPath;
             editor->selectedFile.name = display;
             editor->selectedFile.extension = LowerExtension(navPath);
@@ -325,30 +325,30 @@ namespace
         {
             DITTO_LOG_INFO_STREAM("[DrawFileObjectField] Single clicked: " << navPath);
 
-            // 1. First navigate Project window to show the file's folder
+            
             if (ProjectWindow* projectWindow = editor->GetProjectWindow())
             {
                 projectWindow->NavigateToFile(navPath);
             }
 
-            // 2. Then select this file in Inspector
+            
             editor->selectedFile.path = navPath;
             editor->selectedFile.name = display;
             editor->selectedFile.extension = LowerExtension(navPath);
             editor->selectedObject = nullptr;
         }
 
-        // Circle picker button (like Unity's)
+        
         ImGui::SameLine(0, 2.0f);
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
 
-        // Draw picker icon if available, otherwise use 'o'
+        
         ImVec2 pickerButtonPos = ImGui::GetCursorScreenPos();
         bool pickerClicked = ImGui::Button(("##picker" + std::string(id)).c_str(), ImVec2(circleButtonWidth, buttonHeight));
 
         if (pickerIcon)
         {
-            // Draw picker icon centered in button
+            
             ImVec2 iconPos = pickerButtonPos;
             float iconSize = 16.0f;
             iconPos.x += (circleButtonWidth - iconSize) * 0.5f;
@@ -357,7 +357,7 @@ namespace
         }
         else
         {
-            // Fallback: draw 'o' text
+            
             ImVec2 textPos = pickerButtonPos;
             const char* text = "o";
             ImVec2 textSize = ImGui::CalcTextSize(text);
@@ -375,7 +375,7 @@ namespace
 
         ImGui::EndGroup();
 
-        // Handle drag and drop on the entire group
+        
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PROJECT_FILE"))
@@ -383,7 +383,7 @@ namespace
             ImGui::EndDragDropTarget();
         }
 
-        // Draw asset picker popup
+        
         static char searchBuffer[256] = "";
         if (ImGui::IsPopupOpen(id) && ImGui::IsWindowAppearing())
             searchBuffer[0] = '\0';
@@ -409,7 +409,7 @@ namespace
         ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "Material");
         ImGui::Separator();
 
-        // Shader picker
+        
         std::string selectedShader;
         std::string droppedShader;
         if (DrawFileObjectField("Shader", material.shaderName, "MaterialShaderAsset",
@@ -614,23 +614,23 @@ void InspectorWindow::Draw()
 {
     ImGui::Begin("Inspector");
 
-    // Set current object to display (if Inspector is locked, show locked object)
+    
     m_currentObject = nullptr;
     if (m_editor)
     {
         if (m_editor->selectedFile.IsValid())
         {
-            // When showing file info, there is no associated GameObject
+            
             m_currentObject = nullptr;
         }
         else
         {
-            // If Inspector is locked (lockingSelection = true), show locked object
-            // Otherwise show currently selected object
+            
+            
             if (m_editor->lockingSelection && m_editor->selectedObject && m_editor->selectedObject->locked)
             {
-                // Found locked object - need to traverse scene
-                // Simplified: use selectedObject because when locked it is the locked object
+                
+                
                 m_currentObject = m_editor->selectedObject;
             }
             else
@@ -640,7 +640,7 @@ void InspectorWindow::Draw()
         }
     }
 
-    // Handle script drag-drop (drag-drop is not affected by lock)
+    
     if (ImGui::BeginDragDropTarget())
     {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CS_SCRIPT"))
@@ -648,7 +648,7 @@ void InspectorWindow::Draw()
             const char* scriptPath = (const char*)payload->Data;
             DITTO_LOG_INFO_STREAM("[Inspector] Received script: " << scriptPath );
             
-            // Use m_currentObject instead of selectedObject to allow dragging to add scripts
+            
             if (m_currentObject)
             {
                 m_editor->OnScriptComponentDroppedToObject(m_currentObject, scriptPath);
@@ -657,7 +657,7 @@ void InspectorWindow::Draw()
         ImGui::EndDragDropTarget();
     }
 
-    // Prefer showing file info (if a file is selected)
+    
     if (m_editor && m_editor->selectedFile.IsValid())
     {
         ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "File");
@@ -692,7 +692,7 @@ void InspectorWindow::Draw()
             return;
         }
 
-        // If it's a model file, show model info
+        
         if (m_editor->selectedFile.extension == ".obj" || m_editor->selectedFile.extension == ".fbx")
         {
             ImGui::Separator();
@@ -725,9 +725,9 @@ void InspectorWindow::Draw()
 
                 Ditto::IRenderer* previewR = PreviewRenderer(m_editor);
                 void* previewTexId = previewR ? previewR->GetImGuiTextureID(previewR->GetColorTexture(m_previewRT)) : nullptr;
-                // Guard against a null texture id (e.g. render targets not yet
-                // implemented on the active backend) -- passing null to ImGui::Image
-                // can crash the Vulkan backend.
+                
+                
+                
                 if (previewTexId)
                 {
                     ImVec2 uv0, uv1;
@@ -737,7 +737,7 @@ void InspectorWindow::Draw()
                 else
                     ImGui::TextDisabled("(preview unavailable on this backend)");
 
-                // Mouse drag to rotate
+                
                 if (!m_modelInitialized || (ImGui::IsItemHovered() && ImGui::IsMouseDown(0)))
                 {
                     m_modelInitialized = true;
@@ -770,22 +770,22 @@ void InspectorWindow::Draw()
         return;
     }
 
-    // When no file is selected, show GameObject info
+    
     if (!m_editor || !m_editor->selectedObject) {
         ImGui::TextDisabled("Select an object to view its properties");
         ImGui::End();
         return;
     }
 
-    // Use m_currentObject instead of selectedObject (supports lock display)
+    
     if (m_currentObject)
     {
         if (m_editor->engine && m_editor->engine->state == Engine::State::Play) ImGui::BeginDisabled();
         
-        // Show GameObject UI
+        
         m_currentObject->OnInspectorGUI();
         
-        // Unified Add Component area - supports click to expand menu and drag scripts
+        
         ImGui::Separator();
         static char addComponentSearch[128] = "";
         ImVec4 prevColor = ImGui::GetStyle().Colors[ImGuiCol_Button];
@@ -797,7 +797,7 @@ void InspectorWindow::Draw()
         }
         ImGui::GetStyle().Colors[ImGuiCol_Button] = prevColor;
         
-        // Drag-drop receiver
+        
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CS_SCRIPT"))
@@ -809,7 +809,7 @@ void InspectorWindow::Draw()
             ImGui::EndDragDropTarget();
         }
         
-        // Component selection popup menu
+        
         const float inspectorWidth = ImGui::GetWindowWidth();
         const float popupWidth = std::clamp(inspectorWidth - 32.0f, 300.0f, 420.0f);
         const float popupHeight = std::clamp(ImGui::GetIO().DisplaySize.y * 0.42f, 360.0f, 520.0f);
@@ -989,7 +989,7 @@ void InspectorWindow::Draw()
             ImGui::TextUnformatted("Scripts");
             ImGui::Separator();
             
-            // Load available scripts from project Scripts directory
+            
             Project* project = ProjectManager::GetInstance().GetCurrentProject();
             if (project)
             {
@@ -1032,11 +1032,11 @@ void InspectorWindow::Draw()
     ImGui::End();
 }
 
-// ============================================================================
-// Model Preview Implementation
-// ============================================================================
 
-// Renderer accessor (owned by Engine; alive whenever the editor is).
+
+
+
+
 static Ditto::IRenderer* PreviewRenderer(Editor* editor)
 {
     return (editor && editor->engine) ? editor->engine->renderer.get() : nullptr;
@@ -1054,9 +1054,9 @@ void InspectorWindow::InitModelPreview()
     m_previewCamera = std::make_unique<Camera>(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     m_previewCamera->SetPerspective(45.0f, 0.1f, 100.0f);
 
-    // Solid-white wireframe preview shader (HLSL). The model transform is folded
-    // into `view` on the CPU, so the shared FrameUniforms block drives it. The
-    // cbuffer must mirror the scene shader's layout so SetFrameUniforms matches.
+    
+    
+    
     const std::string previewHlsl = R"(
 [[vk::binding(0, 0)]] cbuffer FrameUniforms : register(b0, space0)
 {
@@ -1188,7 +1188,7 @@ void InspectorWindow::LoadPreviewModel(const std::string& modelPath)
 
     m_currentPreviewModel.vertexCount = static_cast<int>(vertexData.size() / 3);
 
-    // Position-only mesh (3 floats, attribute 0).
+    
     m_currentPreviewModel.mesh = r->CreateMesh(vertexData.data(), vertexData.size(), 3, { {0, 3, 0} });
 
     if (m_previewCamera) {
@@ -1206,7 +1206,7 @@ void InspectorWindow::RenderModelPreview()
     Ditto::IRenderer* r = PreviewRenderer(m_editor);
     if (!r) return;
 
-    // No model loaded yet: just clear the target to the preview background.
+    
     if (!m_currentPreviewModel.mesh)
     {
         r->BeginRenderTarget(m_previewRT);
@@ -1226,7 +1226,7 @@ void InspectorWindow::RenderModelPreview()
 
     r->BindPipeline(m_previewPipeline);
     Ditto::FrameUniforms fu;
-    fu.view = view * model;     // fold the model transform into view
+    fu.view = view * model;     
     fu.projection = projection;
     r->SetFrameUniforms(fu);
 

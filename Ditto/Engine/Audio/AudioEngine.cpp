@@ -17,7 +17,7 @@ namespace AudioEngine
         std::unordered_map<SoundHandle, std::unique_ptr<ma_sound>> g_sounds;
         std::mutex g_mutex;
 
-        // Drop sounds that finished playing (non-looping one-shots).
+        
         void ReclaimFinished()
         {
             for (auto it = g_sounds.begin(); it != g_sounds.end();)
@@ -79,7 +79,7 @@ namespace AudioEngine
         ma_sound_start(sound.get());
 
         SoundHandle handle = g_nextHandle++;
-        if (g_nextHandle == InvalidSound) g_nextHandle = 1;   // wrap, skip 0
+        if (g_nextHandle == InvalidSound) g_nextHandle = 1;   
         g_sounds[handle] = std::move(sound);
         return handle;
     }

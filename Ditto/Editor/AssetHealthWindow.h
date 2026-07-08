@@ -5,7 +5,7 @@
 
 struct Editor;
 
-// Shows asset database diagnostics and repair tools.
+
 class AssetHealthWindow
 {
 public:

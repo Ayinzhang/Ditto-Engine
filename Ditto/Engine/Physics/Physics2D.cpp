@@ -9,6 +9,12 @@
 
 namespace
 {
+    constexpr float kSleepLinearSpeed = 0.08f;
+    constexpr float kSleepAngularSpeed = 2.0f;
+    constexpr float kSleepDelay = 0.35f;
+    constexpr float kWakeSpeed = 0.25f;
+    constexpr float kRestingContactSpeed = 0.35f;
+
     struct ContactMaterial2D
     {
         float friction = 0.6f;
@@ -17,8 +23,22 @@ namespace
 
     float InvMass(const Rigidbody2DComponent* rb)
     {
-        return rb && rb->enabled && rb->type == Rigidbody2DComponent::Dynamic
+        return rb && rb->enabled && rb->simulated && rb->type == Rigidbody2DComponent::Dynamic
+            && !rb->sleeping
             ? 1.0f / glm::max(0.0001f, rb->mass) : 0.0f;
+    }
+
+    float BodySpeed(const Rigidbody2DComponent* rb)
+    {
+        return rb ? glm::length(rb->velocity) + std::abs(rb->angularVelocity) * 0.02f : 0.0f;
+    }
+
+    void WakeIfHitByMovingBody(Rigidbody2DComponent* sleeping, const Rigidbody2DComponent* other)
+    {
+        if (!sleeping || !sleeping->sleeping || sleeping->sleepingMode == 0)
+            return;
+        if (BodySpeed(other) >= kWakeSpeed)
+            sleeping->WakeUp();
     }
 
     ContactMaterial2D MaterialForBody(const Physics2DBody& body,
@@ -181,6 +201,20 @@ void Physics2DWorld::StepFixed(Scene* scene, float dt)
 void Physics2DWorld::Rebuild(Scene* scene)
 {
     CollectBodies(scene);
+    for (Physics2DBody& body : bodies)
+    {
+        Rigidbody2DComponent* rb = body.rigidbody;
+        if (!rb || rb->type != Rigidbody2DComponent::Dynamic)
+            continue;
+        rb->sleeping = rb->sleepingMode == 2;
+        rb->sleepTimer = 0.0f;
+        if (rb->sleeping)
+        {
+            rb->velocity = glm::vec2(0.0f);
+            rb->angularVelocity = 0.0f;
+            rb->ClearAccumulators();
+        }
+    }
     previousContacts.clear();
     enterEvents.clear();
     exitEvents.clear();
@@ -205,6 +239,7 @@ void Physics2DWorld::FixedStep(Scene* scene, float dt)
     DetectContactEvents();
     for (int i = 0; i < velocityIterations; ++i) SolveVelocity(dt);
     for (int i = 0; i < positionIterations; ++i) SolvePositions();
+    UpdateSleeping(dt);
     SyncTransforms();
 }
 
@@ -234,7 +269,11 @@ void Physics2DWorld::IntegrateForces(float dt)
     for (Physics2DBody& body : bodies)
     {
         Rigidbody2DComponent* rb = body.rigidbody;
-        if (!rb || !rb->enabled || rb->type != Rigidbody2DComponent::Dynamic) continue;
+        if (!rb || !rb->enabled || !rb->simulated || rb->type != Rigidbody2DComponent::Dynamic || rb->sleeping)
+        {
+            if (rb) rb->ClearAccumulators();
+            continue;
+        }
 
         glm::vec2 acceleration = rb->forceAccum / glm::max(0.0001f, rb->mass);
         if (rb->useGravity) acceleration += gravity * rb->gravityScale;
@@ -242,10 +281,13 @@ void Physics2DWorld::IntegrateForces(float dt)
         rb->angularVelocity += rb->torqueAccum / glm::max(0.0001f, rb->mass) * dt;
         rb->velocity *= glm::max(0.0f, 1.0f - rb->linearDamping * dt);
         rb->angularVelocity *= glm::max(0.0f, 1.0f - rb->angularDamping * dt);
+        if (rb->freezePositionX) rb->velocity.x = 0.0f;
+        if (rb->freezePositionY) rb->velocity.y = 0.0f;
+        if (rb->freezeRotation) rb->angularVelocity = 0.0f;
 
-        body.transform->position.x += rb->velocity.x * dt;
-        body.transform->position.y += rb->velocity.y * dt;
-        body.transform->rotation.z += rb->angularVelocity * dt;
+        if (!rb->freezePositionX) body.transform->position.x += rb->velocity.x * dt;
+        if (!rb->freezePositionY) body.transform->position.y += rb->velocity.y * dt;
+        if (!rb->freezeRotation) body.transform->rotation.z += rb->angularVelocity * dt;
         body.transform->localDirty = true;
         rb->ClearAccumulators();
     }
@@ -267,6 +309,11 @@ void Physics2DWorld::DetectCollisions()
             contact.b = j;
             if (!TestCollision(bodies[i], bodies[j], contact)) continue;
             contact.isTrigger = bodies[i].collider->isTrigger || bodies[j].collider->isTrigger;
+            if (!contact.isTrigger)
+            {
+                WakeIfHitByMovingBody(bodies[i].rigidbody, bodies[j].rigidbody);
+                WakeIfHitByMovingBody(bodies[j].rigidbody, bodies[i].rigidbody);
+            }
             contacts.push_back(contact);
         }
     }
@@ -295,6 +342,8 @@ void Physics2DWorld::SolveVelocity(float)
         ContactMaterial2D matB = MaterialForBody(b, materialCache);
 
         float restitution = glm::max(matA.restitution, matB.restitution);
+        if (std::abs(normalVel) <= kRestingContactSpeed)
+            restitution = 0.0f;
         float j = -(1.0f + restitution) * normalVel / invTotal;
         glm::vec2 impulse = j * c.normal;
         if (a.rigidbody && invA > 0.0f) a.rigidbody->velocity -= impulse * invA;
@@ -327,19 +376,64 @@ void Physics2DWorld::SolvePositions()
         float invTotal = invA + invB;
         if (invTotal <= 0.0f) continue;
 
-        float correctionDepth = glm::max(c.depth - 0.01f, 0.0f) * 0.8f;
+        float correctionDepth = glm::max(c.depth - 0.02f, 0.0f) * 0.45f;
         glm::vec2 correction = c.normal * (correctionDepth / invTotal);
         if (invA > 0.0f)
         {
-            a.transform->position.x -= correction.x * invA;
-            a.transform->position.y -= correction.y * invA;
+            if (!a.rigidbody->freezePositionX) a.transform->position.x -= correction.x * invA;
+            if (!a.rigidbody->freezePositionY) a.transform->position.y -= correction.y * invA;
             a.transform->localDirty = true;
         }
         if (invB > 0.0f)
         {
-            b.transform->position.x += correction.x * invB;
-            b.transform->position.y += correction.y * invB;
+            if (!b.rigidbody->freezePositionX) b.transform->position.x += correction.x * invB;
+            if (!b.rigidbody->freezePositionY) b.transform->position.y += correction.y * invB;
             b.transform->localDirty = true;
+        }
+    }
+}
+
+void Physics2DWorld::UpdateSleeping(float dt)
+{
+    std::vector<bool> hasContact(bodies.size(), false);
+    for (const Contact& c : contacts)
+    {
+        if (c.isTrigger) continue;
+        if (c.a >= 0 && c.a < static_cast<int>(hasContact.size())) hasContact[c.a] = true;
+        if (c.b >= 0 && c.b < static_cast<int>(hasContact.size())) hasContact[c.b] = true;
+    }
+
+    for (int i = 0; i < static_cast<int>(bodies.size()); ++i)
+    {
+        Rigidbody2DComponent* rb = bodies[i].rigidbody;
+        if (!rb || rb->type != Rigidbody2DComponent::Dynamic || rb->sleepingMode == 0)
+            continue;
+        if (!rb->enabled || !rb->simulated || !hasContact[i])
+        {
+            rb->sleepTimer = 0.0f;
+            continue;
+        }
+
+        float linearSpeed = glm::length(rb->velocity);
+        float angularSpeed = std::abs(rb->angularVelocity);
+        if (hasContact[i] && linearSpeed <= kRestingContactSpeed * 0.5f)
+            rb->velocity = glm::vec2(0.0f);
+
+        if (linearSpeed <= kRestingContactSpeed * 0.5f && angularSpeed <= kSleepAngularSpeed)
+        {
+            rb->sleepTimer += dt;
+            if (rb->sleepTimer >= kSleepDelay)
+            {
+                rb->sleeping = true;
+                rb->velocity = glm::vec2(0.0f);
+                rb->angularVelocity = 0.0f;
+                rb->ClearAccumulators();
+            }
+        }
+        else
+        {
+            rb->sleeping = false;
+            rb->sleepTimer = 0.0f;
         }
     }
 }

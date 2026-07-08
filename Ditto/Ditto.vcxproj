@@ -319,8 +319,6 @@
     </Link>
     <PostBuildEvent>
       <Command>setlocal
-rem Locate dotnet without relying on the IDE process PATH (which may predate a
-rem .NET SDK install). Prefer the standard install location, then PATH.
 set "DOTNET=dotnet"
 if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
 set "DOTNET_CLI_UI_LANGUAGE=en"
@@ -365,8 +363,6 @@ if "$(EnableAssimp)"=="true" copy /Y "$(AssimpRoot)\bin\assimp-vc143-mt.dll" "$(
     </Link>
     <PostBuildEvent>
       <Command>setlocal
-rem Locate dotnet without relying on the IDE process PATH (which may predate a
-rem .NET SDK install). Prefer the standard install location, then PATH.
 set "DOTNET=dotnet"
 if exist "%ProgramFiles%\dotnet\dotnet.exe" set "DOTNET=%ProgramFiles%\dotnet\dotnet.exe"
 set "DOTNET_CLI_UI_LANGUAGE=en"
